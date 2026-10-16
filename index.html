@@ -247,7 +247,8 @@ textarea.inp{font-family:var(--f-body);height:auto;min-height:120px;padding:10px
 .imgprev.empty-img{align-items:center;justify-content:center;color:var(--muted);font-size:13px;border:1px dashed var(--line);text-align:center}
 .mark .logo{height:17px;width:auto;display:block;color:var(--fg)}
 .hero{--cap:min(69px,calc((100vw - 72px)*.133))}
-.hero .word .logo{display:block;height:var(--cap);width:auto;max-width:none;color:#fff;margin:6px 0 calc(var(--cap)*.19 + 4px);overflow:visible}
+.hero .word .logo{display:block;height:var(--cap);width:auto;max-width:none;color:#fff;margin:6px auto calc(var(--cap)*.19 + 4px);overflow:visible}
+.hero .word{width:100%;max-width:calc(var(--cap)*7.51)}
 .hero .under{min-height:56px}
 .hero .under p,.hero .under .slogan{margin:0 0 10px}
 .hero p.hsub{font-size:18px;max-width:none;color:#fff}
@@ -1661,9 +1662,9 @@ SCREENS.club = function(){
   const cards = (arr) => arr.map(([h,p],i)=>`<div class="ccard"><span class="n">${String(i+1).padStart(2,"0")}</span><h3>${h}</h3><p>${p}</p></div>`).join("");
   return {title:null, html:`
   <section class="hero" style="background-image:url(${SITE.hero||HERO})">
-    <span class="kicker">Центр спорта <span style="text-transform:none">г.</span> Иркутск</span>
+    <span class="kicker">Центр спорта · Иркутск</span>
     <div class="word">${LOGO_RU}</div>
-    <div class="under"><div class="slogan">Ставьте свои рекорды.</div></div>
+    <div class="under"><div class="slogan">Ставьте свои рекорды</div></div>
     <div class="row"><button class="btn" data-anchor="trial">Записаться на пробную</button><button class="btn ghost" data-anchor="schedule">Расписание</button></div>
   </section>
   <div class="pills cnav-m">${CLUB_NAV.map(([k,l])=>`<button data-anchor="${k}">${l}</button>`).join("")}</div>
