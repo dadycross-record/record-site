@@ -248,7 +248,9 @@ textarea.inp{font-family:var(--f-body);height:auto;min-height:120px;padding:10px
 .mark .logo{height:17px;width:auto;display:block;color:var(--fg)}
 .hero{--cap:min(69px,calc((100vw - 72px)*.133))}
 .hero .word .logo{display:block;height:var(--cap);width:auto;max-width:none;color:#fff;margin:6px auto calc(var(--cap)*.19 + 4px);overflow:visible}
-.hero .word{width:100%;max-width:calc(var(--cap)*7.51)}
+.hero .word{width:100%;max-width:calc(var(--cap)*7.201)}
+.hero.en>:not(.word){margin-left:calc(var(--cap)*.068)}
+.hero.en .row{max-width:calc(520px - var(--cap)*.068)}
 .hero .under{min-height:56px}
 .hero .under p,.hero .under .slogan{margin:0 0 10px}
 .hero p.hsub{font-size:18px;max-width:none;color:#fff}
@@ -710,7 +712,7 @@ home(){
   const held = EVENTS.filter(e=>isPub(e) && (e.status==="ended"||e.status==="live") && (e.permanent || (e.date||"").slice(0,4)===yr));
   const people = held.reduce((a,e)=>a+takenOf(e),0);
   return {title:null, html:`
-  <section class="hero" style="background-image:url(${SITE.hero||HERO})">
+  <section class="hero en" style="background-image:url(${SITE.hero||HERO})">
     <span class="kicker">Сезон 2026 · Иркутск</span>
     <div class="word">${LOGO}</div>
     <div class="under"><p class="hsub">Регистрация, результаты и лидерборд в одном месте.</p></div>
