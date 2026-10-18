@@ -1,0 +1,13 @@
+{
+  "name": "record-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Центр спорта «Рекорд»: сайт клуба и соревнований",
+  "main": "server.js",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node server.js",
+    "build": "echo 'no build step: public/ is committed'"
+  },
+  "dependencies": {}
+}

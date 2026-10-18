@@ -1,3 +1,4 @@
 .git
 .pipecore
 *.md
+!README.md
