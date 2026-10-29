@@ -9,7 +9,9 @@ const { Pool } = require('./lib/pg');
 const mail = require('./lib/mail');
 
 const PORT = +process.env.PORT || 3000;
-const OWNER = (process.env.OWNER_EMAIL || '').trim().toLowerCase();
+/* the owner is matched by a SHA-256 of the email, so the address is not written in this public repository */
+const OWNER_HASH = (process.env.OWNER_EMAIL_SHA256 || '6956dbd9292ae3e583a197ee0fed5cad6864272e2d15401c8bddf9bedba5eb61').trim().toLowerCase();
+const isOwner = e => !!e && require('crypto').createHash('sha256').update(String(e).trim().toLowerCase()).digest('hex') === OWNER_HASH;
 const DEV_LOG_CODES = process.env.MAIL_DEV_LOG === '1';
 const PUBLIC = path.join(__dirname, 'public');
 const DOC_VERSION = process.env.DOC_VERSION || '2026-10-17';
@@ -162,7 +164,7 @@ async function sessionOf(req) {
   const { rows } = await db.query('select u.* from sessions s join users u on u.id=s.user_id where s.token_hash=$1 and s.expires_at>now()', [sha(sid)]);
   if (!rows.length) return null;
   const u = rows[0];
-  u.role = u.email === OWNER ? 'owner' : ((await db.query('select role from staff where email=$1', [u.email])).rows[0] || {}).role || 'athlete';
+  u.role = isOwner(u.email) ? 'owner' : ((await db.query('select role from staff where email=$1', [u.email])).rows[0] || {}).role || 'athlete';
   return u;
 }
 const need = (u, ...roles) => {
@@ -461,7 +463,7 @@ route('GET', '/api/admin/state', async (req, res, u) => {
   return {
     role: u.role,
     PROMOS: (c.PROMOS || []).map(p => ({ ...p, used: used[p.code] || 0 })),
-    ACCESS: [{ email: OWNER, name: 'Владелец', role: 'owner' }, ...staff],
+    ACCESS: [{ email: u.role === 'owner' ? u.email : '', name: 'Владелец', role: 'owner' }, ...staff],
     CLUB_LEADS: leads.map(l => ({ id: l.id, date: new Date(l.created_at.getTime() + 8 * 3600e3).toISOString().slice(0, 10), name: l.name, phone: l.phone, dir: l.dir, who: l.who, age: l.age, time: l.pref_time, status: l.status })),
     REGS: regs.map(r => ({ ...orderOut(r), email: r.email || '' })),
     PENDING: pending,
@@ -501,7 +503,7 @@ route('POST', '/api/admin/staff', async (req, res, u, body) => {
   const email = str(body.email, 254).toLowerCase(), name = str(body.name, 80), role = body.role === 'judge' ? 'judge' : 'admin';
   if (!name) throw bad('Укажите имя');
   if (!isEmail(email)) throw bad('Нужен email, под которым человек входит на сайт');
-  if (email === OWNER) throw bad('Это владелец');
+  if (isOwner(email)) throw bad('Это владелец');
   await db.query('insert into staff(email, name, role) values ($1,$2,$3) on conflict (email) do update set name=excluded.name, role=excluded.role', [email, name, role]);
   return { ok: true };
 });
