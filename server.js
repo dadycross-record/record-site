@@ -252,7 +252,7 @@ route('POST', '/api/auth/code', async (req, res, u, body) => {
       await mail.send({ to: email, subject: `Код для входа: ${code}`,
         text: `Ваш код для входа на сайт центра спорта «Рекорд»: ${code}\n\nКод действует 10 минут. Если вы не запрашивали вход, просто удалите это письмо.\n\nrecordirk.ru`,
         html: `<div style="font-family:Arial,sans-serif;font-size:15px;color:#111"><p>Ваш код для входа на сайт центра спорта «Рекорд»:</p><p style="font-size:30px;font-weight:700;letter-spacing:4px">${code}</p><p style="color:#666">Код действует 10 минут. Если вы не запрашивали вход, просто удалите это письмо.</p><p><a href="https://recordirk.ru">recordirk.ru</a></p></div>` });
-    } catch (e) { console.error('mail error:', e.message); throw new HttpError(502, 'Не получилось отправить письмо. Попробуйте ещё раз через минуту'); }
+    } catch (e) { console.error('mail error:', e.message, '|', mail.describe()); throw new HttpError(502, 'Не получилось отправить письмо. Попробуйте ещё раз через минуту'); }
   } else if (DEV_LOG_CODES) {
     console.log(`[dev] login code for ${email.replace(/^(.).*(@.*)$/, '$1***$2')}: ${code}`);
   } else {
@@ -646,7 +646,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 init().then(() => {
-  server.listen(PORT, () => console.log(`listening on ${PORT}`));
+  server.listen(PORT, () => console.log(`listening on ${PORT}`, '|', mail.describe()));
   setTimeout(dailyBackup, 60e3).unref();
   setInterval(dailyBackup, 3600e3).unref();
 }).catch(e => { console.error('startup failed:', e); process.exit(1); });
