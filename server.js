@@ -4,6 +4,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const { Pool } = require('./lib/pg');
 const mail = require('./lib/mail');
 
@@ -13,7 +14,7 @@ const DEV_LOG_CODES = process.env.MAIL_DEV_LOG === '1';
 const PUBLIC = path.join(__dirname, 'public');
 const DOC_VERSION = process.env.DOC_VERSION || '2026-10-17';
 if (!process.env.DATABASE_URL) { console.error('DATABASE_URL is not set'); process.exit(1); }
-const db = new Pool(process.env.DATABASE_URL, 5);
+const db = new Pool(process.env.DATABASE_URL, +process.env.DB_POOL || 10);
 
 /* ---------- helpers ---------- */
 const today = () => new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10); // Иркутск, UTC+8
@@ -26,9 +27,12 @@ const digits = s => String(s || '').replace(/\D/g, '');
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
 const bad = m => new HttpError(400, m);
 
+const wantsGzip = req => /\bgzip\b/.test(req.headers['accept-encoding'] || '');
 function send(res, status, body, headers = {}) {
-  const data = typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body);
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers });
+  let data = typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body);
+  const h = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', Vary: 'Accept-Encoding', ...headers };
+  if (res.req && wantsGzip(res.req) && Buffer.byteLength(data) > 1024) { data = zlib.gzipSync(data); h['Content-Encoding'] = 'gzip'; }
+  res.writeHead(status, h);
   res.end(data);
 }
 
@@ -76,6 +80,7 @@ create index if not exists registrations_ev on registrations(event_id, div_id);
 create index if not exists registrations_user on registrations(user_id);
 create table if not exists scores (id bigserial primary key, reg_id text not null references registrations(id) on delete cascade, workout_id text not null, value jsonb not null, video text,
   state text not null default 'pending', created_at timestamptz not null default now(), reviewed_by text, unique(reg_id, workout_id));
+create table if not exists backups (id bigserial primary key, created_at timestamptz not null default now(), kind text not null, size int not null, rows int not null, data bytea not null);
 create table if not exists consents (id bigserial primary key, created_at timestamptz not null default now(), subject text not null, kind text not null, version text not null, ip text, ua text, ref text);
 `;
 const ACTIVE = `('new','paid','refund_requested')`;
@@ -117,7 +122,7 @@ async function publicContent() {
   }));
   const RESULTS = await liveResults(EVENTS);
   const json = JSON.stringify({ EVENTS, SITE: c.SITE || {}, TEAMS, RESULTS, today: today() });
-  cache = { json, etag: '"' + sha(json).slice(0, 20) + '"' };
+  cache = { json, gz: zlib.gzipSync(json), etag: '"' + sha(json).slice(0, 20) + '"' };
   return cache;
 }
 
@@ -212,8 +217,9 @@ route('GET', '/api/health', async () => ({ ok: true }));
 route('GET', '/api/content', async (req, res) => {
   const c = await publicContent();
   if (req.headers['if-none-match'] === c.etag) { res.writeHead(304, { ETag: c.etag }); res.end(); return undefined; }
-  res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache', ETag: c.etag });
-  res.end(c.json);
+  const gz = wantsGzip(req);
+  res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache', ETag: c.etag, Vary: 'Accept-Encoding', ...(gz ? { 'Content-Encoding': 'gzip' } : {}) });
+  res.end(gz ? c.gz : c.json);
   return undefined;
 });
 
@@ -233,7 +239,7 @@ route('POST', '/api/auth/code', async (req, res, u, body) => {
   const email = str(body.email, 254).toLowerCase();
   if (!isEmail(email)) throw bad('Проверьте email');
   if (!body.consent) throw bad('Нужно согласие на обработку персональных данных');
-  limit('code-ip:' + ipOf(req), 10, 3600e3);
+  limit('code-ip:' + ipOf(req), 60, 3600e3);
   limit('code-mail:' + email, 1, 55e3);
   limit('code-mail-h:' + email, 6, 3600e3);
   const code = String(crypto.randomInt(100000, 1000000));
@@ -255,7 +261,7 @@ route('POST', '/api/auth/code', async (req, res, u, body) => {
 
 route('POST', '/api/auth/verify', async (req, res, u, body) => {
   const email = str(body.email, 254).toLowerCase(), code = digits(body.code).slice(0, 6);
-  limit('verify-ip:' + ipOf(req), 30, 3600e3);
+  limit('verify-ip:' + ipOf(req), 300, 3600e3);
   const { rows } = await db.query('select * from login_codes where email=$1 and expires_at>now()', [email]);
   const lc = rows[0];
   if (!lc) throw bad('Код устарел. Запросите новый');
@@ -297,7 +303,7 @@ route('POST', '/api/account/delete', async (req, res, u) => {
 });
 
 route('POST', '/api/lead', async (req, res, u, body) => {
-  limit('lead-ip:' + ipOf(req), 5, 3600e3);
+  limit('lead-ip:' + ipOf(req), 20, 3600e3);
   const name = str(body.name, 80), phone = str(body.phone, 30);
   if (!name) throw bad('Как к вам обращаться?');
   if (digits(phone).length < 10) throw bad('Нужен телефон, чтобы мы перезвонили');
@@ -534,6 +540,45 @@ route('PATCH', '/api/admin/scores/:id', async (req, res, u, body, p) => {
   return { ok: true };
 });
 
+/* ---------- backups: a daily snapshot of every table, kept 14 days; the owner downloads them ---------- */
+const BACKUP_TABLES = ['content', 'users', 'staff', 'leads', 'teams', 'registrations', 'scores', 'consents'];
+async function makeBackup(kind) {
+  const tables = {}; let rows = 0;
+  for (const t of BACKUP_TABLES) { tables[t] = (await db.query(`select * from ${t}`)).rows; rows += tables[t].length; }
+  const data = zlib.gzipSync(JSON.stringify({ app: 'record-site', version: 1, created: new Date().toISOString(), tables }));
+  const r = await db.query('insert into backups(kind, size, rows, data) values ($1,$2,$3,$4) returning id, created_at', [kind, data.length, rows, data]);
+  await db.query(`delete from backups where created_at < now() - interval '14 days'`);
+  return r.rows[0];
+}
+async function dailyBackup() {
+  try {
+    const { rows } = await db.query(`select 1 from backups where created_at > now() - interval '23 hours'`);
+    if (!rows.length) { const b = await makeBackup('daily'); console.log('backup created', b.id); }
+  } catch (e) { console.error('backup failed:', e.message); }
+}
+const backupOut = b => ({ id: b.id, created: b.created_at, kind: b.kind, size: b.size, rows: b.rows });
+
+route('GET', '/api/admin/backups', async (req, res, u) => {
+  need(u, 'owner');
+  return { backups: (await db.query('select id, created_at, kind, size, rows from backups order by created_at desc')).rows.map(backupOut) };
+});
+route('POST', '/api/admin/backups', async (req, res, u) => {
+  need(u, 'owner');
+  limit('backup:' + u.id, 10, 3600e3);
+  const b = await makeBackup('manual');
+  return { backup: backupOut((await db.query('select id, created_at, kind, size, rows from backups where id=$1', [b.id])).rows[0]) };
+});
+route('GET', '/api/admin/backups/:id', async (req, res, u, body, p) => {
+  need(u, 'owner');
+  const b = (await db.query('select id, created_at, data from backups where id=$1', [+p.id || 0])).rows[0];
+  if (!b) throw new HttpError(404, 'Копия не найдена');
+  const raw = typeof b.data === 'string' ? Buffer.from(b.data.replace(/^\\x/, ''), 'hex') : b.data;
+  const stamp = new Date(b.created_at.getTime() + 8 * 3600e3).toISOString().slice(0, 16).replace(/[-:T]/g, '');
+  res.writeHead(200, { 'Content-Type': 'application/gzip', 'Content-Disposition': `attachment; filename="record-backup-${stamp}.json.gz"`, 'Cache-Control': 'no-store' });
+  res.end(raw);
+  return undefined;
+});
+
 /* ---------- static files ---------- */
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.woff': 'font/woff', '.woff2': 'font/woff2',
   '.txt': 'text/plain; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.ico': 'image/x-icon', '.json': 'application/json', '.xml': 'application/xml' };
@@ -547,15 +592,18 @@ function serveStatic(req, res, pathname) {
   if (!file.startsWith(PUBLIC + path.sep)) return false;
   let entry = fileCache.get(file);
   if (!entry) {
-    try { const st = fs.statSync(file); if (!st.isFile()) return false; entry = { data: fs.readFileSync(file), etag: '"' + st.size.toString(36) + '-' + st.mtimeMs.toString(36) + '"' }; fileCache.set(file, entry); }
+    try { const st = fs.statSync(file); if (!st.isFile()) return false; const data = fs.readFileSync(file); entry = { data, gz: /\.(html|css|js|json|svg|txt|xml)$/.test(file) ? zlib.gzipSync(data, { level: 9 }) : null, etag: '"' + st.size.toString(36) + '-' + st.mtimeMs.toString(36) + '"' }; fileCache.set(file, entry); }
     catch (_) { return false; }
   }
   const ext = path.extname(file);
   const headers = { 'Content-Type': TYPES[ext] || 'application/octet-stream', ETag: entry.etag,
-    'Cache-Control': rel.startsWith('/fonts/') ? 'public, max-age=31536000, immutable' : 'no-cache' };
+    'Cache-Control': rel.startsWith('/fonts/') ? 'public, max-age=31536000, immutable' : rel.startsWith('/img/') ? 'public, max-age=86400' : 'no-cache' };
+  if (entry.gz) headers.Vary = 'Accept-Encoding';
   if (req.headers['if-none-match'] === entry.etag) { res.writeHead(304, headers); res.end(); return true; }
+  const gz = entry.gz && wantsGzip(req);
+  if (gz) headers['Content-Encoding'] = 'gzip';
   res.writeHead(200, headers);
-  res.end(req.method === 'HEAD' ? undefined : entry.data);
+  res.end(req.method === 'HEAD' ? undefined : gz ? entry.gz : entry.data);
   return true;
 }
 
@@ -595,4 +643,8 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-init().then(() => server.listen(PORT, () => console.log(`listening on ${PORT}`))).catch(e => { console.error('startup failed:', e); process.exit(1); });
+init().then(() => {
+  server.listen(PORT, () => console.log(`listening on ${PORT}`));
+  setTimeout(dailyBackup, 60e3).unref();
+  setInterval(dailyBackup, 3600e3).unref();
+}).catch(e => { console.error('startup failed:', e); process.exit(1); });

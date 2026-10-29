@@ -1456,6 +1456,10 @@ function adminClick(t, ds){
     return true;
   }
   if (ds.regst){ api("PATCH","/api/admin/regs/"+encodeURIComponent(ds.reg),{status:ds.regst}).then(async r=>{ const i=ADM.REGS.findIndex(x=>x.id===r.order.id); if(i>=0) ADM.REGS[i]={...ADM.REGS[i],...r.order}; await loadContent(); render(); toast("Статус заявки обновлён"); }).catch(err=>toast(err.message)); return true; }
+  if (ds.bkp){ downloadBackup(ds.bkp).then(()=>toast("Копия сохранена в «Загрузки»")).catch(err=>toast(err.message)); return true; }
+  if (ds.act==="bkpnow"){ adm.bkpBusy=true; render();
+    api("POST","/api/admin/backups",{}).then(async r=>{ BACKUPS=[r.backup, ...(BACKUPS||[])]; await downloadBackup(r.backup.id); toast("Копия сохранена в «Загрузки»"); })
+      .catch(err=>toast(err.message)).finally(()=>{ adm.bkpBusy=false; render(); }); return true; }
   if (ds.act==="regcsv"){ const ev=curEv(); downloadCsv(`uchastniki-${ev.id}.csv`, [SHEET_COLS, ...sheetRows(ev)]); return true; }
   return false;
 }
@@ -1501,7 +1505,9 @@ admin(){
      <div class="muted tiny">Организатор: старты, участники, промокоды, документы, фото. Судья: только проверка результатов. Выдавать и забирать доступ может только владелец. Остальные пользователи панель не видят.</div>
      ${fErr(adm.accErr)}
      <button class="btn sm" data-act="accadd" style="align-self:flex-start">Выдать доступ</button>
-   </div>`:""}
+   </div>
+   <h2 class="sec">Резервные копии</h2>
+   ${backupCard()}`:""}
 `};
 },
 adminEvent(){
@@ -2004,6 +2010,26 @@ document.getElementById("docIn").addEventListener("change", e=>{
   rd.onerror = () => toast("Не получилось прочитать файл");
   rd.readAsDataURL(f);
 });
+/* backups: the server makes one a day and keeps 14; the owner downloads them to a computer */
+let BACKUPS = null;
+const fmtStamp = iso => { const d = new Date(Date.parse(iso)+8*3600e3).toISOString(); return `${d.slice(8,10)}.${d.slice(5,7)}.${d.slice(0,4)}, ${d.slice(11,16)}`; };
+function backupCard(){
+  if (BACKUPS===null){ BACKUPS=[]; api("GET","/api/admin/backups").then(r=>{ BACKUPS=r.backups; if (S.route==="admin") render(); }).catch(()=>{}); }
+  const list = BACKUPS.slice(0,14);
+  return `<div class="card stack">
+    <div class="small">Сайт сам сохраняет копию всей базы раз в сутки и хранит копии 14 дней. Раз в неделю скачивайте свежую копию на компьютер: если с сервером что-то случится, данные можно будет восстановить из неё.</div>
+    <div class="row wrap"><button class="btn sm" data-act="bkpnow" ${adm.bkpBusy?"disabled":""}>${adm.bkpBusy?"Готовлю копию…":"Скачать копию сейчас"}</button></div>
+    ${list.length?`<div style="padding:0 2px">${list.map(b=>`<div class="arow"><div class="sp"><b>${fmtStamp(b.created)}</b><div class="muted tiny">${b.kind==="daily"?"автоматическая":"вручную"} · ${b.rows} записей · ${fmtSize(b.size)}</div></div><button class="btn sm ghost" data-bkp="${b.id}">Скачать</button></div>`).join("")}</div>`:'<div class="muted tiny">Первая автоматическая копия появится в течение часа после запуска сайта.</div>'}
+    <div class="muted tiny">В копии есть персональные данные участников. Храните файл на своём компьютере и никому его не пересылайте.</div>
+  </div>`;
+}
+async function downloadBackup(id){
+  const r = await fetch("/api/admin/backups/"+id, {credentials:"same-origin"});
+  if (!r.ok) throw new Error("Не получилось скачать копию");
+  const name = (/filename="([^"]+)"/.exec(r.headers.get("Content-Disposition")||"")||[])[1] || "record-backup.json.gz";
+  const a = document.createElement("a"); a.href = URL.createObjectURL(await r.blob()); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+}
 function dataCard(){
   return `<div class="card stack"><div class="row"><b class="sp">Сохранение</b><span id="saveState">${saveStateHtml()}</span></div>
     <div class="muted small">Изменения сохраняются на сервере автоматически через секунду и сразу видны участникам.</div>${persist.error?fErr(persist.error):""}</div>`;
