@@ -663,8 +663,10 @@ function fmtRes(type, v){
 /* ---------- state & routing ---------- */
 const S = { route:"club", p:{}, stack:[], lb:{ev:"",tab:"ind",div:"m",w:-1,q:"",open:null}, evTab:{}, reg:null, searchOpen:false, who:"me", viewAs:"guest" };
 const view = document.getElementById("view"), topEl = document.getElementById("top");
-function go(route, p={}, push=true){ if(push) S.stack.push({route:S.route,p:S.p}); S.route=route; S.p=p; render(); window.scrollTo(0,0); }
-function back(){ const prev=S.stack.pop(); if(prev){ S.route=prev.route; S.p=prev.p; render(); window.scrollTo(0,0);} else go("home",{},false); }
+/* a new screen opens at the top; "back" returns to the spot you left; re-drawing the same screen keeps your place */
+function go(route, p={}, push=true){ if(push) S.stack.push({route:S.route,p:S.p,y:window.scrollY}); S.route=route; S.p=p; render(); window.scrollTo(0,0); }
+function back(){ const prev=S.stack.pop(); if(prev){ S.route=prev.route; S.p=prev.p; render(); window.scrollTo(0, prev.y||0);} else go("home",{},false); }
+let lastDrawn = null;
 function tab(t){ S.stack=[]; go(t,{},false); }
 function toast(msg){ document.querySelectorAll(".toast").forEach(x=>x.remove()); const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2400); }
 const ROOT_TAB = {login:"me",home:"home",events:"events",event:"events",divisions:"events",team:"events",teamCreate:"events",teamJoin:"events",form:"events",pay:"events",done:"events",fail:"events",leaderboard:"leaderboard",me:"me",orders:"me",score:"me",qr:"me",profile:"me",admin:"me",adminEvent:"me",adminDiv:"me",adminWod:"me",adminPeople:"me",adminSch:"me",adminPromo:"me",adminClub:"me"};
@@ -785,7 +787,7 @@ event(){
       </dl>
     </div>
     ${evCount(ev)}
-    ${ev.refund.length?`<h2 class="sec">Возврат взноса</h2><div class="card refund">${ev.refund.map(([p,t,k])=>`<div><span class="chip ${k}">${p}</span><span>${t}</span></div>`).join("")}<div class="muted tiny">Время иркутское (UTC+8). Возврат оформляется в «Моих стартах».</div></div>`:""}
+    ${ev.refund.length && !ev.hideRefund?`<h2 class="sec">Возврат взноса</h2><div class="card refund">${ev.refund.map(([p,t,k])=>`<div><span class="chip ${k}">${p}</span><span>${t}</span></div>`).join("")}<div class="muted tiny">Время иркутское (UTC+8). Возврат оформляется в «Моих стартах».</div></div>`:""}
     ${(ev.docs||[]).length?`<h2 class="sec">Документы</h2><div class="card" style="padding:4px 14px">${ev.docs.map(d=>`<div class="arow"><span class="chip neutral">${extOf(d.name)}</span><div class="sp"><b>${esc(d.title||d.name)}</b><div class="muted tiny">${esc(d.name)} · ${fmtSize(d.size)}</div></div><a class="btn sm" href="${d.data}" download="${esc(d.name)}">Скачать</a></div>`).join("")}</div>`:""}
     <h2 class="sec">Как участвовать</h2>
     <div class="card timeline">
@@ -1195,6 +1197,7 @@ function syncEv(){
   ev.name=g("aName").value; ev.en=g("aEn").value;
   if (g("aDate")) ev.date=g("aDate").value; if (g("aRegTo")) ev.regTo=g("aRegTo").value;
   if (g("aR100")) ev.r100=g("aR100").value; if (g("aR50")) ev.r50=g("aR50").value;
+  if (g("aRefOn")) ev.hideRefund = !g("aRefOn").checked;
   evSections(ev).forEach((x,i)=>{ if (g("secL"+i)) x.label=g("secL"+i).value; if (g("secOn"+i)) x.on=g("secOn"+i).checked; if (g("secT"+i)) x.text=g("secT"+i).value; });
   if (g("aDateTo")) ev.dateTo=g("aDateTo").value||undefined;
   if (g("aDateEnd")) ev.dateEnd=g("aDateEnd").value||ev.date;
@@ -1235,6 +1238,16 @@ function shiftEvent(ev, oldDate){
   ev.schedule.forEach(s=>{ if (s[3]) s[3]=mv(s[3]); });
   ev.workouts.forEach(w=>{ if (w.day) w.day=mv(w.day); });
   ev.divisions.forEach(d=>{ if (d.days) d.days=d.days.map(mv); });
+}
+/* after the dates change, move every item that fell outside the start's days onto the nearest day */
+function fitDays(ev){
+  if (ev.format==="online") return 0;
+  const days=evDays(ev), first=days[0], last=days[days.length-1]; let moved=0;
+  const fit = d => { if (!d || days.includes(d)) return d; moved++; return d>last ? last : first; };
+  ev.schedule.forEach(s=>{ if (s[3]) s[3]=fit(s[3]); });
+  ev.workouts.forEach(w=>{ if (w.day) w.day=fit(w.day); });
+  ev.divisions.forEach(d=>{ if (d.days && d.days.length){ const k=d.days.filter(x=>days.includes(x)); if (k.length!==d.days.length){ moved++; d.days=k; } } });
+  return moved;
 }
 function whoText(){
   const dv=adm.dv, ev=curEv(), g={M:"мужской пол",F:"женский пол",any:"любой пол"}[dv.g];
@@ -1364,7 +1377,7 @@ function adminClick(t, ds){
   if (ds.act==="mcloseyes"){ const m=curMonth(ev); m.done=true; const nx=nextMonthId(m.id); if (!ev.months.some(x=>x.id===nx)) ev.months.push({id:nx}); adm.mAsk=false; render(); toast(`Итоги: ${MON_NOM[+m.id.slice(5,7)-1]} закрыт. Открыт ${MON_NOM[+nx.slice(5,7)-1]} — добавьте задания`); return true; }
   if (ds.asch!==undefined){
     adm.schIdx = ds.asch==="new" ? null : +ds.asch; const s = adm.schIdx===null ? null : ev.schedule[adm.schIdx];
-    adm.sc = s ? {time:s[0],title:s[1],desc:s[2]||"",day:s[3]||evDays(ev)[0]} : {time:"10:00",title:"",desc:"",day:ds.day||evDays(ev)[0]};
+    adm.sc = s ? {time:s[0],title:s[1],desc:s[2]||"",day:evDays(ev).includes(s[3])?s[3]:evDays(ev)[0]} : {time:"10:00",title:"",desc:"",day:ds.day||evDays(ev)[0]};
     adm.serr={}; go("adminSch",{}); return true;
   }
   if (ds.aschdel!==undefined){ ev.schedule.splice(+ds.aschdel,1); render(); return true; }
@@ -1374,7 +1387,7 @@ function adminClick(t, ds){
     if (!s.time) e.time="Укажите время";
     if (!s.title.trim()) e.title="Напишите, что происходит";
     adm.serr=e; if (Object.keys(e).length){ render(); return true; }
-    const row=[s.time.padStart(5,"0"),s.title.trim(),s.desc.trim()]; if (ev.format!=="online") row[3]=s.day;
+    const dl=evDays(ev), row=[s.time.padStart(5,"0"),s.title.trim(),s.desc.trim()]; if (ev.format!=="online") row[3]=dl.includes(s.day)?s.day:dl[0];
     if (adm.schIdx===null) ev.schedule.push(row); else ev.schedule[adm.schIdx]=row;
     adm.err.days=null; back(); toast("Программа обновлена"); return true;
   }
@@ -1409,6 +1422,7 @@ function adminClick(t, ds){
   if (ds.dg){ adm.dv.g=ds.dg; render(); return true; }
   if (ds.wtp){ adm.wd.type=ds.wtp; render(); return true; }
   if (ds.act==="asave"){
+    if (ev.date) fitDays(ev);
     adm.err = validateEv({...ev,status:adm.st});
     if (Object.values(adm.err).some(Boolean)){ render(); toast("Проверьте отмеченные поля"); return true; }
     const published = ev.status==="draft" && adm.st!=="draft";
@@ -1546,6 +1560,7 @@ adminEvent(){
     <div class="f">Возраст участника считается${seg("aage",ev.ageMode||"date",[["date","На дату старта"],["year","По году рождения"]])}</div>
     <div class="muted tiny">По году рождения удобно для детских стартов: ребёнок 2017 г.р. весь сезон выступает в одной группе.</div>
     ${ev.permanent?"":`<h2 class="sec">Возврат взноса</h2>
+    <label class="check" style="align-items:center"><input type="checkbox" id="aRefOn" ${ev.hideRefund?"":"checked"}><span>Показывать раздел «Возврат взноса» на странице старта</span></label>
     <div class="grid2"><label class="f">100% до<input type="date" class="inp" id="aR100" value="${ev.r100||""}"></label><label class="f">50% до<input type="date" class="inp" id="aR50" value="${ev.r50||""}"></label></div>${fErr(E.ref)}
     <div class="muted tiny">Пустые поля — возврата нет. После последней даты возврат 0%.</div>`}
     <h2 class="sec">Разделы на странице старта</h2>
@@ -2073,12 +2088,15 @@ function evSheet(){
 function render(){
   if (!LOADED){ view.innerHTML = `<div class="loading">${LOAD_ERR?esc(LOAD_ERR):"Загружаю…"}</div>`; return; }
   if (LOGIN_ROUTES.includes(S.route) && !USER && S.route!=="me"){ S.after={route:S.route,p:S.p}; S.route="login"; S.p={}; }
+  const sameScreen = lastDrawn===S.route, keepY = window.scrollY;
   const out = allowed(S.route) ? SCREENS[S.route]() : SCREENS.noAccess();
   topEl.innerHTML = header(out.title);
   view.dataset.w = WIDTH[S.route] || "narrow";
   document.getElementById("app").classList.toggle("is-club", isClub());
   view.innerHTML = out.html;
   document.querySelectorAll(".tabbar button").forEach(b=>b.setAttribute("aria-current", b.dataset.tab===ROOT_TAB[S.route] ? "page":"false"));
+  if (sameScreen) window.scrollTo(0, keepY);
+  lastDrawn = S.route;
   if (out.after) out.after();
   scheduleSave();
 }
@@ -2146,6 +2164,7 @@ document.addEventListener("change", e=>{
     const ev=curEv(), oldDate=ev.date;
     syncEv();
     if (id==="aDate" && oldDate && ev.date && oldDate!==ev.date) shiftEvent(ev, oldDate);
+    if (ev.date && fitDays(ev)){ adm.err.days=null; toast("Программа и задания перенесены в новые даты старта"); }
     const y=window.scrollY; render(); window.scrollTo(0,y);
   }
   if (id==="sCap"){ S.p={...S.p,cap:e.target.checked,err:null}; render(); }
