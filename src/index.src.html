@@ -8,6 +8,12 @@
 .cfoot .docs{display:flex;flex-wrap:wrap;gap:6px 16px}.cfoot .docs a{color:var(--muted)}
 .check a,.fine a{color:var(--accent)}
 .codebox{font-family:var(--f-mono);font-size:24px;letter-spacing:.3em;text-align:center}
+.regbar{display:grid;grid-template-columns:1fr minmax(0,240px);gap:8px;margin:10px 0}@media(max-width:600px){.regbar{grid-template-columns:1fr}}
+.regsel{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:10px 12px;border:1px solid var(--accent);border-radius:12px;margin-bottom:10px}
+.regsel span{flex:1;min-width:160px}
+@media(max-width:600px){.tbl.regs .c-hide{display:none}.tbl.regs .act .btn{padding-inline:10px}}
+.tbl.regs td{vertical-align:middle}.tbl.regs .ck{width:28px}.tbl.regs .act{text-align:right;white-space:nowrap}.tbl.regs input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent)}
+.regname{font-weight:700;text-align:left;color:inherit}.tbl.regs tr.open td{border-bottom:0}.tbl.regs tr.detail td{padding-top:0}
 .loading{min-height:60vh;display:grid;place-items:center;color:var(--muted)}
 /* Layout: one phone-width app column, dark arena ground, scoreboard yellow as the only accent */
 :root{
@@ -1476,6 +1482,14 @@ function adminClick(t, ds){
     api("POST","/api/admin/score",{reg:ds.reg, workout:w.id, value:r.v}).then(async res=>{ const i=ADM.SCORES.findIndex(x=>x.reg===ds.reg && x.workout===w.id); if(i>=0) ADM.SCORES[i]=res.score; else ADM.SCORES.push(res.score); await loadContent(); render(); toast("Результат сохранён, лидерборд обновлён"); }).catch(err=>toast(err.message));
     return true;
   }
+  if (ds.rst){ adm.rf.st=ds.rst; adm.rf.sel={}; render(); return true; }
+  if (ds.regopen){ adm.regOpen = adm.regOpen===ds.regopen ? null : ds.regopen; render(); return true; }
+  if (ds.act==="regclear"){ adm.rf.sel={}; render(); return true; }
+  if (ds.act==="regbulk"){
+    const ids = Object.keys(adm.rf.sel).filter(id=>adm.rf.sel[id]);
+    api("POST","/api/admin/regs/paid",{ids}).then(async r=>{ r.orders.forEach(o=>{ const i=ADM.REGS.findIndex(x=>x.id===o.id); if(i>=0) ADM.REGS[i]={...ADM.REGS[i],...o}; }); adm.rf.sel={}; await loadContent(); render(); toast(`Отмечено оплаченными: ${r.orders.length}`); }).catch(err=>toast(err.message));
+    return true;
+  }
   if (ds.regst){ api("PATCH","/api/admin/regs/"+encodeURIComponent(ds.reg),{status:ds.regst}).then(async r=>{ const i=ADM.REGS.findIndex(x=>x.id===r.order.id); if(i>=0) ADM.REGS[i]={...ADM.REGS[i],...r.order}; await loadContent(); render(); toast("Статус заявки обновлён"); }).catch(err=>toast(err.message)); return true; }
   if (ds.bkp){ downloadBackup(ds.bkp).then(()=>toast("Копия сохранена в «Загрузки»")).catch(err=>toast(err.message)); return true; }
   if (ds.act==="bkpnow"){ adm.bkpBusy=true; render();
@@ -1665,16 +1679,7 @@ adminPeople(){
     <tr><td><b>Итого</b></td><td class="num"><b>${tot}</b></td><td class="num"><b>${fmtRub(sum)}</b>${due?`<div class="muted tiny">ждём ${fmtRub(due)}</div>`:""}</td></tr></tbody></table></div>
     <div class="row wrap" style="margin-top:12px"><button class="btn sm" data-act="regcsv" ${regs.length?"":"disabled"}>Скачать таблицу для Excel</button></div>
     <h2 class="sec">Заявки · ${regs.length}</h2>
-    ${regs.length?`<div class="stack cards">${[...regs].reverse().map(o=>{ const p=o.person||{}, d=ev.divisions.find(x=>x.id===o.div)||{name:""};
-      return `<div class="card stack"><div class="row"><div class="sp"><b>${esc(p.last||"")} ${esc(p.first||"")}</b><div class="muted tiny">${esc(d.name)}${o.team?` · ${esc(o.team)}`:""} · ${o.id} · ${dShort(o.date)}</div><div class="muted tiny">${esc(p.phone||"")} · ${esc(o.email||"")}${p.parent?` · родитель: ${esc(p.parent)}`:""}</div></div><span class="chip ${o.status==="paid"?"ok":o.status==="new"||o.status==="refund_requested"?"warn":"neutral"}">${REG_ST[o.status]||o.status}</span></div>
-        <div class="row wrap">${o.status==="new"?`<button class="btn sm" data-regst="paid" data-reg="${o.id}">Оплата получена · ${fmtRub(o.due)}</button><button class="btn sm ghost" data-regst="cancelled" data-reg="${o.id}">Отменить</button>`:""}
-        ${o.status==="refund_requested"?`<button class="btn sm" data-regst="refunded" data-reg="${o.id}">Возврат сделан</button><button class="btn sm ghost" data-regst="paid" data-reg="${o.id}">Оставить заявку</button>`:""}
-        ${o.status==="paid" && openWorkouts(ev).length ? `<button class="btn sm ghost" data-resopen="${o.id}">${adm.resReg===o.id?"Скрыть результаты":"Внести результаты"}</button>`:""}</div>
-        ${adm.resReg===o.id ? `<div class="panel stack" style="margin:0">${openWorkouts(ev).map(w=>{ const sc=ADM.SCORES.find(x=>x.reg===o.id && x.workout===w.id);
-          return `<div class="row wrap" style="gap:8px"><div class="sp" style="min-width:140px"><b class="small">${esc(w.name)}</b>${sc?`<div class="muted tiny">${sc.state==="accepted"?"в лидерборде":sc.state==="pending"?"на проверке":"отклонён"}: ${fmtRes(w.type,sc.value)}</div>`:""}</div>
-            <input class="inp mono" style="width:150px" id="res_${o.id}_${w.id}" value="${esc(resInput(w.type, sc&&sc.value))}" placeholder="${resHint(w.type)}"><button class="btn sm" data-ressave="${w.id}" data-reg="${o.id}">Сохранить</button></div>`; }).join("")}
-          <div class="muted tiny">Результат сразу попадает в лидерборд. Время — мм:сс, не уложился в лимит — «лимит 142» (повторений к лимиту).</div></div>`:""}</div>`; }).join("")}</div>`
-      :'<div class="empty">Заявок пока нет</div>'}`};
+    ${regs.length ? regTable(ev, regs) : '<div class="empty">Заявок пока нет</div>'}`};
 }
 });
 
@@ -2052,6 +2057,56 @@ async function downloadBackup(id){
   const a = document.createElement("a"); a.href = URL.createObjectURL(await r.blob()); a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
 }
+/* participants: a filterable table — pending payments first, search, bulk "paid" */
+const REG_TAB = {new:["Ждут оплаты","warn"],paid:["Оплачены","ok"],refund_requested:["Просят возврат","full"],refunded:["Возврат сделан","neutral"],cancelled:["Отменены","neutral"]};
+const REG_ST1 = {new:"ждёт оплаты",paid:"оплачен",refund_requested:"просит возврат",refunded:"возврат сделан",cancelled:"отменён"};
+function regFilter(ev, regs){
+  const F = adm.rf && adm.rf.ev===ev.id ? adm.rf : (adm.rf = {ev:ev.id, st: regs.some(o=>o.status==="new") ? "new" : "all", q:"", div:"", sel:{}});
+  const q = F.q.trim().toLowerCase(), qd = q.replace(/\D/g,"");
+  const list = regs.filter(o=>{
+    if (F.st!=="all" && o.status!==F.st) return false;
+    if (F.div && o.div!==F.div) return false;
+    if (!q) return true;
+    const p=o.person||{};
+    return `${p.last||""} ${p.first||""} ${p.parent||""} ${o.email||""} ${o.id} ${o.team||""}`.toLowerCase().includes(q) || (qd.length>=4 && String(p.phone||"").replace(/\D/g,"").includes(qd));
+  });
+  return {F, list};
+}
+function regTable(ev, regs){
+  const {F, list} = regFilter(ev, regs);
+  const cnt = k => regs.filter(o=>k==="all"||o.status===k).length;
+  const tabs = ["new","paid","refund_requested","refunded","cancelled","all"].filter(k=>k==="all"||k==="new"||k==="paid"||cnt(k));
+  const sel = list.filter(o=>F.sel[o.id] && o.status==="new"), selSum = sel.reduce((a,o)=>a+(o.due||0),0);
+  const newIn = list.filter(o=>o.status==="new"), allSel = newIn.length && newIn.every(o=>F.sel[o.id]);
+  const divName = id => (ev.divisions.find(x=>x.id===id)||{name:"—"}).name;
+  const nm = o => `${(o.person||{}).last||""} ${(o.person||{}).first||""}`.toLowerCase();
+  const rows = [...list].sort((a,b)=> (b.status==="new")-(a.status==="new") || nm(a).localeCompare(nm(b),"ru"));
+  return `<div class="pills" role="tablist">${tabs.map(k=>`<button role="tab" aria-selected="${F.st===k}" data-rst="${k}">${k==="all"?"Все":REG_TAB[k][0]} · ${cnt(k)}</button>`).join("")}</div>
+    <div class="regbar"><input class="inp" id="regQ" placeholder="Фамилия, телефон или номер заказа" value="${esc(F.q)}" autocomplete="off">
+      <select class="inp" id="regDiv"><option value="">Все категории</option>${ev.divisions.map(d=>`<option value="${d.id}" ${F.div===d.id?"selected":""}>${esc(d.name)}</option>`).join("")}</select></div>
+    ${sel.length?`<div class="regsel"><span>Выбрано: <b>${sel.length}</b> · ${fmtRub(selSum)}</span><button class="btn sm" data-act="regbulk">Отметить оплаченными</button><button class="btn sm ghost" data-act="regclear">Снять выбор</button></div>`:""}
+    ${rows.length?`<div class="card tbl-wrap" style="padding:0 4px"><table class="tbl regs"><thead><tr><th class="ck">${newIn.length?`<input type="checkbox" id="regAll" ${allSel?"checked":""} aria-label="Выбрать всех, кто ждёт оплаты">`:""}</th><th>Участник</th><th class="c-hide">Категория</th><th class="num">Сумма</th><th class="c-hide">Дата</th><th></th></tr></thead><tbody>
+    ${rows.map(o=>{ const p=o.person||{}, open=adm.regOpen===o.id;
+      return `<tr class="${open?"open":""}"><td class="ck">${o.status==="new"?`<input type="checkbox" id="regSel_${o.id}" data-sel="${o.id}" ${F.sel[o.id]?"checked":""} aria-label="Выбрать">`:""}</td>
+        <td><button class="linkbtn regname" data-regopen="${o.id}">${esc(p.last||"")} ${esc(p.first||"")}</button><div class="muted tiny">${esc(p.phone||"")}${o.team?` · ${esc(o.team)}`:""}</div></td>
+        <td class="small c-hide">${esc(divName(o.div))}</td><td class="num mono">${fmtRub(o.status==="paid"?o.paid:o.due)}</td><td class="small mono c-hide">${dShort(o.date)}</td>
+        <td class="act">${o.status==="new"?`<button class="btn sm" data-regst="paid" data-reg="${o.id}">Оплачено</button>`:`<span class="chip ${REG_TAB[o.status][1]}">${REG_ST1[o.status]}</span>`}</td></tr>
+        ${open?`<tr class="detail"><td></td><td colspan="5">${regDetail(ev,o)}</td></tr>`:""}`; }).join("")}
+    </tbody></table></div>`:'<div class="empty">Никого не нашли. Измените фильтр или поиск.</div>'}`;
+}
+function regDetail(ev, o){
+  const p=o.person||{}, divName = id => (ev.divisions.find(x=>x.id===id)||{name:"—"}).name;
+  return `<div class="stack" style="gap:8px">
+    <div class="small">${esc(divName(o.div))} · ${dShort(o.date)} · ${o.id} · ${esc(o.email||"")}${p.parent?` · родитель: ${esc(p.parent)}`:""}${p.dob?` · ${dShort(p.dob)} г.р.`:""}${p.affiliate?` · ${esc(p.affiliate)}`:""}${o.size?` · футболка ${o.size}`:""}${o.promo?` · промокод ${esc(o.promo)}`:""}</div>
+    <div class="row wrap">${o.status==="new"?`<button class="btn sm ghost" data-regst="cancelled" data-reg="${o.id}">Отменить заявку</button>`:""}
+    ${o.status==="refund_requested"?`<button class="btn sm" data-regst="refunded" data-reg="${o.id}">Возврат сделан</button><button class="btn sm ghost" data-regst="paid" data-reg="${o.id}">Оставить заявку</button>`:""}
+    ${o.status==="paid" && openWorkouts(ev).length ? `<button class="btn sm ghost" data-resopen="${o.id}">${adm.resReg===o.id?"Скрыть результаты":"Внести результаты"}</button>`:""}</div>
+    ${adm.resReg===o.id ? `<div class="panel stack" style="margin:0">${openWorkouts(ev).map(w=>{ const sc=ADM.SCORES.find(x=>x.reg===o.id && x.workout===w.id);
+      return `<div class="row wrap" style="gap:8px"><div class="sp" style="min-width:140px"><b class="small">${esc(w.name)}</b>${sc?`<div class="muted tiny">${sc.state==="accepted"?"в лидерборде":sc.state==="pending"?"на проверке":"отклонён"}: ${fmtRes(w.type,sc.value)}</div>`:""}</div>
+        <input class="inp mono" style="width:150px" id="res_${o.id}_${w.id}" value="${esc(resInput(w.type, sc&&sc.value))}" placeholder="${resHint(w.type)}"><button class="btn sm" data-ressave="${w.id}" data-reg="${o.id}">Сохранить</button></div>`; }).join("")}
+      <div class="muted tiny">Результат сразу попадает в лидерборд. Время — мм:сс, не уложился в лимит — «лимит 142».</div></div>`:""}
+  </div>`;
+}
 function dataCard(){
   return `<div class="card stack"><div class="row"><b class="sp">Сохранение</b><span id="saveState">${saveStateHtml()}</span></div>
     <div class="muted small">Изменения сохраняются на сервере автоматически через секунду и сразу видны участникам.</div>${persist.error?fErr(persist.error):""}</div>`;
@@ -2156,6 +2211,9 @@ document.addEventListener("click", e=>{
 function keepForm(){ const f=S.reg.f; const g=id=>document.getElementById(id); if(g("rSize")) f.size=g("rSize").value; if(g("rAff")) f.aff=g("rAff").value; ["c1","c2","c3","c4","c5"].forEach(k=>{ if(g(k)) f[k]=g(k).checked; }); }
 document.addEventListener("change", e=>{
   const id = e.target.id;
+  if (id==="regDiv"){ adm.rf.div=e.target.value; adm.rf.sel={}; return render(); }
+  if (id==="regAll"){ const ev=curEv(), {list}=regFilter(ev, ADM.REGS.filter(o=>o.event===ev.id)); list.filter(o=>o.status==="new").forEach(o=>{ adm.rf.sel[o.id]=e.target.checked; }); return render(); }
+  if (e.target.dataset && e.target.dataset.sel){ adm.rf.sel[e.target.dataset.sel]=e.target.checked; return render(); }
   if (["c1","c2","c3","c4","c5","rSize","rAff"].includes(id)){ keepForm(); const y=window.scrollY; render(); window.scrollTo(0,y); }
   if (id==="lbDiv"){ S.lb.div=e.target.value; S.lb.open=null; render(); }
   if (id==="pEv"){ syncPromo(); const el=document.getElementById("promoPrev"); if (el) el.innerHTML=promoPreview(); }
@@ -2169,6 +2227,7 @@ document.addEventListener("change", e=>{
   if (id==="sCap"){ S.p={...S.p,cap:e.target.checked,err:null}; render(); }
 });
 document.addEventListener("input", e=>{
+  if (e.target.id==="regQ"){ adm.rf.q=e.target.value; const pos=e.target.selectionStart; render(); const i=document.getElementById("regQ"); if(i){ i.focus(); i.setSelectionRange(pos,pos); } return; }
   if (e.target.id==="pVal"){ syncPromo(); const el=document.getElementById("promoPrev"); if (el) el.innerHTML=promoPreview(); }
   if (e.target.id==="dMin"||e.target.id==="dMax"){ syncDiv(); const w=document.getElementById("whoTxt"); if(w) w.innerHTML=whoText(); }
   if (e.target.id==="tq"){ S.p={...S.p,q:e.target.value,pick:null}; const pos=e.target.selectionStart; render(); const i=document.getElementById("tq"); i.focus(); i.setSelectionRange(pos,pos); }

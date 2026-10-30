@@ -524,6 +524,14 @@ route('DELETE', '/api/admin/leads/:id', async (req, res, u, body, p) => {
   return { ok: true };
 });
 
+route('POST', '/api/admin/regs/paid', async (req, res, u, body) => {
+  need(u, 'owner', 'admin');
+  const ids = (Array.isArray(body.ids) ? body.ids : []).map(x => str(x, 40)).filter(Boolean).slice(0, 1000);
+  if (!ids.length) throw bad('Не выбраны заявки');
+  const r = await db.query(`update registrations set status='paid', paid=due where status='new' and id in (select jsonb_array_elements_text($1::jsonb)) returning *`, [JSON.stringify(ids)]);
+  dirty();
+  return { orders: r.rows.map(orderOut) };
+});
 route('PATCH', '/api/admin/regs/:id', async (req, res, u, body, p) => {
   need(u, 'owner', 'admin');
   const st = ['new', 'paid', 'refund_requested', 'refunded', 'cancelled'].includes(body.status) ? body.status : null;
