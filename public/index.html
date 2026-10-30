@@ -690,9 +690,13 @@ const hasReg = (evId, who="me") => ORDERS.some(o=>o.event===evId && ACTIVE_ST.in
 const personOf = who => who==="me" ? ME : ME.kids.find(k=>k.id===who);
 const person = () => personOf(S.who);
 const athleteAge = (ev, p=person()) => !p || !p.dob ? NaN : ev.ageMode==="year" ? (+ev.date.slice(0,4) - +p.dob.slice(0,4)) : ageOn(p.dob, ev.date);
+/* a guest sees every category but can enter none; the profile (and children in it) decides what opens */
+const WHY_LOGIN = "Войдите, чтобы записаться", WHY_PROFILE = "Заполните анкету участника";
 function eligibility(ev, d){
   if (ev.permanent ? !["open","live"].includes(ev.status) : (ev.status!=="open" && !(ev.status==="live" && TODAY<=ev.regTo))) return "Регистрация закрыта";
+  if (!USER) return WHY_LOGIN;
   const p = person();
+  if (!profileReady() || !p || !p.dob || !p.gender) return WHY_PROFILE;
   if (hasReg(ev.id, S.who)) return S.who==="me" ? "Вы уже зарегистрированы на этот старт" : `${p.first} уже зарегистрирован на этот старт`;
   const age = athleteAge(ev, p);
   if (d.g!=="any" && d.g!==p.gender) return d.g==="M" ? "Категория для мужского пола" : "Категория для женского пола";
@@ -829,6 +833,7 @@ divisions(){
   const ds = ev.divisions.filter(d=>d.type===type);
   const avail=[], off=[];
   ds.forEach(d=>{ const why=eligibility(ev,d); (why?off:avail).push({d,why}); });
+  const gate = ds.some(d=>{ const w=eligibility(ev,d); return w===WHY_LOGIN || w===WHY_PROFILE; });
   const card = ({d,why}) => { const s=divState(d); const pct=Math.min(100,Math.round(d.taken/d.limit*100));
     const label = d.type==="team" ? (s.k==="full"?"Вступить в команду":"Записаться") : "Записаться";
     return `<div class="div ${why?"off":""}">
@@ -836,16 +841,18 @@ divisions(){
       <span class="chip ${s.k}">${s.t}</span>
       <div class="bar"><i style="width:${pct}%"></i></div>
       <div><span class="price">${fmtRub(d.price)}</span><span class="muted tiny"> ${d.type==="team"?"с участника":""}</span><div class="muted tiny mono">${d.taken} из ${d.limit} ${d.type==="team"?"команд":"мест"}</div></div>
-      ${why?`<button class="btn sm" disabled>${esc(why)}</button>`:`<button class="btn sm" data-pick="${d.id}">${label} →</button>`}
+      ${why===WHY_LOGIN?`<button class="btn sm ghost" data-act="divlogin">Войти и записаться</button>`:why===WHY_PROFILE?`<button class="btn sm ghost" data-act="divprofile">Заполнить анкету</button>`:why?`<button class="btn sm" disabled>${esc(why)}</button>`:`<button class="btn sm" data-pick="${d.id}">${label} →</button>`}
       ${why?"":(d.type==="team"&&s.k==="full"?'<div class="why">Новых команд создать нельзя, но можно вступить в уже созданную по коду капитана.</div>':"")}
     </div>`; };
-  const whoSw = ME.kids.length ? `<div class="f" style="margin-bottom:12px">Кого записываете<div class="tabs" role="radiogroup">${[["me",`Себя · ${athleteAge(ev,ME)} лет`],...ME.kids.map(k=>[k.id,`${k.first} · ${athleteAge(ev,k)} лет`])].map(([k,l])=>`<button type="button" role="radio" aria-selected="${S.who===k}" data-who="${k}">${esc(l)}</button>`).join("")}</div></div>` : "";
+  const whoSw = ME.kids.length ? `<div class="f" style="margin-bottom:12px">Кого записываете<div class="tabs" role="radiogroup">${[["me",`Себя${ME.dob?` · ${athleteAge(ev,ME)} лет`:""}`],...ME.kids.map(k=>[k.id,`${k.first} · ${athleteAge(ev,k)} лет`])].map(([k,l])=>`<button type="button" role="radio" aria-selected="${S.who===k}" data-who="${k}">${esc(l)}</button>`).join("")}</div></div>` : "";
   return {title:"Категории", html:`
     <div class="muted small" style="margin-bottom:10px">${esc(ev.name)} · ${dHuman(ev.date)}${ev.ageMode==="year"?" · возраст по году рождения":""}</div>${whoSw}
     <div class="tabs" role="tablist">${[["ind","Индивидуальные"],["team","Командные"]].map(([k,t])=>`<button role="tab" aria-selected="${type===k}" data-dtype="${k}">${t}</button>`).join("")}</div>
     ${hasReg(ev.id,S.who)?'<div class="rule" style="margin-top:12px">У этого участника уже есть оплаченная регистрация на старт. По правилам одна регистрация на старт, поэтому остальные категории закрыты.</div>':""}
-    <h2 class="sec">Доступные</h2><div class="stack cards">${avail.map(card).join("") || '<div class="empty">Подходящих категорий нет</div>'}</div>
-    ${off.length?`<h2 class="sec">Недоступные</h2><div class="stack cards">${off.map(card).join("")}</div>`:""}`};
+    ${gate ? `<div class="rule stack" style="margin-top:12px"><span>${!USER?"Войдите на сайт и заполните анкету участника. После этого откроются категории, которые подходят вам по полу и возрасту, а если добавите в анкету детей — и детские категории.":"Заполните анкету участника: пол и дата рождения определяют, в какие категории можно записаться. Детей добавьте в той же анкете."}</span><button class="btn sm" style="align-self:flex-start" data-act="${!USER?"divlogin":"divprofile"}">${!USER?"Войти":"Заполнить анкету"}</button></div>
+       <h2 class="sec">Категории</h2><div class="stack cards">${ds.map(d=>card({d,why:eligibility(ev,d)})).join("") || '<div class="empty">Категорий нет</div>'}</div>`
+     : `<h2 class="sec">Доступные</h2><div class="stack cards">${avail.map(card).join("") || '<div class="empty">Подходящих категорий нет</div>'}</div>
+    ${off.length?`<h2 class="sec">Недоступные</h2><div class="stack cards">${off.map(card).join("")}</div>`:""}`}`};
 },
 team(){
   const {ev,div} = S.reg;
@@ -2122,6 +2129,8 @@ document.addEventListener("click", e=>{
   if (ds.evf){ S.p={f:ds.evf}; return render(); }
   if (ds.evt){ S.p={...S.p,t:ds.evt}; return render(); }
   if (ds.dtype){ S.p={...S.p,type:ds.dtype}; return render(); }
+  if (ds.act==="divlogin") return needLogin("Войдите, чтобы записаться на старт");
+  if (ds.act==="divprofile") return go("profile",{edit:true,then:"divisions"});
   if (ds.pick){
     const ev = EVENTS.find(x=>x.id===S.p.ev), div = ev.divisions.find(d=>d.id===ds.pick);
     if (!USER) return needLogin("Войдите, чтобы записаться на старт");
