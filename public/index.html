@@ -2201,7 +2201,7 @@ function regFilter(ev, regs){
   });
   return {F, list};
 }
-const CREW_SELF = [["judge","Судья","Судейство заданий, подсчёт повторений, контроль стандартов. Опыт судейства или тренерства — плюс."],["volunteer","Волонтёр","Регистрация участников, площадка, инвентарь, помощь на зонах."],["assistant","Ассистент организатора","Помощь организатору с расписанием, участниками и связью."]];
+const CREW_SELF = [["judge","Судья","Судейство заданий, подсчёт повторений, контроль стандартов. Опыт судейства или тренерства — плюс."],["volunteer","Волонтёр (оплата не предусмотрена)","Регистрация участников, площадка, инвентарь, помощь на зонах."],["assistant","Ассистент организатора","Подготовка оборудования, смена оборудования на площадке между заходами, организационные вопросы, помощь организатору с расписанием и участниками."]];
 function myCrewList(){
   if (!MYCREW.length) return "";
   return `<h2 class="sec">Заявки в команду</h2><div class="card" style="padding:4px 14px">${MYCREW.map(c=>{ const ev=EVENTS.find(e=>e.id===c.event); return `<div class="arow"><div class="sp"><b>${esc(ev?ev.name:c.event)}</b><div class="muted tiny">${CREW_ROLE[c.role]?CREW_ROLE[c.role][0]:""}${ev&&ev.date?` · ${dateRange(ev)}`:""}</div></div><span class="chip ${CREW_STL[c.status][1]}">${c.status==="request"?"На рассмотрении":c.status==="confirmed"?"В команде":"Не в этот раз"}</span></div>`; }).join("")}</div>`;
@@ -2242,7 +2242,7 @@ function crewInvite(ev){
   if (mine) return `<h2 class="sec">Команда старта</h2><div class="card stack"><div class="row"><b class="sp">Ваша заявка: ${CREW_ROLE[mine.role]?CREW_ROLE[mine.role][0].toLowerCase():""}</b><span class="chip ${CREW_STL[mine.status][1]}">${mine.status==="request"?"На рассмотрении":mine.status==="confirmed"?"Вы в команде":"Не в этот раз"}</span></div>
     <div class="muted small">${mine.status==="confirmed"?"Организатор свяжется с вами перед стартом.":mine.status==="request"?"Организатор посмотрит заявку и свяжется с вами.":"Спасибо за отклик! Будем рады видеть вас на следующих стартах."}</div>
     ${mine.status!=="confirmed"?`<button class="btn sm ghost" style="align-self:flex-start" data-crewwd="${mine.id}">Отозвать заявку</button>`:""}</div>`;
-  return `<h2 class="sec">Команда старта</h2><div class="card stack"><b>Станьте судьёй или волонтёром</b><div class="muted small">Нам нужны судьи, волонтёры и помощники организатора. Работа оплачивается — условия обсудим после заявки.</div><button class="btn sm" style="align-self:flex-start" data-crewapply="${ev.id}">Хочу в команду</button></div>`;
+  return `<h2 class="sec">Команда старта</h2><div class="card stack"><b>Станьте судьёй или волонтёром</b><div class="muted small">Нам нужны судьи, волонтёры и помощники организатора. Работа судей и ассистентов оплачивается — условия обсудим после заявки. Волонтёрство — без оплаты.</div><button class="btn sm" style="align-self:flex-start" data-crewapply="${ev.id}">Хочу в команду</button></div>`;
 }
 function peopleStats(ev, regs){
   const act = regs.filter(o=>ACTIVE_ST.includes(o.status)), paidL = act.filter(o=>o.status==="paid"), newL = act.filter(o=>o.status==="new");
