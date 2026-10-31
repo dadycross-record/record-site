@@ -2423,7 +2423,7 @@ function crewTab(ev, crew, money=true){
   const roleSel = (id,cur) => `<select class="inp sm" id="${id}" aria-label="Должность">${opt(CREW_ORDER.map(k=>[k,CREW_ROLE[k][0]]), cur)}</select>`;
   const A = adm.cAdd || {};
   return `<div class="stats flat${money?"":" s2"}" style="margin-top:0"><div><b>${ok.length}</b><span>В команде</span></div><div><b class="${req.length?"acc":""}">${req.length}</b><span>Заявки</span></div>${money?`<div><b style="font-size:17px">${fmtRub(total)}</b><span>Затраты на команду</span></div>`:""}</div>
-    ${money?`<button class="btn sm ghost" style="margin-top:10px" data-act="crewrates-go">Ставки за смену</button>`:""}
+    ${money?`<button class="btn sm" style="margin-top:10px" data-act="crewrates-go">Ставки за смену</button>`:""}
 
     <h2 class="sec">Заявки в команду${req.length?` · ${req.length}`:""}</h2>
     ${req.length?`<div class="card" style="padding:4px 14px">${req.map(c=>`<div class="crq"><div class="sp"><b>${esc(c.name)}</b>${c.source==="site"?' <span class="chip neutral">с сайта</span>':""}
