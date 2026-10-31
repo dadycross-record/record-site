@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const zlib = require('zlib');
 const { Pool } = require('./lib/pg');
 const mail = require('./lib/mail');
+const tg = require('./lib/tg');
 
 const PORT = +process.env.PORT || 3000;
 /* the owner is matched by a SHA-256 of the email, so the address is not written in this public repository */
@@ -84,6 +85,12 @@ alter table registrations add column if not exists updated_by text;
 create table if not exists crew (id bigserial primary key, event_id text not null, name text not null, phone text, contact text, role text not null, status text not null default 'request',
   rate int, work jsonb not null default '{}', note text, created_at timestamptz not null default now(), updated_by text);
 create index if not exists crew_ev on crew(event_id);
+alter table crew add column if not exists user_id bigint references users(id) on delete set null;
+alter table crew add column if not exists avail jsonb not null default '[]';
+alter table crew add column if not exists source text not null default 'manual';
+create unique index if not exists crew_user_ev on crew(event_id, user_id) where user_id is not null;
+create table if not exists tg_chats (chat_id text primary key, email text, name text, created_at timestamptz not null default now());
+create table if not exists tg_links (code text primary key, email text not null, expires_at timestamptz not null);
 create table if not exists crew_rates (event_id text primary key, rates jsonb not null default '{}', shift_hours numeric not null default 8, updated_by text);
 create index if not exists registrations_user on registrations(user_id);
 create table if not exists scores (id bigserial primary key, reg_id text not null references registrations(id) on delete cascade, workout_id text not null, value jsonb not null, video text,
@@ -238,6 +245,8 @@ route('GET', '/api/session', async (req, res, u) => {
   return {
     user: { email: u.email, role: u.role, profile: u.profile, kids: u.kids },
     orders: regs.map(orderOut).map(o => ['blocked', 'cancelled'].includes(o.status) ? o : { ...o, note: '' }), scores,
+    crew: (await db.query('select id, event_id, role, status, avail from crew where user_id=$1 order by created_at', [u.id])).rows
+      .map(c => ({ id: Number(c.id), event: c.event_id, role: c.role, status: c.status, avail: c.avail || [] })),
   };
 });
 const orderOut = r => ({ note: r.note || '', id: r.id, pub: r.pub, event: r.event_id, div: r.div_id, who: r.who, person: r.person, team: r.team, size: r.size, promo: r.promo,
@@ -319,6 +328,7 @@ route('POST', '/api/lead', async (req, res, u, body) => {
   const { rows } = await db.query('insert into leads(name, phone, dir, who, age, pref_time) values ($1,$2,$3,$4,$5,$6) returning id',
     [name, phone, str(body.dir, 80), str(body.who, 40), str(body.age, 20), str(body.time, 40)]);
   await logConsent(req, 'lead:' + rows[0].id, 'pd', 'trial');
+  notify(`🏋️ <b>Заявка на пробную</b>\n${tg.esc(str(body.dir, 80))} · ${tg.esc(str(body.who, 40))}\nИмя и телефон — в панели: ${SITE_URL()}/#admin`);
   return { ok: true };
 });
 
@@ -404,6 +414,7 @@ route('POST', '/api/register', async (req, res, u, body) => {
   if (cons.publish) await logConsent(req, subj, 'publish', out.id);
   if (cons.photo) await logConsent(req, subj, 'photo', out.id);
   dirty();
+  notify(`🏁 <b>Новая заявка на старт</b>\n${tg.esc(ev.name)} · ${tg.esc(div.name)}\n${out.due ? `К оплате: ${rub(out.due)}` : 'Бесплатно'} · ${out.id}\n${SITE_URL()}/#admin`);
   return { order: orderOut(out) };
 });
 
@@ -412,6 +423,7 @@ route('POST', '/api/refund', async (req, res, u, body) => {
   const r = await db.query(`update registrations set status='refund_requested' where id=$1 and user_id=$2 and status in ('new','paid') returning *`, [str(body.id, 40), u.id]);
   if (!r.rows.length) throw bad('Заказ не найден');
   dirty();
+  { const o = r.rows[0]; notify(`↩️ <b>Запрос на возврат</b>\n${tg.esc(await evName(o.event_id))} · ${tg.esc(await divName(o.event_id, o.div_id))}\nОплачено ${rub(o.paid)} · ${o.id}\n${SITE_URL()}/#admin`); }
   return { order: orderOut(r.rows[0]) };
 });
 
@@ -561,10 +573,88 @@ route('PATCH', '/api/admin/regs/:id', async (req, res, u, body, p) => {
   dirty();
   return { order: orderOut(r.rows[0]) };
 });
+/* ---------- Telegram notifications for organizers ---------- */
+async function notify(html) {
+  if (!tg.configured()) return;
+  try { const chats = (await db.query('select chat_id from tg_chats')).rows.map(r => r.chat_id); await tg.send(chats, html); }
+  catch (e) { console.error('notify failed:', e.message); }
+}
+const evName = async id => { const e = ((await rawContent()).EVENTS || []).find(x => x.id === id); return e ? e.name : id; };
+const divName = async (evId, divId) => { const e = ((await rawContent()).EVENTS || []).find(x => x.id === evId); const d = e && e.divisions.find(x => x.id === divId); return d ? d.name : divId; };
+const rub = n => (Number(n) || 0).toLocaleString('ru-RU').replace(/,/g, ' ') + ' ₽';
+const SITE_URL = () => String(process.env.SITE_URL || 'https://recordirk.ru').replace(/\/$/, '');
+function tgStart() {
+  tg.start({
+    onStart: async (chat, code, from) => {
+      if (!code) return 'Это бот уведомлений для организаторов «Рекорда». Подключить его можно ссылкой из панели организатора: «Управление сайтом» → «Уведомления в Telegram».';
+      const l = (await db.query('delete from tg_links where code=$1 returning email, expires_at', [code])).rows[0];
+      if (!l || l.expires_at < new Date()) return 'Ссылка устарела. Создайте новую в панели организатора.';
+      const name = [from.first_name, from.last_name].filter(Boolean).join(' ') || from.username || '';
+      await db.query('insert into tg_chats(chat_id, email, name) values ($1,$2,$3) on conflict (chat_id) do update set email=excluded.email, name=excluded.name', [chat, l.email, name]);
+      return '✅ Готово. Сюда будут приходить уведомления: заявки на старты, заявки на пробную, заявки в команду и запросы на возврат.\nОтключить — команда /stop.';
+    },
+    onStop: async chat => { await db.query('delete from tg_chats where chat_id=$1', [chat]); return 'Уведомления отключены. Подключить снова можно из панели организатора.'; },
+  });
+}
+route('GET', '/api/admin/tg', async (req, res, u) => {
+  need(u, 'owner', 'admin');
+  const chats = (await db.query('select chat_id, email, name, created_at from tg_chats order by created_at')).rows;
+  return { ...tg.status(), chats: chats.map(c => ({ id: c.chat_id, name: c.name || '', email: u.role === 'owner' || c.email === u.email ? c.email || '' : '', created: c.created_at })) };
+});
+route('POST', '/api/admin/tg/link', async (req, res, u) => {
+  need(u, 'owner', 'admin');
+  if (!tg.configured()) throw bad('Бот ещё не подключён к сайту');
+  if (!tg.bot()) throw bad('Бот запускается, попробуйте через минуту');
+  const code = crypto.randomBytes(12).toString('hex');
+  await db.query(`delete from tg_links where expires_at < now()`);
+  await db.query(`insert into tg_links(code, email, expires_at) values ($1,$2, now() + interval '30 minutes')`, [code, u.email]);
+  return { url: `https://t.me/${tg.bot()}?start=${code}` };
+});
+route('DELETE', '/api/admin/tg/:chat', async (req, res, u, body, p) => {
+  need(u, 'owner', 'admin');
+  await db.query('delete from tg_chats where chat_id=$1', [decodeURIComponent(p.chat)]);
+  return { ok: true };
+});
+route('POST', '/api/admin/tg/test', async (req, res, u) => {
+  need(u, 'owner', 'admin');
+  await notify('🔔 Проверка: уведомления «Рекорда» работают.');
+  return { ok: true };
+});
+
+/* ---------- crew applications from the site ---------- */
+const SELF_ROLES = ['judge', 'volunteer', 'assistant'];
+route('POST', '/api/crew/apply', async (req, res, u, body) => {
+  need(u);
+  limit('crew-apply:' + u.id, 10, 3600e3);
+  const ev = ((await rawContent()).EVENTS || []).find(e => e.id === str(body.event, 60));
+  if (!ev || ev.status === 'draft' || ev.status === 'ended') throw bad('Набор в команду на этот старт закрыт');
+  const p = u.profile || {};
+  if (!p.first || !p.last || !p.phone) throw bad('Заполните в анкете имя, фамилию и телефон');
+  if (!SELF_ROLES.includes(body.role)) throw bad('Выберите, кем хотите работать');
+  if (!body.consent) throw bad('Нужно согласие на обработку персональных данных');
+  const avail = (Array.isArray(body.days) ? body.days : []).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).slice(0, 14);
+  const name = `${p.last} ${p.first}`.trim(), note = str(body.note, 1000) || null;
+  let r;
+  try {
+    r = await db.query(`insert into crew(event_id, user_id, name, phone, contact, role, status, avail, note, source) values ($1,$2,$3,$4,$5,$6,'request',$7,$8,'site') returning *`,
+      [ev.id, u.id, name, p.phone, u.email, body.role, avail, note]);
+  } catch (e) { if (e.code === '23505') throw bad('Вы уже подали заявку в команду этого старта'); throw e; }
+  await logConsent(req, 'user:' + u.id, 'pd', 'crew:' + r.rows[0].id);
+  const ROLE = { judge: 'судья', volunteer: 'волонтёр', assistant: 'ассистент организатора' };
+  notify(`🙋 <b>Заявка в команду</b>\n${tg.esc(ev.name)}\nРоль: ${ROLE[body.role]}${avail.length ? `\nДни: ${avail.map(d => d.slice(8) + '.' + d.slice(5, 7)).join(', ')}` : ''}\n${SITE_URL()}/#admin`);
+  return { crew: { id: Number(r.rows[0].id), event: ev.id, role: body.role, status: 'request', avail } };
+});
+route('DELETE', '/api/crew/apply/:id', async (req, res, u, body, p) => {
+  need(u);
+  const r = await db.query(`delete from crew where id=$1 and user_id=$2 and status in ('request','declined') returning id`, [Number(p.id) || 0, u.id]);
+  if (!r.rows.length) throw bad('Заявку уже подтвердили — чтобы отказаться, свяжитесь с организатором');
+  return { ok: true };
+});
+
 /* ---------- event crew: judges, volunteers, venue staff; pay per shift ---------- */
 const CREW_ROLES = ['head_judge', 'judge', 'venue_admin', 'assistant', 'volunteer'];
 const CREW_ST = ['request', 'confirmed', 'declined'];
-const crewOut = c => ({ id: Number(c.id), event: c.event_id, name: c.name, phone: c.phone || '', contact: c.contact || '', role: c.role, status: c.status, rate: c.rate, work: c.work || {}, note: c.note || '' });
+const crewOut = c => ({ id: Number(c.id), event: c.event_id, user: c.user_id ? Number(c.user_id) : null, avail: c.avail || [], source: c.source || 'manual', name: c.name, phone: c.phone || '', contact: c.contact || '', role: c.role, status: c.status, rate: c.rate, work: c.work || {}, note: c.note || '' });
 const money = (v, label) => { if (v === '' || v == null) return null; const n = Math.round(Number(v)); if (!Number.isFinite(n) || n < 0 || n > 1e6) throw bad(label + ': целое число рублей'); return n; };
 function cleanWork(w) {
   const out = {};
@@ -636,7 +726,7 @@ route('PATCH', '/api/admin/scores/:id', async (req, res, u, body, p) => {
 });
 
 /* ---------- backups: a daily snapshot of every table, kept 14 days; the owner downloads them ---------- */
-const BACKUP_TABLES = ['content', 'users', 'staff', 'leads', 'teams', 'registrations', 'scores', 'consents', 'crew', 'crew_rates'];
+const BACKUP_TABLES = ['content', 'users', 'staff', 'leads', 'teams', 'registrations', 'scores', 'consents', 'crew', 'crew_rates', 'tg_chats'];
 async function makeBackup(kind) {
   const tables = {}; let rows = 0;
   for (const t of BACKUP_TABLES) { tables[t] = (await db.query(`select * from ${t}`)).rows; rows += tables[t].length; }
@@ -741,5 +831,6 @@ const server = http.createServer(async (req, res) => {
 init().then(() => {
   server.listen(PORT, () => console.log(`listening on ${PORT}`, '|', mail.describe()));
   setTimeout(dailyBackup, 60e3).unref();
+  tgStart();
   setInterval(dailyBackup, 3600e3).unref();
 }).catch(e => { console.error('startup failed:', e); process.exit(1); });

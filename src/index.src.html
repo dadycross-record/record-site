@@ -586,7 +586,7 @@ const RESULTS = {
 };
 
 /* orders: one preseeded online registration */
-let ORDERS = [];
+let ORDERS = [], MYCREW = [];
 /* promo codes: pct = percent off the entry fee, rub = fixed roubles off; event "all" = any start */
 let PROMOS = [];
 /* who may open the organizer panel: owner (everything), admin (everything except access), judge (result review only) */
@@ -696,7 +696,7 @@ function cookieBar(force){
   b.innerHTML=`<p>Мы используем cookies: необходимые — чтобы работали формы и вход, и аналитические Яндекс Метрики — чтобы понимать, что на сайте удобно, а что нет. Аналитические включим только с вашего согласия. <a href="/docs/privacy" target="_blank">Подробнее</a></p><div class="row"><button class="btn sm" data-ck="all">Принять</button><button class="btn sm ghost" data-ck="need">Только необходимые</button></div>`;
   document.body.appendChild(b);
 }
-const ROOT_TAB = {login:"me",home:"home",events:"events",event:"events",divisions:"events",team:"events",teamCreate:"events",teamJoin:"events",form:"events",pay:"events",done:"events",fail:"events",leaderboard:"leaderboard",me:"me",orders:"me",score:"me",qr:"me",profile:"me",admin:"me",adminEvent:"me",adminDiv:"me",adminWod:"me",adminPeople:"me",adminSch:"me",adminPromo:"me",adminClub:"me"};
+const ROOT_TAB = {crewApply:"events",login:"me",home:"home",events:"events",event:"events",divisions:"events",team:"events",teamCreate:"events",teamJoin:"events",form:"events",pay:"events",done:"events",fail:"events",leaderboard:"leaderboard",me:"me",orders:"me",score:"me",qr:"me",profile:"me",admin:"me",adminEvent:"me",adminDiv:"me",adminWod:"me",adminPeople:"me",adminSch:"me",adminPromo:"me",adminClub:"me"};
 
 function header(title){
   if (isClub()) return clubHeader();
@@ -818,6 +818,7 @@ event(){
       </dl>
     </div>
     ${evCount(ev)}
+    ${crewInvite(ev)}
     ${ev.refund.length && !ev.hideRefund?`<h2 class="sec">Возврат взноса</h2><div class="card refund">${ev.refund.map(([p,t,k])=>`<div><span class="chip ${k}">${p}</span><span>${t}</span></div>`).join("")}<div class="muted tiny">Время иркутское (UTC+8). Возврат оформляется в «Моих стартах».</div></div>`:""}
     ${(ev.docs||[]).length?`<h2 class="sec">Документы</h2><div class="card" style="padding:4px 14px">${ev.docs.map(d=>`<div class="arow"><span class="chip neutral">${extOf(d.name)}</span><div class="sp"><b>${esc(d.title||d.name)}</b><div class="muted tiny">${esc(d.name)} · ${fmtSize(d.size)}</div></div><a class="btn sm" href="${d.data}" download="${esc(d.name)}">Скачать</a></div>`).join("")}</div>`:""}
     <h2 class="sec">Как участвовать</h2>
@@ -1060,9 +1061,26 @@ login(){
     <button class="btn block" type="submit" ${L.busy?"disabled":""}>${L.busy?"Отправляю…":"Получить код"}</button>
    </form>`};
 },
+crewApply(){
+  const ev = EVENTS.find(e=>e.id===S.p.ev); if (!ev) return {title:"Команда старта", html:'<div class="empty">Старт не найден</div>'};
+  const f = S.cap = S.cap && S.cap.ev===ev.id ? S.cap : {ev:ev.id, role:"", days:{}, note:"", ok:false, err:""};
+  const days = crewDays(ev), multi = days.length>1;
+  return {title:"Команда старта", html:`<form class="stack" id="fCrew" novalidate>
+    <div class="muted small">${esc(ev.name)} · ${ev.date?dateRange(ev):""}</div>
+    <div class="card stack"><b>${esc(`${ME.last||""} ${ME.first||""}`.trim())}</b><div class="muted small">${esc(ME.phone||"")} · ${esc(ME.email||"")}</div><div class="muted tiny">Данные из анкеты. Поменять — в профиле.</div></div>
+    <h2 class="sec">Кем хотите работать</h2>
+    <div class="stack" style="gap:8px">${CREW_SELF.map(([k,t,d])=>`<label class="card check" style="align-items:flex-start"><input type="radio" name="cRole" value="${k}" ${f.role===k?"checked":""}><span><b>${t}</b><div class="muted small">${d}</div></span></label>`).join("")}</div>
+    ${multi?`<h2 class="sec">В какие дни можете</h2><div class="card stack" style="gap:6px">${days.map(d=>`<label class="check"><input type="checkbox" name="cDay" value="${d}" ${f.days[d]?"checked":""}><span>${dayLabel(ev,d)}</span></label>`).join("")}</div>`:""}
+    <label class="f">Опыт и пожелания<textarea class="inp" id="cNote" rows="3" placeholder="Например: судил «Гонку Рекорда» в сентябре, могу только до 15:00">${esc(f.note)}</textarea></label>
+    <label class="check"><input type="checkbox" id="cOk" ${f.ok?"checked":""}><span>Даю <a href="/docs/consent" target="_blank">согласие на обработку персональных данных</a> для участия в команде старта</span></label>
+    ${f.err?`<div class="err">${esc(f.err)}</div>`:""}
+    <button class="btn block" type="submit" ${f.busy?"disabled":""}>${f.busy?"Отправляю…":"Отправить заявку"}</button>
+  </form>`};
+},
 orders(){
+  if (!ORDERS.length && MYCREW.length) return {title:"Мои старты", html:myCrewList()};
   if (!ORDERS.length) return {title:"Мои старты", html:'<div class="empty">Вы пока никуда не записаны.<br><button class="btn" data-tab="events" style="margin-top:14px">Выбрать старт</button></div>'};
-  return {title:"Мои старты", html:`<div class="stack cards">${[...ORDERS].reverse().map(orderCard).join("")}</div>`};
+  return {title:"Мои старты", html:`<div class="stack cards">${[...ORDERS].reverse().map(orderCard).join("")}</div>${myCrewList()}`};
 },
 score(){
   const T = scoreTargets();
@@ -1336,7 +1354,7 @@ function admEvRow(e){
 }
 const ROLE_L = {owner:"Владелец",admin:"Организатор",judge:"Судья",athlete:"Участник"};
 const ADMIN_ROUTES = ["adminClub","admin","adminEvent","adminDiv","adminWod","adminSch","adminPeople","adminPromo"];
-const LOGIN_ROUTES = ["me","orders","score","profile","form","team","teamCreate","teamJoin","done",...ADMIN_ROUTES];
+const LOGIN_ROUTES = ["me","orders","crewApply","score","profile","form","team","teamCreate","teamJoin","done",...ADMIN_ROUTES];
 function allowed(route){
   if (!ADMIN_ROUTES.includes(route)) return true;
   if (!["owner","admin","judge"].includes(S.viewAs)) return false;
@@ -1548,6 +1566,10 @@ function adminClick(t, ds){
     rows.push(["Итого","","","","",...days.map(()=>""),fmtShift(crew.reduce((a,c)=>a+crewShifts(ev,c),0)),"",crew.reduce((a,c)=>a+crewPay(ev,c),0),""]);
     downloadCsv(`komanda-${ev.id}.csv`, [head, ...rows]); return true;
   }
+  if (ds.act==="tglink"){ api("POST","/api/admin/tg/link",{}).then(r=>{ adm.tg.link=r.url; render(); window.open(r.url,"_blank","noopener"); }).catch(err=>toast(err.message)); return true; }
+  if (ds.act==="tgrefresh"){ adm.tg=undefined; render(); return true; }
+  if (ds.act==="tgtest"){ api("POST","/api/admin/tg/test",{}).then(()=>toast("Отправил проверку в Telegram")).catch(err=>toast(err.message)); return true; }
+  if (ds.tgdel){ api("DELETE","/api/admin/tg/"+encodeURIComponent(ds.tgdel)).then(()=>{ adm.tg.chats=adm.tg.chats.filter(c=>c.id!==ds.tgdel); render(); toast("Чат отключён"); }).catch(err=>toast(err.message)); return true; }
   if (ds.area){ adm.area=ds.area; render(); window.scrollTo(0,0); return true; }
   if (ds.regsave){
     const id=ds.regsave, g=k=>document.getElementById(k+"_"+id);
@@ -1611,6 +1633,7 @@ admin(){
      <button class="btn sm" data-act="csave" style="align-self:flex-start">Сохранить контакты</button>
    </div>
 
+   ${tgCard()}
    <h2 class="sec">Яндекс Метрика</h2>
    <div class="card stack">
      <label class="f">Номер счётчика<input class="inp" id="mId" inputmode="numeric" value="${esc(SITE.metrika||"")}" placeholder="например, 98765432"></label>
@@ -2052,8 +2075,8 @@ async function loadSession(){
   const s = await api("GET","/api/session");
   USER = s.user; if (s.mailReady!==undefined) MAIL_READY = s.mailReady;
   Object.keys(ME).forEach(k=>{ if (k!=="kids") ME[k]=""; }); ME.gender="M"; ME.kids=[];
-  if (USER){ Object.assign(ME, USER.profile||{}); ME.kids = USER.kids||[]; ME.email = USER.email; ORDERS = s.orders||[]; MYSCORES = s.scores||[]; }
-  else { ORDERS = []; MYSCORES = []; }
+  if (USER){ Object.assign(ME, USER.profile||{}); ME.kids = USER.kids||[]; ME.email = USER.email; ORDERS = s.orders||[]; MYSCORES = s.scores||[]; MYCREW = s.crew||[]; }
+  else { ORDERS = []; MYSCORES = []; MYCREW = []; }
   S.viewAs = USER ? USER.role : "guest";
   markMe();
   if (USER && ["owner","admin","judge"].includes(USER.role)) await loadAdmin();
@@ -2164,6 +2187,30 @@ function regFilter(ev, regs){
   });
   return {F, list};
 }
+const CREW_SELF = [["judge","Судья","Судейство заданий, подсчёт повторений, контроль стандартов. Опыт судейства или тренерства — плюс."],["volunteer","Волонтёр","Регистрация участников, площадка, инвентарь, помощь на зонах."],["assistant","Ассистент организатора","Помощь организатору с расписанием, участниками и связью."]];
+function myCrewList(){
+  if (!MYCREW.length) return "";
+  return `<h2 class="sec">Заявки в команду</h2><div class="card" style="padding:4px 14px">${MYCREW.map(c=>{ const ev=EVENTS.find(e=>e.id===c.event); return `<div class="arow"><div class="sp"><b>${esc(ev?ev.name:c.event)}</b><div class="muted tiny">${CREW_ROLE[c.role]?CREW_ROLE[c.role][0]:""}${ev&&ev.date?` · ${dateRange(ev)}`:""}</div></div><span class="chip ${CREW_STL[c.status][1]}">${c.status==="request"?"На рассмотрении":c.status==="confirmed"?"В команде":"Не в этот раз"}</span></div>`; }).join("")}</div>`;
+}
+function tgCard(){
+  if (adm.tg===undefined){ adm.tg=null; api("GET","/api/admin/tg").then(r=>{ adm.tg=r; render(); }).catch(()=>{ adm.tg={ready:false, chats:[], err:true}; render(); }); }
+  const T = adm.tg;
+  return `<h2 class="sec">Уведомления в Telegram</h2><div class="card stack">
+    ${!T ? '<div class="muted small">Загружаю…</div>' : !T.ready ? `<div class="muted small">Бот ещё не подключён к сайту. Создайте бота в Telegram у @BotFather и вставьте его токен в настройки сервера (переменная TELEGRAM_BOT_TOKEN) — после этого здесь появится кнопка подключения.</div>`
+    : `<div class="muted small">Бот @${esc(T.bot||"…")} присылает: заявки на старты, заявки на пробную, заявки в команду и запросы на возврат. В сообщениях нет имён, телефонов и email — только старт, категория, сумма и номер заказа; всё остальное в панели.</div>
+      ${T.chats.length?`<div style="padding:0">${T.chats.map(c=>`<div class="arow"><div class="sp"><b>${esc(c.name||"Чат "+c.id)}</b><div class="muted tiny">${esc(c.email)}${c.email?" · ":""}подключён ${dShort(String(c.created).slice(0,10))}</div></div><button class="btn sm ghost" data-tgdel="${esc(c.id)}">Отключить</button></div>`).join("")}</div>`:'<div class="small">Пока никто не подключён.</div>'}
+      ${T.link?`<div class="rule small">Откройте ссылку на телефоне или компьютере, где у вас Telegram, и нажмите «Запустить» (Start): <a href="${esc(T.link)}" target="_blank" rel="noopener">${esc(T.link)}</a><br>Ссылка действует 30 минут. Потом нажмите «Обновить».</div>`:""}
+      <div class="row wrap"><button class="btn sm" data-act="tglink">Подключить мой Telegram</button>${T.chats.length?'<button class="btn sm ghost" data-act="tgtest">Прислать проверку</button>':""}<button class="btn sm ghost" data-act="tgrefresh">Обновить</button></div>`}
+  </div>`;
+}
+function crewInvite(ev){
+  if (ev.status==="draft" || ev.status==="ended") return "";
+  const mine = MYCREW.find(c=>c.event===ev.id);
+  if (mine) return `<h2 class="sec">Команда старта</h2><div class="card stack"><div class="row"><b class="sp">Ваша заявка: ${CREW_ROLE[mine.role]?CREW_ROLE[mine.role][0].toLowerCase():""}</b><span class="chip ${CREW_STL[mine.status][1]}">${mine.status==="request"?"На рассмотрении":mine.status==="confirmed"?"Вы в команде":"Не в этот раз"}</span></div>
+    <div class="muted small">${mine.status==="confirmed"?"Организатор свяжется с вами перед стартом.":mine.status==="request"?"Организатор посмотрит заявку и свяжется с вами.":"Спасибо за отклик! Будем рады видеть вас на следующих стартах."}</div>
+    ${mine.status!=="confirmed"?`<button class="btn sm ghost" style="align-self:flex-start" data-crewwd="${mine.id}">Отозвать заявку</button>`:""}</div>`;
+  return `<h2 class="sec">Команда старта</h2><div class="card stack"><b>Станьте судьёй или волонтёром</b><div class="muted small">Нам нужны судьи, волонтёры и помощники организатора. Работа оплачивается — условия обсудим после заявки.</div><button class="btn sm" style="align-self:flex-start" data-crewapply="${ev.id}">Хочу в команду</button></div>`;
+}
 function peopleStats(ev, regs){
   const act = regs.filter(o=>ACTIVE_ST.includes(o.status)), paidL = act.filter(o=>o.status==="paid"), newL = act.filter(o=>o.status==="new");
   const sum = act.reduce((a,o)=>a+(o.paid||0),0), due = newL.reduce((a,o)=>a+(o.due||0),0);
@@ -2218,7 +2265,7 @@ function crewTab(ev, crew){
     ${list.length?`<div class="card tbl-wrap" style="padding:0 4px"><table class="tbl crew"><thead><tr><th>Человек</th>${days.map(d=>`<th class="dcol">${dayShort(d)}</th>`).join("")}<th class="num">Смен</th><th class="num">К выплате</th></tr></thead><tbody>
       ${CREW_ORDER.map(role=>{ const rs=list.filter(c=>c.role===role).sort((a,b)=>(a.status==="declined")-(b.status==="declined")||a.name.localeCompare(b.name,"ru")); if(!rs.length) return "";
         return `<tr class="grp"><td colspan="${days.length+3}">${CREW_ROLE[role][rs.length>1?1:0]}${CREW_ROLE[role][2]?' <span class="chip neutral" style="margin-left:6px">высшее звено</span>':""}</td></tr>`+rs.map(c=>{ const open=adm.crewOpen===c.id;
-          return `<tr class="${open?"open":""}${c.status==="declined"?" off":""}"><td><button class="linkbtn regname" data-crewopen="${c.id}">${esc(c.name)}</button> <span class="chip ${CREW_STL[c.status][1]}">${CREW_STL[c.status][0]}</span><div class="muted tiny">${esc(c.phone)}${c.rate!=null?` · своя ставка ${fmtRub(c.rate)}`:""}</div>${c.note?`<div class="tiny regnote">${esc(c.note.length>60?c.note.slice(0,60)+"…":c.note)}</div>`:""}</td>
+          return `<tr class="${open?"open":""}${c.status==="declined"?" off":""}"><td><button class="linkbtn regname" data-crewopen="${c.id}">${esc(c.name)}</button> <span class="chip ${CREW_STL[c.status][1]}">${CREW_STL[c.status][0]}</span>${c.source==="site"?' <span class="chip neutral">с сайта</span>':""}<div class="muted tiny">${esc(c.phone)}${c.rate!=null?` · своя ставка ${fmtRub(c.rate)}`:""}${c.avail&&c.avail.length&&days.length>1?` · может: ${c.avail.filter(d=>days.includes(d)).map(dayShort).join(", ")}`:""}</div>${c.note?`<div class="tiny regnote">${esc(c.note.length>60?c.note.slice(0,60)+"…":c.note)}</div>`:""}</td>
             ${days.map(d=>{ const w=c.work[d]; return `<td class="dcol">${!w||w.k==="full"?`<input type="checkbox" data-cwd="${c.id}|${d}" ${w?"checked":""} aria-label="${esc(c.name)}: ${dayShort(d)}, полная смена">`:`<button class="linkbtn wk" data-crewopen="${c.id}">${workLbl(w)}</button>`}</td>`; }).join("")}
             <td class="num mono">${fmtShift(crewShifts(ev,c))}</td><td class="num mono">${fmtRub(crewPay(ev,c))}</td></tr>
             ${open?`<tr class="detail"><td colspan="${days.length+3}">${crewDetail(ev,c)}</td></tr>`:""}`; }).join(""); }).join("")}
@@ -2355,6 +2402,8 @@ document.addEventListener("click", e=>{
   if (ds.act==="back") return back();
   if (ds.tab) return tab(ds.tab);
   if (ds.tabGo){ S.stack=[]; if(ds.sub){ S.route=ds.tabGo; S.p={}; if (!USER && ds.sub!=="orders"){ S.login={step:"email",email:"",ok:false,err:"",why:ds.sub==="admin"?"Вход для организаторов: используйте email, на который вам выдали доступ":""}; S.after={route:ds.sub,p:{}}; return go("login",{}); } go(ds.sub,{}); } else tab(ds.tabGo); return; }
+  if (ds.crewapply){ if (!USER) return needLogin("Войдите, чтобы подать заявку в команду старта"); if (!ME.first||!ME.last||!ME.phone){ toast("Сначала заполните анкету: имя, фамилия, телефон"); return go("profile",{edit:true,then:"crew"}); } return go("crewApply",{ev:ds.crewapply}); }
+  if (ds.crewwd){ const id=+ds.crewwd; api("DELETE","/api/crew/apply/"+id).then(()=>{ MYCREW=MYCREW.filter(c=>c.id!==id); render(); toast("Заявка отозвана"); }).catch(err=>toast(err.message)); return; }
   if (ds.go==="event") return go("event",{ev:ds.ev,t:ds.t});
   if (ds.go==="divisions"){
     const ev = EVENTS.find(x=>x.id===ds.ev); S.who="me"; if (!ev) return;
@@ -2431,6 +2480,18 @@ document.addEventListener("input", e=>{
 document.addEventListener("submit", e=>{
   e.preventDefault();
   const g=id=>document.getElementById(id);
+  if (e.target.id==="fCrew"){
+    const f=S.cap, r=document.querySelector('input[name="cRole"]:checked'); f.role=r?r.value:""; f.note=g("cNote").value; f.ok=g("cOk").checked; f.days={};
+    document.querySelectorAll('input[name="cDay"]:checked').forEach(x=>{ f.days[x.value]=true; });
+    const ev=EVENTS.find(x=>x.id===f.ev), days=crewDays(ev);
+    f.err = !f.role ? "Выберите, кем хотите работать" : (days.length>1 && !Object.keys(f.days).length) ? "Отметьте хотя бы один день" : !f.ok ? "Нужно согласие на обработку данных" : "";
+    if (f.err) return render();
+    f.busy=true; render();
+    api("POST","/api/crew/apply",{event:f.ev, role:f.role, days:days.length>1?Object.keys(f.days):days, note:f.note, consent:true})
+      .then(r=>{ MYCREW.push(r.crew); S.cap=null; toast("Заявка отправлена организатору"); back(); })
+      .catch(err=>{ f.busy=false; f.err=err.message; render(); });
+    return;
+  }
   if (e.target.id==="fLogin"){
     const L=S.login; L.email=g("lEmail").value.trim().toLowerCase(); L.ok=g("lOk").checked;
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(L.email)){ L.err="Проверьте email"; return render(); }
