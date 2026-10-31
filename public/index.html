@@ -736,6 +736,9 @@ function divState(d){
   if (d.taken/d.limit>=0.85) return {k:"warn",t:"Почти заполнена"};
   return {k:"ok",t:"Есть места"};
 }
+/* one registration per day: categories on other days of the same start stay open */
+const divDaySet = (ev,d) => { const days=evDays(ev).filter(Boolean); const own=(d.days||[]).filter(x=>days.includes(x)); return own.length?own:days; };
+const regConflict = (ev, d, who="me") => ORDERS.find(o=>o.event===ev.id && [...ACTIVE_ST,"pending","reserve"].includes(o.status) && (o.who||"me")===who && (o.div===d.id || (()=>{ const od=ev.divisions.find(x=>x.id===o.div); if (!od) return true; const a=divDaySet(ev,od), b=divDaySet(ev,d); return a.some(x=>b.includes(x)); })()));
 const hasReg = (evId, who="me") => ORDERS.some(o=>o.event===evId && ACTIVE_ST.includes(o.status) && (o.who||"me")===who);
 const personOf = who => who==="me" ? ME : ME.kids.find(k=>k.id===who);
 const person = () => personOf(S.who);
@@ -747,7 +750,7 @@ function eligibility(ev, d){
   if (!USER) return WHY_LOGIN;
   const p = person();
   if (!profileReady() || !p || !p.dob || !p.gender) return WHY_PROFILE;
-  if (hasReg(ev.id, S.who)) return S.who==="me" ? "Вы уже зарегистрированы на этот старт" : `${p.first} уже зарегистрирован на этот старт`;
+  { const c = regConflict(ev, d, S.who); if (c){ const cd=ev.divisions.find(x=>x.id===c.div); return c.div===d.id ? (S.who==="me"?"Вы уже записаны в эту категорию":`${p.first} уже записан в эту категорию`) : `${S.who==="me"?"Вы уже записаны":p.first+" уже записан"} на «${cd?cd.name:""}» в этот день`; } }
   const age = athleteAge(ev, p);
   if (d.g!=="any" && d.g!==p.gender) return d.g==="M" ? "Категория для мужского пола" : "Категория для женского пола";
   if (d.min && age<d.min) return `С ${d.min} ${yGen(d.min)}`;
@@ -871,7 +874,7 @@ event(){
   }
   const canReg = ev.permanent ? ["open","live"].includes(ev.status) : (ev.status==="open" || (ev.status==="live" && TODAY<=ev.regTo));
   return {title:ev.name, html:`<div class="tabs" role="tablist">${tabsHtml}</div><div style="margin-top:14px">${body}</div>
-   <div class="sticky-cta" style="bottom:64px">${hasReg(ev.id)?`<button class="btn block dark" data-go="orders">Вы зарегистрированы · Мои старты</button>`:canReg?`<button class="btn block" data-go="divisions" data-ev="${ev.id}">Зарегистрироваться</button>`:`<button class="btn block" disabled>${ev.status==="draft"?"Черновик — участники его не видят":"Регистрация закрыта"}</button>`}</div><div style="height:70px"></div>`, after:()=>{ const b=document.querySelector('#view .tabs [aria-selected="true"]'); if (b && b.parentElement) b.parentElement.scrollLeft = b.offsetLeft - 8; }};
+   <div class="sticky-cta" style="bottom:64px">${hasReg(ev.id)&&!(canReg&&ev.divisions.some(d=>!regConflict(ev,d,"me")))?`<button class="btn block dark" data-go="orders">Вы зарегистрированы · Мои старты</button>`:hasReg(ev.id)&&canReg?`<div class="grid2"><button class="btn dark" data-go="orders">Мои старты</button><button class="btn" data-go="divisions" data-ev="${ev.id}">Ещё категория</button></div>`:canReg?`<button class="btn block" data-go="divisions" data-ev="${ev.id}">Зарегистрироваться</button>`:`<button class="btn block" disabled>${ev.status==="draft"?"Черновик — участники его не видят":"Регистрация закрыта"}</button>`}</div><div style="height:70px"></div>`, after:()=>{ const b=document.querySelector('#view .tabs [aria-selected="true"]'); if (b && b.parentElement) b.parentElement.scrollLeft = b.offsetLeft - 8; }};
 },
 divisions(){
   const ev = EVENTS.find(e=>e.id===S.p.ev), type = S.p.type || "ind";
@@ -893,7 +896,7 @@ divisions(){
   return {title:"Категории", html:`
     <div class="muted small" style="margin-bottom:10px">${esc(ev.name)} · ${dHuman(ev.date)}${ev.ageMode==="year"?" · возраст по году рождения":""}</div>${whoSw}
     <div class="tabs" role="tablist">${[["ind","Индивидуальные"],["team","Командные"]].map(([k,t])=>`<button role="tab" aria-selected="${type===k}" data-dtype="${k}">${t}</button>`).join("")}</div>
-    ${hasReg(ev.id,S.who)?'<div class="rule" style="margin-top:12px">У этого участника уже есть оплаченная регистрация на старт. По правилам одна регистрация на старт, поэтому остальные категории закрыты.</div>':""}
+    ${hasReg(ev.id,S.who)?`<div class="rule" style="margin-top:12px">${evDays(ev).length>1?"У этого участника уже есть регистрация на старт. В один день можно выступать только в одной категории: категории в те же дни закрыты, в другие дни — доступны.":"У этого участника уже есть регистрация на старт. В один день можно выступать только в одной категории, поэтому остальные категории закрыты."}</div>`:""}
     ${gate ? `<div class="rule stack" style="margin-top:12px"><span>${!USER?"Войдите на сайт и заполните анкету участника. После этого откроются категории, которые подходят вам по полу и возрасту, а если добавите в анкету детей — и детские категории.":"Заполните анкету участника: пол и дата рождения определяют, в какие категории можно записаться. Детей добавьте в той же анкете."}</span><button class="btn sm" style="align-self:flex-start" data-act="${!USER?"divlogin":"divprofile"}">${!USER?"Войти":"Заполнить анкету"}</button></div>
        <h2 class="sec">Категории</h2><div class="stack cards">${ds.map(d=>card({d,why:eligibility(ev,d)})).join("") || '<div class="empty">Категорий нет</div>'}</div>`
      : `<h2 class="sec">Доступные</h2><div class="stack cards">${avail.map(card).join("") || '<div class="empty">Подходящих категорий нет</div>'}</div>

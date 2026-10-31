@@ -174,6 +174,12 @@ async function loadGyms() {
   return GYMS;
 }
 const canonGym = a => { const k = gymKey(a); if (!k) return ''; if (GYM_ALIASES[k]) return GYM_ALIASES[k]; return GYMS.find(g => gymKey(g) === k) || a; };
+function evDaysSrv(ev) {
+  if (ev.format === 'online' || !ev.date || !ev.dateEnd || ev.dateEnd <= ev.date) return [ev.date].filter(Boolean);
+  const out = []; for (let d = new Date(ev.date + 'T00:00:00Z'); out.length < 14; d.setUTCDate(d.getUTCDate() + 1)) { const s = d.toISOString().slice(0, 10); if (s > ev.dateEnd) break; out.push(s); }
+  return out;
+}
+function divDaySet(ev, d) { const days = evDaysSrv(ev); const own = ((d && d.days) || []).filter(x => days.includes(x)); return own.length ? own : days; }
 async function publicContent() {
   if (cache) return cache;
   const c = await rawContent();
@@ -436,8 +442,13 @@ route('POST', '/api/register', async (req, res, u, body) => {
   let out_captain = null;
   const out = await db.tx(async q => {
     await q('select pg_advisory_xact_lock(hashtext($1))', [`${ev.id}:${div.id}`]);
-    const dup = await q(`select 1 from registrations where user_id=$1 and who=$2 and event_id=$3 and status in ${INTEAM}`, [u.id, who, ev.id]);
-    if (dup.rows.length) throw bad('Этот участник уже зарегистрирован на старт');
+    // one registration per day: a second category is allowed only on other days of the start
+    const dup = (await q(`select div_id from registrations where user_id=$1 and who=$2 and event_id=$3 and status in ${INTEAM}`, [u.id, who, ev.id])).rows;
+    for (const x of dup) {
+      if (x.div_id === div.id) throw bad('Этот участник уже записан в эту категорию');
+      const od = (ev.divisions || []).find(d => d.id === x.div_id), a = divDaySet(ev, od || {}), b2 = divDaySet(ev, div);
+      if (!od || a.some(d => b2.includes(d))) throw bad(`Этот участник уже записан на «${od ? od.name : 'другую категорию'}» в этот день. В один день — одна категория`);
+    }
     let team = null, role = null, initial = null, teamRow = null;
     if (div.type === 'team') {
       const t = body.team || {}, size = +div.size || 1;
