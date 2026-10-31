@@ -79,6 +79,8 @@ create table if not exists registrations (id text primary key, pub text unique n
   event_id text not null, div_id text not null, who text not null, person jsonb not null, team text, size text, promo text, price int not null default 0, due int not null default 0, paid int not null default 0,
   status text not null, publish boolean not null default false, photo boolean not null default false);
 create index if not exists registrations_ev on registrations(event_id, div_id);
+alter table registrations add column if not exists note text;
+alter table registrations add column if not exists updated_by text;
 create index if not exists registrations_user on registrations(user_id);
 create table if not exists scores (id bigserial primary key, reg_id text not null references registrations(id) on delete cascade, workout_id text not null, value jsonb not null, video text,
   state text not null default 'pending', created_at timestamptz not null default now(), reviewed_by text, unique(reg_id, workout_id));
@@ -231,10 +233,10 @@ route('GET', '/api/session', async (req, res, u) => {
   const scores = (await db.query('select s.reg_id, s.workout_id, s.value, s.video, s.state from scores s join registrations r on r.id=s.reg_id where r.user_id=$1', [u.id])).rows;
   return {
     user: { email: u.email, role: u.role, profile: u.profile, kids: u.kids },
-    orders: regs.map(orderOut), scores,
+    orders: regs.map(orderOut).map(o => ['blocked', 'cancelled'].includes(o.status) ? o : { ...o, note: '' }), scores,
   };
 });
-const orderOut = r => ({ id: r.id, pub: r.pub, event: r.event_id, div: r.div_id, who: r.who, person: r.person, team: r.team, size: r.size, promo: r.promo,
+const orderOut = r => ({ note: r.note || '', id: r.id, pub: r.pub, event: r.event_id, div: r.div_id, who: r.who, person: r.person, team: r.team, size: r.size, promo: r.promo,
   price: r.price, due: r.due, paid: r.paid, status: r.status, date: new Date(r.created_at.getTime() + 8 * 3600e3).toISOString().slice(0, 10), publish: r.publish });
 
 route('POST', '/api/auth/code', async (req, res, u, body) => {
@@ -534,12 +536,31 @@ route('POST', '/api/admin/regs/paid', async (req, res, u, body) => {
 });
 route('PATCH', '/api/admin/regs/:id', async (req, res, u, body, p) => {
   need(u, 'owner', 'admin');
-  const st = ['new', 'paid', 'refund_requested', 'refunded', 'cancelled'].includes(body.status) ? body.status : null;
-  if (!st) throw bad('Неверный статус');
-  const r = await db.query(`update registrations set status=$1, paid = case when $1='paid' then due else paid end where id=$2 returning *`, [st, decodeURIComponent(p.id)]);
-  if (!r.rows.length) throw bad('Регистрация не найдена');
+  const id = decodeURIComponent(p.id);
+  const cur = (await db.query('select * from registrations where id=$1', [id])).rows[0];
+  if (!cur) throw bad('Регистрация не найдена');
+  let st = cur.status, paid = cur.paid, note = cur.note;
+  if (body.status !== undefined) {
+    if (!['new', 'paid', 'refund_requested', 'refunded', 'cancelled', 'blocked'].includes(body.status)) throw bad('Неверный статус');
+    st = body.status;
+    if (st === 'paid' && cur.status !== 'paid' && (body.paid === undefined || Number(body.paid) === Number(cur.paid))) paid = cur.due;
+  }
+  if (body.paid !== undefined && !(st === 'paid' && cur.status !== 'paid' && Number(body.paid) === Number(cur.paid))) {
+    const v = Math.round(Number(body.paid));
+    if (!Number.isFinite(v) || v < 0 || v > 1e7) throw bad('Сумма — целое число рублей от 0');
+    paid = v;
+  }
+  if (body.note !== undefined) note = str(body.note, 1000) || null;
+  const r = await db.query('update registrations set status=$1, paid=$2, note=$3, updated_by=$4 where id=$5 returning *', [st, paid, note, u.email, id]);
   dirty();
   return { order: orderOut(r.rows[0]) };
+});
+route('DELETE', '/api/admin/regs/:id', async (req, res, u, body, p) => {
+  need(u, 'owner', 'admin');
+  const r = await db.query('delete from registrations where id=$1 returning id', [decodeURIComponent(p.id)]);
+  if (!r.rows.length) throw bad('Регистрация не найдена');
+  dirty();
+  return { ok: true };
 });
 
 route('PATCH', '/api/admin/scores/:id', async (req, res, u, body, p) => {

@@ -21,6 +21,9 @@ html{color-scheme:dark}body{margin:0;background:#070707}img{max-width:100%}[hidd
 .regsel span{flex:1;min-width:160px}
 @media(max-width:600px){.tbl.regs .c-hide{display:none}.tbl.regs .act .btn{padding-inline:10px}}
 .tbl.regs td{vertical-align:middle}.tbl.regs .ck{width:28px}.tbl.regs .act{text-align:right;white-space:nowrap}.tbl.regs input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent)}
+.regedit{display:grid;grid-template-columns:minmax(0,220px) minmax(0,140px) 1fr;gap:10px;align-items:start}.regedit .f{margin:0}@media(max-width:700px){.regedit{grid-template-columns:1fr 1fr}.regedit .re-note{grid-column:1/-1}}
+.admtabs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}.admtabs button{display:flex;flex-direction:column;gap:3px;text-align:left;padding:14px 16px;border-radius:14px;border:1px solid var(--line);background:var(--surface);color:inherit;cursor:pointer}.admtabs b{font-family:var(--f-display);font-size:15px;text-transform:uppercase}.admtabs span{font-size:12px;color:var(--muted)}.admtabs button[aria-selected="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}.admtabs button[aria-selected="true"] b{color:var(--accent)}@media(max-width:520px){.admtabs span{display:none}}
+.regnote{color:var(--accent);margin-top:2px}
 .regname{font-weight:700;text-align:left;color:inherit}.tbl.regs tr.open td{border-bottom:0}.tbl.regs tr.detail td{padding-top:0}
 .loading{min-height:60vh;display:grid;place-items:center;color:var(--muted)}
 /* Layout: one phone-width app column, dark arena ground, scoreboard yellow as the only accent */
@@ -1129,7 +1132,7 @@ function affBoard(ev){
 }
 function orderCard(o){
   const ev = EVENTS.find(e=>e.id===o.event) || {name:"Старт удалён",divisions:[],format:"onsite",status:"ended",date:o.date}, d = ev.divisions.find(x=>x.id===o.div) || {name:""};
-  const stMap = {new:'<span class="chip warn">Ожидает оплаты</span>',paid:'<span class="chip ok">Зарегистрирован</span>',refund_requested:'<span class="chip warn">Запрошен возврат</span>',refunded:'<span class="chip neutral">Возврат оформлен</span>',cancelled:'<span class="chip neutral">Отменена</span>'};
+  const stMap = {new:'<span class="chip warn">Ожидает оплаты</span>',paid:'<span class="chip ok">Зарегистрирован</span>',refund_requested:'<span class="chip warn">Запрошен возврат</span>',refunded:'<span class="chip neutral">Возврат оформлен</span>',cancelled:'<span class="chip neutral">Отменена</span>',blocked:'<span class="chip full">Отклонена</span>'};
   const pct = refundPct(ev), p = o.person || {};
   const panel = S.p.refund===o.id ? `<div class="panel stack"><div>${o.status==="paid"&&o.paid>0?`По правилам старта возвращается ${pct}% взноса — <b class="mono">${fmtRub(Math.round(o.paid*pct/100))}</b>. Организатор оформит возврат и напишет вам.`:"Заявка будет отменена, место освободится для других."}</div><div class="row"><button class="btn sm" data-refund-ok="${o.id}">${o.status==="paid"&&o.paid>0?"Запросить возврат":"Отменить заявку"}</button><button class="btn sm ghost" data-refund-no>Назад</button></div></div>` : "";
   const scoring = scoreTargets().some(t=>t.o.id===o.id);
@@ -1137,6 +1140,7 @@ function orderCard(o){
    <div class="bd"><div style="font-family:var(--f-display);font-weight:600;font-size:16px;text-transform:uppercase">${esc(ev.name)}</div>
    <dl class="kv small" style="margin:10px 0 0"><dt>Участник</dt><dd>${esc(p.last||"")} ${esc(p.first||"")}</dd><dt>Категория</dt><dd>${esc(d.name)}${o.team?` · ${esc(o.team)}`:""}</dd><dt>Заказ</dt><dd class="mono">${o.id}</dd><dt>${o.status==="new"?"К оплате":"Взнос"}</dt><dd class="mono">${fmtRub(o.status==="new"?o.due:o.paid)}</dd><dt>Лидерборд</dt><dd>${o.publish?"с именем":"анонимно"} <button class="linkbtn" data-pubtoggle="${o.id}">${o.publish?"скрыть имя":"показывать имя"}</button></dd></dl></div>
    ${["new","paid"].includes(o.status)?`<div class="acts">${scoring?`<button class="btn sm" data-go="score">Сдать результат</button>`:""}<button class="btn sm ghost" data-go="profile">Анкета</button>${ev.status!=="ended"?`<button class="btn sm ghost" data-refund="${o.id}">${o.status==="paid"&&o.paid>0?"Возврат":"Отменить"}</button>`:""}</div>`:""}
+   ${o.note && ["blocked","cancelled"].includes(o.status)?`<div class="rule" style="margin-top:10px"><b>Комментарий организатора:</b> ${esc(o.note)}</div>`:""}
    ${panel}</div>`;
 }
 function refundPct(ev){
@@ -1287,11 +1291,11 @@ function promoCheck(code, ev, price){
 const promoOff = r => r && r.f.promoOk ? (r.f.promoOff || 0) : 0;
 const promoWhat = p => `${p.kind==="pct"?`−${p.value}%`:`−${fmtRub(p.value)}`} от взноса · ${p.event==="all"?"все старты":esc((EVENTS.find(e=>e.id===p.event)||{name:"удалённый старт"}).name)}`;
 /* participants table: one row per registration, downloadable for Excel */
-const SHEET_COLS = ["Дата заявки","Заказ","Старт","Категория","Дни выступления","Команда","Фамилия","Имя","Пол","Дата рождения","Возраст","Зал","Телефон","Email","Экстренный контакт","Футболка","Промокод","Взнос, ₽","Оплачено, ₽","Статус","Имя в лидерборде"];
-const REG_ST = {new:"Ожидает оплаты",paid:"Оплачен",refund_requested:"Запрошен возврат",refunded:"Возврат",cancelled:"Отменена"};
+const SHEET_COLS = ["Дата заявки","Заказ","Старт","Категория","Дни выступления","Команда","Фамилия","Имя","Пол","Дата рождения","Возраст","Зал","Телефон","Email","Экстренный контакт","Футболка","Промокод","Взнос, ₽","Оплачено, ₽","Статус","Имя в лидерборде","Комментарий"];
+const REG_ST = {new:"Ожидает оплаты",paid:"Оплачен",refund_requested:"Запрошен возврат",refunded:"Возврат",cancelled:"Отменена",blocked:"Отклонена"};
 function sheetRows(ev){
   return ADM.REGS.filter(o=>o.event===ev.id).map(o=>{ const p=o.person||{}, d=ev.divisions.find(x=>x.id===o.div)||{name:""};
-    return [dShort(o.date),o.id,ev.name,d.name,evDays(ev).length>1?divDays(ev,d):dShort(ev.date),o.team||"",p.last||"",p.first||"",p.gender==="F"?"Ж":"М",p.dob?dShort(p.dob):"",p.dob?athleteAge(ev,p):"",p.affiliate||"",p.phone||"",o.email||"",p.emName?`${p.emName}, ${p.emPhone||""}`:"",o.size||"",o.promo||"",o.due,o.paid,REG_ST[o.status]||o.status,o.publish?"да":"нет"]; });
+    return [dShort(o.date),o.id,ev.name,d.name,evDays(ev).length>1?divDays(ev,d):dShort(ev.date),o.team||"",p.last||"",p.first||"",p.gender==="F"?"Ж":"М",p.dob?dShort(p.dob):"",p.dob?athleteAge(ev,p):"",p.affiliate||"",p.phone||"",o.email||"",p.emName?`${p.emName}, ${p.emPhone||""}`:"",o.size||"",o.promo||"",o.due,o.paid,REG_ST[o.status]||o.status,o.publish?"да":"нет",o.note||""]; });
 }
 function downloadCsv(name, rows){
   const q = v => `"${String(v??"").replace(/"/g,'""')}"`;
@@ -1492,6 +1496,16 @@ function adminClick(t, ds){
     api("POST","/api/admin/score",{reg:ds.reg, workout:w.id, value:r.v}).then(async res=>{ const i=ADM.SCORES.findIndex(x=>x.reg===ds.reg && x.workout===w.id); if(i>=0) ADM.SCORES[i]=res.score; else ADM.SCORES.push(res.score); await loadContent(); render(); toast("Результат сохранён, лидерборд обновлён"); }).catch(err=>toast(err.message));
     return true;
   }
+  if (ds.area){ adm.area=ds.area; render(); window.scrollTo(0,0); return true; }
+  if (ds.regsave){
+    const id=ds.regsave, g=k=>document.getElementById(k+"_"+id);
+    const paid=g("rePaid").value.replace(/\s/g,""); if (!/^\d+$/.test(paid)){ toast("Оплачено — целое число рублей"); g("rePaid").focus(); return true; }
+    api("PATCH","/api/admin/regs/"+encodeURIComponent(id),{status:g("reSt").value, paid:+paid, note:g("reNote").value}).then(async r=>{ const i=ADM.REGS.findIndex(x=>x.id===id); if(i>=0) ADM.REGS[i]={...ADM.REGS[i],...r.order}; await loadContent(); render(); toast("Заявка сохранена"); }).catch(err=>toast(err.message));
+    return true;
+  }
+  if (ds.regdel){ adm.regDel=ds.regdel; render(); return true; }
+  if (ds.regdelno){ adm.regDel=null; render(); return true; }
+  if (ds.regdelyes){ const id=ds.regdelyes; api("DELETE","/api/admin/regs/"+encodeURIComponent(id)).then(async()=>{ ADM.REGS=ADM.REGS.filter(x=>x.id!==id); adm.regDel=null; adm.regOpen=null; await loadContent(); render(); toast("Заявка удалена"); }).catch(err=>toast(err.message)); return true; }
   if (ds.rst){ adm.rf.st=ds.rst; adm.rf.sel={}; render(); return true; }
   if (ds.regopen){ adm.regOpen = adm.regOpen===ds.regopen ? null : ds.regopen; render(); return true; }
   if (ds.act==="regclear"){ adm.rf.sel={}; render(); return true; }
@@ -1523,23 +1537,33 @@ admin(){
   const reg = actRegs.length, money = actRegs.reduce((a,o)=>a+(o.paid||0),0);
   const order = {draft:0,open:1,live:2,ended:3};
   const list = [...EVENTS].sort((a,b)=>order[a.status]-order[b.status]);
-  return {title:"Панель организатора", html:`
-   <div class="stats flat" style="margin-top:0"><div><b>${act.length}</b><span>Активных стартов</span></div><div><b>${reg}</b><span>Записано</span></div><div><b class="acc" style="font-size:17px">${Math.round(money/1000)} тыс ₽</b><span>Взносы</span></div></div>
-   <button class="card next" data-go="adminClub" style="text-align:left;width:100%;margin-top:14px;grid-template-columns:1fr auto"><div><b style="font-size:15px">Клуб: заявки на пробную</b><div class="muted small">${CLUB_LEADS.length} всего${CLUB_LEADS.some(l=>l.status==="new")?` · новых ${CLUB_LEADS.filter(l=>l.status==="new").length}`:""} · контакты и фото клуба</div></div>${CLUB_LEADS.some(l=>l.status==="new")?'<span class="chip warn">новые</span>':'<span class="chip neutral">открыть</span>'}</button>
-   <div style="margin-top:14px">${dataCard()}</div>
-   <div class="grid2" style="margin-top:14px"><button class="btn" data-act="anew">+ Новый старт</button><button class="btn dark" data-act="akids">Детский старт</button></div>
-   <div class="muted tiny" style="margin-top:8px">«Детский старт» создаёт черновик с группами мальчиков и девочек 6–13 лет по году рождения. Всё можно поправить.</div>
-   ${pend.length?`<h2 class="sec">Результаты на проверке · ${pend.length}</h2><div class="stack">${pend.map(scoreReview).join("")}</div>`:""}
-   <h2 class="sec">Старты</h2><div class="stack cards">${list.map(admEvRow).join("") || '<div class="empty">Стартов нет. Нажмите «+ Новый старт».</div>'}</div>
-   <h2 class="sec">Промокоды · ${PROMOS.length}</h2>
-   <div class="card" style="padding:4px 14px">${PROMOS.map((p,i)=>`<div class="arow"><span class="mono" style="font-weight:700;color:var(--accent);min-width:92px">${esc(p.code)}</span><div class="sp"><b>${promoWhat(p)}</b><div class="muted tiny">Использован ${p.used}${p.limit?` из ${p.limit}`:" раз, без лимита"} · ${p.until?`до ${dShort(p.until)}`:"бессрочно"}${p.note?` · ${esc(p.note)}`:""}</div></div><button class="iconbtn sm" data-apromo="${i}" aria-label="Изменить промокод">${IC.edit}</button><button class="iconbtn sm" data-apromodel="${i}" aria-label="Удалить промокод">${IC.del}</button></div>`).join("") || '<div class="muted small" style="padding:12px 0">Промокодов пока нет</div>'}</div>
-   <button class="btn ghost" data-apromo="new" style="margin-top:10px">+ Промокод</button>
+  const c = contacts(), inp = (id,label,val,ph) => `<label class="f">${label}<input class="inp" id="${id}" value="${esc(val||"")}" placeholder="${ph}"></label>`;
+  const area = adm.area==="site" ? "site" : "comp";
+  const tabs = `<div class="admtabs" role="tablist"><button role="tab" aria-selected="${area==="comp"}" data-area="comp"><b>Соревнования</b><span>старты, участники, промокоды, результаты</span></button><button role="tab" aria-selected="${area==="site"}" data-area="site"><b>Управление сайтом</b><span>заявки на пробную, фото, контакты, доступ, копии</span></button></div>`;
+  if (area==="site") return {title:"Панель организатора", html: tabs + `
+   <button class="card next" data-go="adminClub" style="text-align:left;width:100%;margin-top:0;grid-template-columns:1fr auto"><div><b style="font-size:15px">Заявки на пробную тренировку</b><div class="muted small">${CLUB_LEADS.length} всего${CLUB_LEADS.some(l=>l.status==="new")?` · новых ${CLUB_LEADS.filter(l=>l.status==="new").length}`:""}</div></div>${CLUB_LEADS.some(l=>l.status==="new")?'<span class="chip warn">новые</span>':'<span class="chip neutral">открыть</span>'}</button>
+
    <h2 class="sec">Оформление сайта</h2>
    <div class="card stack">
      <div class="imgprev" style="background-image:url(${SITE.hero||HERO})"><span class="chip neutral">${SITE.hero?"ваше фото":"стандартное фото"}</span></div>
      <b>Главное фото на первом экране</b>
      <div class="muted small">${IMG_HINT.hero}</div>
      <div class="row wrap"><button class="btn sm" data-act="heroimg">Загрузить фото</button>${SITE.hero?'<button class="btn sm ghost" data-act="herodef">Вернуть стандартное</button>':""}</div>
+   </div>
+   <h2 class="sec">Контакты на сайте</h2>
+   <div class="card stack">
+     <div class="muted small">Пустые поля на сайте показываются как «появится позже».</div>
+     <div class="grid2">${inp("cPhone","Телефон",c.phone,"+7 9xx xxx-xx-xx")}${inp("cEmail","Email",c.email,"info@…")}</div>
+     <div class="grid2">${inp("cVk","ВКонтакте",c.vk,"vk.com/…")}${inp("cTg","Telegram",c.tg,"@…")}</div>
+     <div class="grid2">${inp("cWa","WhatsApp",c.wa,"+7 9xx xxx-xx-xx")}${inp("cAddr","Адрес",c.address,"")}</div>
+     <button class="btn sm" data-act="csave" style="align-self:flex-start">Сохранить контакты</button>
+   </div>
+
+   <h2 class="sec">Фото клуба · ${(SITE.gallery||[]).length}</h2>
+   <div class="card stack">
+     ${(SITE.gallery||[]).length ? `<div class="galadm">${SITE.gallery.map((u,i)=>`<div style="background-image:url(${u})"><button class="iconbtn sm" data-galdel="${i}" aria-label="Убрать фото">${IC.del}</button></div>`).join("")}</div>` : '<div class="muted small">Пока на сайте стандартные фото. Загрузите свои — до 7 штук, первое будет крупным.</div>'}
+     <div class="muted small">${IMG_HINT.gallery}</div>
+     <button class="btn sm" data-act="galimg" style="align-self:flex-start" ${(SITE.gallery||[]).length>=7?"disabled":""}>Добавить фото</button>
    </div>
    ${S.viewAs==="owner"?`<h2 class="sec">Доступ к панели</h2>
    <div class="card" style="padding:4px 14px">${ACCESS.map((a,i)=>`<div class="arow"><div class="sp"><b>${esc(a.name)}</b><div class="muted tiny">${esc(a.email)}</div></div><span class="chip ${a.role==="owner"?"warn":a.role==="admin"?"ok":"neutral"}">${ROLE_L[a.role]}</span>${a.role==="owner"?"":`<button class="iconbtn sm" data-accdel="${esc(a.email)}" aria-label="Закрыть доступ">${IC.del}</button>`}</div>`).join("")}</div>
@@ -1553,6 +1577,17 @@ admin(){
    </div>
    <h2 class="sec">Резервные копии</h2>
    ${backupCard()}`:""}
+`};
+  return {title:"Панель организатора", html: tabs + `
+   <div class="stats flat" style="margin-top:0"><div><b>${act.length}</b><span>Активных стартов</span></div><div><b>${reg}</b><span>Записано</span></div><div><b class="acc" style="font-size:17px">${Math.round(money/1000)} тыс ₽</b><span>Взносы</span></div></div>
+   <div style="margin-top:14px">${dataCard()}</div>
+   <div class="grid2" style="margin-top:14px"><button class="btn" data-act="anew">+ Новый старт</button><button class="btn dark" data-act="akids">Детский старт</button></div>
+   <div class="muted tiny" style="margin-top:8px">«Детский старт» создаёт черновик с группами мальчиков и девочек 6–13 лет по году рождения. Всё можно поправить.</div>
+   ${pend.length?`<h2 class="sec">Результаты на проверке · ${pend.length}</h2><div class="stack">${pend.map(scoreReview).join("")}</div>`:""}
+   <h2 class="sec">Старты</h2><div class="stack cards">${list.map(admEvRow).join("") || '<div class="empty">Стартов нет. Нажмите «+ Новый старт».</div>'}</div>
+   <h2 class="sec">Промокоды · ${PROMOS.length}</h2>
+   <div class="card" style="padding:4px 14px">${PROMOS.map((p,i)=>`<div class="arow"><span class="mono" style="font-weight:700;color:var(--accent);min-width:92px">${esc(p.code)}</span><div class="sp"><b>${promoWhat(p)}</b><div class="muted tiny">Использован ${p.used}${p.limit?` из ${p.limit}`:" раз, без лимита"} · ${p.until?`до ${dShort(p.until)}`:"бессрочно"}${p.note?` · ${esc(p.note)}`:""}</div></div><button class="iconbtn sm" data-apromo="${i}" aria-label="Изменить промокод">${IC.edit}</button><button class="iconbtn sm" data-apromodel="${i}" aria-label="Удалить промокод">${IC.del}</button></div>`).join("") || '<div class="muted small" style="padding:12px 0">Промокодов пока нет</div>'}</div>
+   <button class="btn ghost" data-apromo="new" style="margin-top:10px">+ Промокод</button>
 `};
 },
 adminEvent(){
@@ -1881,7 +1916,7 @@ SCREENS.club = function(){
 SCREENS.adminClub = function(){
   const c = contacts(), leads = [...CLUB_LEADS].reverse(), nNew = CLUB_LEADS.filter(l=>l.status==="new").length;
   const inp = (id,label,val,ph) => `<label class="f">${label}<input class="inp" id="${id}" value="${esc(val||"")}" placeholder="${ph}"></label>`;
-  return {title:"Клуб: заявки и контакты", html:`
+  return {title:"Заявки на пробную", html:`
    <h2 class="sec" style="margin-top:0">Заявки на пробную · ${CLUB_LEADS.length}${nNew?` · новых ${nNew}`:""}</h2>
    ${leads.length ? `<div class="card" style="padding:4px 14px">${leads.map(l=>{ const i=l.id; return `<div class="arow ${l.status==="new"?"lead-new":""}" style="padding-left:10px"><div class="sp"><b>${esc(l.name)}</b> <a href="tel:${esc(l.phone.replace(/[^\d+]/g,""))}" class="mono" style="color:var(--accent);margin-left:6px;white-space:nowrap">${esc(l.phone)}</a>
        <div class="muted tiny">${dShort(l.date)} · ${esc(l.dir)} · ${esc(l.who)}${l.age?`, ${esc(l.age)} лет`:""} · ${esc(l.time)}</div></div>
@@ -1890,21 +1925,7 @@ SCREENS.adminClub = function(){
      : '<div class="empty">Заявок пока нет. Они появятся, когда посетители заполнят форму «Записаться на пробную».</div>'}
    <div class="muted tiny" style="margin-top:8px">Заявки с сайта сохраняются здесь. Позвоните человеку и отметьте «Позвонили». Удаляйте заявки, которые больше не нужны: так мы не храним лишние персональные данные.</div>
 
-   <h2 class="sec">Контакты на сайте</h2>
-   <div class="card stack">
-     <div class="muted small">Пустые поля на сайте показываются как «появится позже».</div>
-     <div class="grid2">${inp("cPhone","Телефон",c.phone,"+7 9xx xxx-xx-xx")}${inp("cEmail","Email",c.email,"info@…")}</div>
-     <div class="grid2">${inp("cVk","ВКонтакте",c.vk,"vk.com/…")}${inp("cTg","Telegram",c.tg,"@…")}</div>
-     <div class="grid2">${inp("cWa","WhatsApp",c.wa,"+7 9xx xxx-xx-xx")}${inp("cAddr","Адрес",c.address,"")}</div>
-     <button class="btn sm" data-act="csave" style="align-self:flex-start">Сохранить контакты</button>
-   </div>
-
-   <h2 class="sec">Фото клуба · ${(SITE.gallery||[]).length}</h2>
-   <div class="card stack">
-     ${(SITE.gallery||[]).length ? `<div class="galadm">${SITE.gallery.map((u,i)=>`<div style="background-image:url(${u})"><button class="iconbtn sm" data-galdel="${i}" aria-label="Убрать фото">${IC.del}</button></div>`).join("")}</div>` : '<div class="muted small">Пока на сайте стандартные фото. Загрузите свои — до 7 штук, первое будет крупным.</div>'}
-     <div class="muted small">${IMG_HINT.gallery}</div>
-     <button class="btn sm" data-act="galimg" style="align-self:flex-start" ${(SITE.gallery||[]).length>=7?"disabled":""}>Добавить фото</button>
-   </div>`};
+`};
 };
 function clubClick(t, ds){
   if (ds.mode){ S.stack=[]; if (ds.mode==="club") go("club",{},false); else go("home",{},false); return true; }
@@ -2068,8 +2089,8 @@ async function downloadBackup(id){
   setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
 }
 /* participants: a filterable table — pending payments first, search, bulk "paid" */
-const REG_TAB = {new:["Ждут оплаты","warn"],paid:["Оплачены","ok"],refund_requested:["Просят возврат","full"],refunded:["Возврат сделан","neutral"],cancelled:["Отменены","neutral"]};
-const REG_ST1 = {new:"ждёт оплаты",paid:"оплачен",refund_requested:"просит возврат",refunded:"возврат сделан",cancelled:"отменён"};
+const REG_TAB = {new:["Ждут оплаты","warn"],paid:["Оплачены","ok"],refund_requested:["Просят возврат","full"],refunded:["Возврат сделан","neutral"],cancelled:["Отменены","neutral"],blocked:["Отклонены","full"]};
+const REG_ST1 = {new:"ждёт оплаты",paid:"оплачен",refund_requested:"просит возврат",refunded:"возврат сделан",cancelled:"отменён",blocked:"отклонён"};
 function regFilter(ev, regs){
   const F = adm.rf && adm.rf.ev===ev.id ? adm.rf : (adm.rf = {ev:ev.id, st: regs.some(o=>o.status==="new") ? "new" : "all", q:"", div:"", sel:{}});
   const q = F.q.trim().toLowerCase(), qd = q.replace(/\D/g,"");
@@ -2085,7 +2106,7 @@ function regFilter(ev, regs){
 function regTable(ev, regs){
   const {F, list} = regFilter(ev, regs);
   const cnt = k => regs.filter(o=>k==="all"||o.status===k).length;
-  const tabs = ["new","paid","refund_requested","refunded","cancelled","all"].filter(k=>k==="all"||k==="new"||k==="paid"||cnt(k));
+  const tabs = ["new","paid","refund_requested","refunded","cancelled","blocked","all"].filter(k=>k==="all"||k==="new"||k==="paid"||cnt(k));
   const sel = list.filter(o=>F.sel[o.id] && o.status==="new"), selSum = sel.reduce((a,o)=>a+(o.due||0),0);
   const newIn = list.filter(o=>o.status==="new"), allSel = newIn.length && newIn.every(o=>F.sel[o.id]);
   const divName = id => (ev.divisions.find(x=>x.id===id)||{name:"—"}).name;
@@ -2098,7 +2119,7 @@ function regTable(ev, regs){
     ${rows.length?`<div class="card tbl-wrap" style="padding:0 4px"><table class="tbl regs"><thead><tr><th class="ck">${newIn.length?`<input type="checkbox" id="regAll" ${allSel?"checked":""} aria-label="Выбрать всех, кто ждёт оплаты">`:""}</th><th>Участник</th><th class="c-hide">Категория</th><th class="num">Сумма</th><th class="c-hide">Дата</th><th></th></tr></thead><tbody>
     ${rows.map(o=>{ const p=o.person||{}, open=adm.regOpen===o.id;
       return `<tr class="${open?"open":""}"><td class="ck">${o.status==="new"?`<input type="checkbox" id="regSel_${o.id}" data-sel="${o.id}" ${F.sel[o.id]?"checked":""} aria-label="Выбрать">`:""}</td>
-        <td><button class="linkbtn regname" data-regopen="${o.id}">${esc(p.last||"")} ${esc(p.first||"")}</button><div class="muted tiny">${esc(p.phone||"")}${o.team?` · ${esc(o.team)}`:""}</div></td>
+        <td><button class="linkbtn regname" data-regopen="${o.id}">${esc(p.last||"")} ${esc(p.first||"")}</button><div class="muted tiny">${esc(p.phone||"")}${o.team?` · ${esc(o.team)}`:""}</div>${o.note?`<div class="tiny regnote">Комментарий: ${esc(o.note.length>60?o.note.slice(0,60)+"…":o.note)}</div>`:""}</td>
         <td class="small c-hide">${esc(divName(o.div))}</td><td class="num mono">${fmtRub(o.status==="paid"?o.paid:o.due)}</td><td class="small mono c-hide">${dShort(o.date)}</td>
         <td class="act">${o.status==="new"?`<button class="btn sm" data-regst="paid" data-reg="${o.id}">Оплачено</button>`:`<span class="chip ${REG_TAB[o.status][1]}">${REG_ST1[o.status]}</span>`}</td></tr>
         ${open?`<tr class="detail"><td></td><td colspan="5">${regDetail(ev,o)}</td></tr>`:""}`; }).join("")}
@@ -2108,9 +2129,15 @@ function regDetail(ev, o){
   const p=o.person||{}, divName = id => (ev.divisions.find(x=>x.id===id)||{name:"—"}).name;
   return `<div class="stack" style="gap:8px">
     <div class="small">${esc(divName(o.div))} · ${dShort(o.date)} · ${o.id} · ${esc(o.email||"")}${p.parent?` · родитель: ${esc(p.parent)}`:""}${p.dob?` · ${dShort(p.dob)} г.р.`:""}${p.affiliate?` · ${esc(p.affiliate)}`:""}${o.size?` · футболка ${o.size}`:""}${o.promo?` · промокод ${esc(o.promo)}`:""}</div>
-    <div class="row wrap">${o.status==="new"?`<button class="btn sm ghost" data-regst="cancelled" data-reg="${o.id}">Отменить заявку</button>`:""}
-    ${o.status==="refund_requested"?`<button class="btn sm" data-regst="refunded" data-reg="${o.id}">Возврат сделан</button><button class="btn sm ghost" data-regst="paid" data-reg="${o.id}">Оставить заявку</button>`:""}
-    ${o.status==="paid" && openWorkouts(ev).length ? `<button class="btn sm ghost" data-resopen="${o.id}">${adm.resReg===o.id?"Скрыть результаты":"Внести результаты"}</button>`:""}</div>
+    <div class="regedit">
+      <label class="f">Статус<select class="inp" id="reSt_${o.id}">${[["new","Ждёт оплаты"],["paid","Оплачен"],["refund_requested","Просит возврат"],["refunded","Возврат сделан"],["cancelled","Отменена"],["blocked","Отклонена (не допущен)"]].map(([k,l])=>`<option value="${k}" ${o.status===k?"selected":""}>${l}</option>`).join("")}</select></label>
+      <label class="f">Оплачено, ₽<input class="inp mono" id="rePaid_${o.id}" inputmode="numeric" value="${o.paid||0}"></label>
+      <label class="f re-note">Комментарий<textarea class="inp" id="reNote_${o.id}" rows="2" placeholder="Например: нет справки от врача, оплата не пришла">${esc(o.note||"")}</textarea></label>
+    </div>
+    <div class="muted tiny">Взнос ${fmtRub(o.due)}. Комментарий видят организаторы; если заявка отменена или отклонена — его увидит и участник в «Мои старты». Отменённые и отклонённые заявки освобождают место.</div>
+    <div class="row wrap"><button class="btn sm" data-regsave="${o.id}">Сохранить</button>
+      ${o.status==="paid" && openWorkouts(ev).length ? `<button class="btn sm ghost" data-resopen="${o.id}">${adm.resReg===o.id?"Скрыть результаты":"Внести результаты"}</button>`:""}
+      <span class="sp"></span>${adm.regDel===o.id?`<span class="small">Удалить заявку навсегда?</span><button class="btn sm danger" data-regdelyes="${o.id}">Удалить</button><button class="btn sm ghost" data-regdelno="1">Нет</button>`:`<button class="btn sm ghost" data-regdel="${o.id}">Удалить заявку</button>`}</div>
     ${adm.resReg===o.id ? `<div class="panel stack" style="margin:0">${openWorkouts(ev).map(w=>{ const sc=ADM.SCORES.find(x=>x.reg===o.id && x.workout===w.id);
       return `<div class="row wrap" style="gap:8px"><div class="sp" style="min-width:140px"><b class="small">${esc(w.name)}</b>${sc?`<div class="muted tiny">${sc.state==="accepted"?"в лидерборде":sc.state==="pending"?"на проверке":"отклонён"}: ${fmtRes(w.type,sc.value)}</div>`:""}</div>
         <input class="inp mono" style="width:150px" id="res_${o.id}_${w.id}" value="${esc(resInput(w.type, sc&&sc.value))}" placeholder="${resHint(w.type)}"><button class="btn sm" data-ressave="${w.id}" data-reg="${o.id}">Сохранить</button></div>`; }).join("")}
