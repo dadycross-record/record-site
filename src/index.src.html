@@ -196,7 +196,7 @@ label.f{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--
 .rule{font-size:12.5px;color:var(--muted);background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:10px 12px}
 .selbtn{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;background:none;border:0;padding:0;text-align:left}
 .selbtn b{font-family:var(--f-display);font-weight:600;font-size:16px;text-transform:uppercase}
-.filters{display:grid;grid-template-columns:1fr 46px;gap:8px}
+.filters{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
 select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 18px) 20px,calc(100% - 13px) 20px;background-size:5px 5px;background-repeat:no-repeat;padding-right:32px}
 .iconbtn{height:46px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);display:grid;place-items:center}
 
@@ -1067,7 +1067,7 @@ leaderboard(){
   const shown = q ? list.filter(r=>r.n.toLowerCase().includes(q)) : list;
   const html = head + `
    <div class="filters" style="margin-top:12px"><select class="inp" id="lbDiv" aria-label="Категория">${divs.map(d=>`<option value="${d.id}" ${d.id===L.div?"selected":""}>${d.name}</option>`).join("")}</select>
-   <button class="iconbtn" data-act="lbsearch" aria-label="Поиск"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></button></div>
+   <div class="row" style="gap:8px">${["owner","admin"].includes(S.viewAs)?`<button class="iconbtn" data-act="lbxlsx" aria-label="Скачать в Excel" title="Скачать лидерборд в Excel"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button>`:""}<button class="iconbtn" data-act="lbsearch" aria-label="Поиск"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></button></div></div>
    ${S.searchOpen?`<input class="inp" id="lbq" style="margin-top:8px" placeholder="Имя атлета или команды" value="${esc(L.q)}" autocomplete="off">`:""}
    ${month==="year"?"":`<div class="pills" role="tablist" style="margin-top:12px"><button role="tab" aria-selected="${wi<0}" data-lbw="-1">${ev0.permanent?"Итог месяца":"Общий зачёт"}</button>${ev.workouts.map((w,i)=>`<button role="tab" aria-selected="${wi===i}" data-lbw="${i}">${w.name.split(" · ")[0]}</button>`).join("")}</div>`}
    ${wi>=0?wodCard(ev.workouts[wi], ev0):""}
@@ -1437,6 +1437,46 @@ const REG_ST = {pending:"Ждёт подтверждения капитана",r
 function sheetRows(ev){
   return ADM.REGS.filter(o=>o.event===ev.id).map(o=>{ const p=o.person||{}, d=ev.divisions.find(x=>x.id===o.div)||{name:""};
     return [dShort(o.date),o.id,ev.name,d.name,evDays(ev).length>1?divDays(ev,d):dShort(ev.date),o.team||"",p.last||"",p.first||"",p.gender==="F"?"Ж":"М",p.dob?dShort(p.dob):"",p.dob?athleteAge(ev,p):"",p.affiliate||"",p.phone||"",o.email||"",p.emName?`${p.emName}, ${p.emPhone||""}`:"",o.size||"",o.promo||"",o.due,o.paid,REG_ST[o.status]||o.status,o.waiver||"",o.publish?"да":"нет",o.note||""]; });
+}
+/* real .xlsx without libraries: sheets = [{name, cols:[widths], rows:[[cell]]}], cell = string | number | {v, b:true} */
+const CRC_T = (()=>{ const t=new Uint32Array(256); for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c = c&1 ? 0xEDB88320^(c>>>1) : c>>>1; t[n]=c>>>0; } return t; })();
+const crc32 = u => { let c=0xFFFFFFFF; for (let i=0;i<u.length;i++) c=CRC_T[(c^u[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; };
+function zipStore(files){
+  const enc=new TextEncoder(), parts=[], central=[]; let off=0;
+  const u16=v=>[v&255,(v>>8)&255], u32=v=>[v&255,(v>>8)&255,(v>>16)&255,(v>>>24)&255];
+  files.forEach(([name,text])=>{ const nb=enc.encode(name), data=enc.encode(text), crc=crc32(data);
+    const head=[...u32(0x04034b50),...u16(20),...u16(0x0800),...u16(0),...u16(0),...u16(0),...u32(crc),...u32(data.length),...u32(data.length),...u16(nb.length),...u16(0)];
+    parts.push(new Uint8Array(head), nb, data);
+    central.push(new Uint8Array([...u32(0x02014b50),...u16(20),...u16(20),...u16(0x0800),...u16(0),...u16(0),...u16(0),...u32(crc),...u32(data.length),...u32(data.length),...u16(nb.length),...u16(0),...u16(0),...u16(0),...u16(0),...u32(0),...u32(off)]), nb);
+    off += head.length+nb.length+data.length; });
+  const csize=central.reduce((a,b)=>a+b.length,0);
+  return new Blob([...parts,...central,new Uint8Array([...u32(0x06054b50),...u16(0),...u16(0),...u16(files.length),...u16(files.length),...u32(csize),...u32(off),...u16(0)])],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+}
+function downloadXlsx(name, sheets){
+  const x = v => String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  const col = i => { let s=""; i++; while(i){ const m=(i-1)%26; s=String.fromCharCode(65+m)+s; i=Math.floor((i-1)/26); } return s; };
+  const used=new Set(), names=sheets.map(sh=>{ let n=String(sh.name).replace(/[\[\]:*?\/\\]/g," ").slice(0,31)||"Лист", k=2; const b=n; while(used.has(n.toLowerCase())) n=b.slice(0,28)+" "+(k++); used.add(n.toLowerCase()); return n; });
+  const sheetXml = sh => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${sh.cols?`<cols>${sh.cols.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join("")}</cols>`:""}<sheetData>${sh.rows.map((r,ri)=>`<row r="${ri+1}">${r.map((c,ci)=>{ if (c===null||c===undefined||c==="") return ""; const o=typeof c==="object"?c:{v:c}, ref=col(ci)+(ri+1), st=o.b?' s="1"':"";
+      return typeof o.v==="number" ? `<c r="${ref}"${st}><v>${o.v}</v></c>` : `<c r="${ref}" t="inlineStr"${st}><is><t xml:space="preserve">${x(o.v)}</t></is></c>`; }).join("")}</row>`).join("")}</sheetData></worksheet>`;
+  const files=[
+    ["[Content_Types].xml",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((_,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")}</Types>`],
+    ["_rels/.rels",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+    ["xl/workbook.xml",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${names.map((n,i)=>`<sheet name="${x(n)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join("")}</sheets></workbook>`],
+    ["xl/_rels/workbook.xml.rels",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join("")}<Relationship Id="rId${sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+    ["xl/styles.xml",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs></styleSheet>`],
+    ...sheets.map((sh,i)=>[`xl/worksheets/sheet${i+1}.xml`, sheetXml(sh)])];
+  const a=document.createElement("a"); a.href=URL.createObjectURL(zipStore(files)); a.download=name; document.body.appendChild(a); a.click(); a.remove();
+  toast(`Файл ${name} сохранён`);
+}
+/* leaderboard of a whole start for organizers: one sheet per category */
+function lbSheets(ev0, month){
+  const RS=allResults(), pts=usesPoints(ev0);
+  return ev0.divisions.filter(d=>RS[resKey(ev0,d.id,month)]).map(d=>{
+    const {ev, rows} = leaderboard(ev0.id, d.id, month), ws=ev.workouts;
+    const head=["Место", d.type==="team"?"Команда":"Атлет", "Зал", ...ws.flatMap(w=>[w.name, "Место", ...(pts?["Баллы"]:[])]), pts?"Итого баллов":"Сумма мест"];
+    const body=rows.map(r=>[r.place, r.n, r.a||"", ...ws.flatMap((w,i)=>{ const v=r.r[i], has=v!==null&&v!==undefined; return [has?(w.type==="time"&&typeof v==="number"?`${Math.floor(v/60)}:${String(Math.floor(v%60)).padStart(2,"0")},${String(Math.round(v*100)%100).padStart(2,"0")}`:typeof v==="object"?`лимит · ${v.cap} повт.`:v):"—", has?r.wr[i]:"", ...(pts?[has?r.wp[i]:0]:[])]; }), r.pts]);
+    return {name:d.name, cols:[7,26,16,...ws.flatMap(()=>[14,7,...(pts?[7]:[])]),12], rows:[[{v:`${ev0.name}${month?" · "+monthTitle(month)+" "+month.slice(0,4):""} · ${d.name}`,b:true}],[],head.map(v=>({v,b:true})),...body]};
+  });
 }
 function downloadCsv(name, rows){
   const q = v => `"${String(v??"").replace(/"/g,'""')}"`;
@@ -2459,7 +2499,7 @@ function resultsTab(ev){
     ${lines.map((L,i)=>{ const v=val(L), r=rk(L); return `<tr><td>${esc(L.name)}</td><td><input class="inp mono" id="rs_${L.reg}" data-rsreg="${L.reg}" data-rsi="${i}" value="${esc(resInput(w.type,v))}" placeholder="${resHint(w.type)}" inputmode="${w.type==="time"?"text":"decimal"}" autocomplete="off"></td>
       <td class="num mono">${v!==null&&r?r.wr[wi]:"—"}</td>${pts?`<td class="num mono">${v!==null&&r?r.wp[wi]:"—"}</td>`:""}</tr>`; }).join("")}
     </tbody></table></div>
-    <div class="row wrap" style="margin-top:12px"><button class="btn sm" data-lbopen="${ev.id}|${div.id}">Открыть лидерборд категории</button></div>`;
+    <div class="row wrap" style="margin-top:12px"><button class="btn sm" data-lbopen="${ev.id}|${div.id}">Открыть лидерборд категории</button>${["owner","admin"].includes(S.viewAs)?`<button class="btn sm ghost" data-act="rsxlsx">Скачать лидерборд в Excel</button>`:""}</div>`;
 }
 async function saveResult(input){
   const ev=curEv(), R=adm.rs, w=(ev.workouts||[]).find(x=>x.id===R.w), reg=input.dataset.rsreg, raw=input.value.trim();
@@ -2724,6 +2764,8 @@ document.addEventListener("click", e=>{
   if (ds.lbdesc){ S.lb.desc = S.lb.desc===ds.lbdesc ? null : ds.lbdesc; return render(); }
   if (ds.lbm){ S.lb.month=ds.lbm; S.lb.w=-1; S.lb.open=null; return render(); }
   if (ds.lbmonth){ S.lb.ev=ds.lbev; S.lb.month=ds.lbmonth; S.lb.w=-1; S.lb.open=null; S.lb.tab="ind"; S.lb.div="m"; return tab("leaderboard"); }
+  if (ds.act==="rsxlsx"){ const ev0=EVENTS.find(e=>e.id===adm.rs.ev); const sh=ev0&&lbSheets(ev0, ev0.permanent ? (S.lb.month&&S.lb.month!=="year"?S.lb.month:curMonth(ev0).id) : null); if (!sh||!sh.length) return toast("Результатов пока нет"); downloadXlsx(`leaderboard-${ev0.id}.xlsx`, sh); return; }
+  if (ds.act==="lbxlsx"){ const ev0=EVENTS.find(e=>e.id===S.lb.ev); const sh=ev0&&lbSheets(ev0, ev0.permanent ? (S.lb.month&&S.lb.month!=="year"?S.lb.month:curMonth(ev0).id) : null); if (!sh||!sh.length) return toast("Результатов пока нет"); downloadXlsx(`leaderboard-${ev0.id}.xlsx`, sh); return; }
   if (ds.act==="lbsearch"){ S.searchOpen=!S.searchOpen; if(!S.searchOpen) S.lb.q=""; render(); const i=document.getElementById("lbq"); i&&i.focus(); return; }
   if (ds.row!==undefined){ S.lb.open = S.lb.open===ds.row?null:ds.row; return render(); }
   if (ds.refund){ S.p={...S.p,refund:ds.refund}; return render(); }
