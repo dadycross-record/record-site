@@ -1709,6 +1709,10 @@ function adminClick(t, ds){
   }
   if (ds.regdel){ adm.regDel=ds.regdel; render(); return true; }
   if (ds.regdelno){ adm.regDel=null; render(); return true; }
+  if (ds.act==="regbulkdel"){ adm.bulkDel=true; render(); return true; }
+  if (ds.act==="regbulkdelno"){ adm.bulkDel=false; render(); return true; }
+  if (ds.act==="regbulkdelyes"){ const ev=curEv(), {list}=regFilter(ev, ADM.REGS.filter(o=>o.event===ev.id)); const ids=list.filter(o=>["cancelled","blocked","refunded"].includes(o.status)).map(o=>o.id);
+    Promise.all(ids.map(id=>api("DELETE","/api/admin/regs/"+encodeURIComponent(id)).then(()=>id).catch(()=>null))).then(async done=>{ const ok=done.filter(Boolean); ADM.REGS=ADM.REGS.filter(x=>!ok.includes(x.id)); adm.bulkDel=false; adm.rf.st="all"; await loadContent(); render(); toast(`Удалено: ${ok.length}`); }); return true; }
   if (ds.regdelyes){ const id=ds.regdelyes; api("DELETE","/api/admin/regs/"+encodeURIComponent(id)).then(async()=>{ ADM.REGS=ADM.REGS.filter(x=>x.id!==id); adm.regDel=null; adm.regOpen=null; await loadContent(); render(); toast("Заявка удалена"); }).catch(err=>toast(err.message)); return true; }
   if (ds.rst){ adm.rf.st=ds.rst; adm.rf.sel={}; render(); return true; }
   if (ds.regopen){ adm.regOpen = adm.regOpen===ds.regopen ? null : ds.regopen; render(); return true; }
@@ -2466,13 +2470,14 @@ function regTable(ev, regs){
   return `<div class="pills" role="tablist">${tabs.map(k=>`<button role="tab" aria-selected="${F.st===k}" data-rst="${k}">${k==="all"?"Все":REG_TAB[k][0]} · ${cnt(k)}</button>`).join("")}</div>
     <div class="regbar"><input class="inp" id="regQ" placeholder="Фамилия, телефон или номер заказа" value="${esc(F.q)}" autocomplete="off">
       <select class="inp" id="regDiv"><option value="">Все категории</option>${ev.divisions.map(d=>`<option value="${d.id}" ${F.div===d.id?"selected":""}>${esc(d.name)}</option>`).join("")}</select></div>
+    ${["cancelled","blocked","refunded"].includes(F.st)&&list.length?`<div class="regsel"><span>${adm.bulkDel?`Удалить навсегда все ${list.length} из вкладки «${REG_TAB[F.st][0]}»? Восстановить будет нельзя (только из резервной копии).`:`Отменённые и отклонённые можно убрать из списка совсем.`}</span>${adm.bulkDel?`<button class="btn sm danger" data-act="regbulkdelyes">Удалить ${list.length}</button><button class="btn sm ghost" data-act="regbulkdelno">Нет</button>`:`<button class="btn sm ghost" data-act="regbulkdel">Удалить все из вкладки</button>`}</div>`:""}
     ${sel.length?`<div class="regsel"><span>Выбрано: <b>${sel.length}</b> · ${fmtRub(selSum)}</span><button class="btn sm" data-act="regbulk">Отметить оплаченными</button><button class="btn sm ghost" data-act="regclear">Снять выбор</button></div>`:""}
     ${rows.length?`<div class="card tbl-wrap" style="padding:0 4px"><table class="tbl regs"><thead><tr><th class="ck">${newIn.length?`<input type="checkbox" id="regAll" ${allSel?"checked":""} aria-label="Выбрать всех, кто ждёт оплаты">`:""}</th><th>Участник</th><th class="c-hide">Категория</th><th class="num">Сумма</th><th class="c-hide">Дата</th><th></th></tr></thead><tbody>
     ${rows.map(o=>{ const p=o.person||{}, open=adm.regOpen===o.id;
       return `<tr class="${open?"open":""}${o.status==="new"?" unproc":""}"><td class="ck">${o.status==="new"?`<input type="checkbox" id="regSel_${o.id}" data-sel="${o.id}" ${F.sel[o.id]?"checked":""} aria-label="Выбрать">`:""}</td>
         <td><button class="linkbtn regname" data-regopen="${o.id}">${esc(p.last||"")} ${esc(p.first||"")}</button><div class="muted tiny">${esc(p.phone||"")}${o.team?` · ${esc(o.team)}`:""}</div>${o.note?`<div class="tiny regnote">Комментарий: ${esc(o.note.length>60?o.note.slice(0,60)+"…":o.note)}</div>`:""}</td>
         <td class="small c-hide">${esc(divName(o.div))}</td><td class="num mono">${fmtRub(o.status==="paid"?o.paid:o.due)}</td><td class="small mono c-hide">${dShort(o.date)}</td>
-        <td class="act">${o.status==="new"?`<button class="btn sm" data-regst="paid" data-reg="${o.id}">Оплачено</button>`:(o.waiver?`<span class="chip ok" title="${esc(o.waiver)}">бесплатно</span>`:`<span class="chip ${REG_TAB[o.status][1]}">${REG_ST1[o.status]}</span>`)}</td></tr>
+        <td class="act">${o.status==="new"?`<button class="btn sm" data-regst="paid" data-reg="${o.id}">Оплачено</button>`:(o.waiver?`<span class="chip ok" title="${esc(o.waiver)}">бесплатно</span>`:`<span class="chip ${REG_TAB[o.status][1]}">${REG_ST1[o.status]}</span>`)}${["cancelled","blocked","refunded"].includes(o.status)?(adm.regDel===o.id?` <button class="btn sm danger" data-regdelyes="${o.id}">Удалить навсегда</button> <button class="btn sm ghost" data-regdelno="1">Нет</button>`:` <button class="btn sm ghost" data-regdel="${o.id}" title="Удалить заявку из списка навсегда" aria-label="Удалить">✕</button>`):""}</td></tr>
         ${open?`<tr class="detail"><td></td><td colspan="5">${regDetail(ev,o)}</td></tr>`:""}`; }).join("")}
     </tbody></table></div>`:'<div class="empty">Никого не нашли. Измените фильтр или поиск.</div>'}`;
 }
