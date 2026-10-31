@@ -981,6 +981,28 @@ route('DELETE', '/api/admin/crew/:id', async (req, res, u, body, p) => {
   await db.query('delete from crew where id=$1', [Number(p.id) || 0]);
   return { ok: true };
 });
+/* head judge (confirmed, applied from the site) manages the crew of their start: confirm / decline / mark work; no money */
+async function headJudgeEvents(u) {
+  return (await db.query(`select distinct event_id from crew where user_id=$1 and role='head_judge' and status='confirmed'`, [u.id])).rows.map(r => r.event_id);
+}
+const crewOutNoMoney = c => { const o = crewOut(c); delete o.rate; return o; };
+route('GET', '/api/crew/manage', async (req, res, u) => {
+  need(u);
+  const evs = await headJudgeEvents(u);
+  if (!evs.length) throw new HttpError(403, 'Раздел доступен главному судье старта');
+  const crew = (await db.query('select * from crew where event_id in (select jsonb_array_elements_text($1::jsonb)) order by created_at', [JSON.stringify(evs)])).rows.map(crewOutNoMoney);
+  const cfg = Object.fromEntries((await db.query('select event_id, shift_hours from crew_rates where event_id in (select jsonb_array_elements_text($1::jsonb))', [JSON.stringify(evs)])).rows.map(r => [r.event_id, { rates: {}, shift: Number(r.shift_hours) }]));
+  return { events: evs, crew, cfg };
+});
+route('PATCH', '/api/crew/manage/:id', async (req, res, u, body, p) => {
+  need(u);
+  const cur = (await db.query('select * from crew where id=$1', [Number(p.id) || 0])).rows[0];
+  if (!cur || !(await headJudgeEvents(u)).includes(cur.event_id)) throw new HttpError(403, 'Нет доступа');
+  const f = crewFields({ status: body.status, work: body.work, role: body.role, note: body.note }, cur);
+  const r = await db.query('update crew set role=$1, status=$2, work=$3, note=$4, updated_by=$5 where id=$6 returning *', [f.role, f.status, f.work, f.note, u.email, cur.id]);
+  return { crew: crewOutNoMoney(r.rows[0]) };
+});
+
 route('PUT', '/api/admin/crew-rates/:event', async (req, res, u, body, p) => {
   need(u, 'owner', 'admin');
   const ev = decodeURIComponent(p.event);

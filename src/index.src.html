@@ -224,6 +224,8 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 #cropZ{accent-color:var(--accent)}
 .teambox{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px}.teambox .arow{gap:8px}.inp.sm{height:34px;padding:0 8px;font-size:13px;width:auto}
 .waiver{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.waiver .inp{flex:1;min-width:200px}
+.crq{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--line)}.crq:last-child{border-bottom:0}.crq-act{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.crewadd-box summary{cursor:pointer;list-style:none}.crewadd-box summary::-webkit-details-marker{display:none}.tbl.crew tr.tot td{border-top:2px solid var(--line)}
 .big-av.xl{width:84px;height:84px;font-size:28px;border-radius:20px;flex:none}
 .big-av{width:60px;height:60px;border-radius:16px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--f-display);font-weight:800;font-size:22px}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}.stats.s4{grid-template-columns:repeat(4,1fr)}@media(max-width:600px){.stats.s4{grid-template-columns:repeat(2,1fr)}}
@@ -710,7 +712,7 @@ function cookieBar(force){
   b.innerHTML=`<p>Мы используем cookies: необходимые — чтобы работали формы и вход, и аналитические Яндекс Метрики — чтобы понимать, что на сайте удобно, а что нет. Аналитические включим только с вашего согласия. <a href="/docs/privacy" target="_blank">Подробнее</a></p><div class="row"><button class="btn sm" data-ck="all">Принять</button><button class="btn sm ghost" data-ck="need">Только необходимые</button></div>`;
   document.body.appendChild(b);
 }
-const ROOT_TAB = {invite:"events",crewApply:"events",login:"me",home:"home",events:"events",event:"events",divisions:"events",team:"events",teamCreate:"events",teamJoin:"events",form:"events",pay:"events",done:"events",fail:"events",leaderboard:"leaderboard",me:"me",orders:"me",score:"me",qr:"me",profile:"me",admin:"me",adminEvent:"me",adminDiv:"me",adminWod:"me",adminPeople:"me",adminSch:"me",adminPromo:"me",adminClub:"me"};
+const ROOT_TAB = {crewManage:"me",invite:"events",crewApply:"events",login:"me",home:"home",events:"events",event:"events",divisions:"events",team:"events",teamCreate:"events",teamJoin:"events",form:"events",pay:"events",done:"events",fail:"events",leaderboard:"leaderboard",me:"me",orders:"me",score:"me",qr:"me",profile:"me",admin:"me",adminEvent:"me",adminDiv:"me",adminWod:"me",adminPeople:"me",adminSch:"me",adminPromo:"me",adminClub:"me"};
 
 function header(title){
   if (isClub()) return clubHeader();
@@ -1061,6 +1063,7 @@ me(){
     ${["owner","admin","judge"].includes(S.viewAs)?`<button data-go="admin"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span class="sp">${S.viewAs==="judge"?"Панель судьи":"Панель организатора"}</span><span class="chip warn">${ROLE_L[S.viewAs]}</span></button>`:""}
     <button data-go="orders"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/></svg><span class="sp">Мои старты</span><span class="chip neutral">${ORDERS.length}</span></button>
     ${canScore?`<button data-go="score"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M6 9l6-6 6 6M4 21h16"/></svg><span class="sp">Сдать результат</span><span class="chip live">идёт приём</span></button>`:""}
+    ${MYCREW.some(c=>c.role==="head_judge"&&c.status==="confirmed")?`<button data-go="crewManage"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5M17 11l2 2 3-4"/></svg><span class="sp">Команда старта</span><span class="chip neutral">главный судья</span></button>`:""}
     <button data-go="profile"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4zM8 9h8M8 13h8M8 17h5"/></svg><span class="sp">Анкета участника</span></button>
     <button data-act="logout"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg><span class="sp">Выйти</span></button>
    </div>
@@ -1086,6 +1089,16 @@ login(){
     ${L.err?`<div class="err-t">${esc(L.err)}</div>`:""}
     <button class="btn block" type="submit" ${L.busy?"disabled":""}>${L.busy?"Отправляю…":"Получить код"}</button>
    </form>`};
+},
+crewManage(){
+  const M = S.p.m;
+  if (!M){ if (!S.p.loading){ S.p.loading=true; api("GET","/api/crew/manage").then(r=>{ ADM.CREW=r.crew; ADM.CREW_CFG=r.cfg||{}; S.p={...S.p, m:r, ev:r.events[0]}; adm.evId=r.events[0]; render(); }).catch(err=>{ S.p={...S.p, m:{err:err.message}}; render(); }); }
+    return {title:"Команда старта", html:'<div class="muted">Загружаю…</div>'}; }
+  if (M.err) return {title:"Команда старта", html:`<div class="empty">${esc(M.err)}</div>`};
+  adm.evId = S.p.ev; const ev = EVENTS.find(e=>e.id===S.p.ev); if (!ev) return {title:"Команда старта", html:'<div class="empty">Старт не найден</div>'};
+  return {title:"Команда старта", html:`${M.events.length>1?`<div class="pills">${M.events.map(id=>{ const e=EVENTS.find(x=>x.id===id); return `<button aria-selected="${id===S.p.ev}" data-mev="${id}">${esc(e?e.name:id)}</button>`; }).join("")}</div>`:""}
+    <div class="muted small" style="margin-bottom:10px">${esc(ev.name)} · вы главный судья: подтверждаете людей и отмечаете отработанные смены. Оплату считает организатор.</div>
+    ${crewTab(ev, ADM.CREW.filter(c=>c.event===ev.id), false)}`};
 },
 crewApply(){
   const ev = EVENTS.find(e=>e.id===S.p.ev); if (!ev) return {title:"Команда старта", html:'<div class="empty">Старт не найден</div>'};
@@ -1411,7 +1424,7 @@ function admEvRow(e){
 }
 const ROLE_L = {owner:"Владелец",admin:"Организатор",judge:"Судья",athlete:"Участник"};
 const ADMIN_ROUTES = ["adminClub","admin","adminEvent","adminDiv","adminWod","adminSch","adminPeople","adminPromo"];
-const LOGIN_ROUTES = ["me","orders","crewApply","score","profile","form","team","teamCreate","teamJoin","done",...ADMIN_ROUTES];
+const LOGIN_ROUTES = ["me","orders","crewApply","crewManage","score","profile","form","team","teamCreate","teamJoin","done",...ADMIN_ROUTES];
 function allowed(route){
   if (!ADMIN_ROUTES.includes(route)) return true;
   if (!["owner","admin","judge"].includes(S.viewAs)) return false;
@@ -1654,22 +1667,27 @@ function adminClick(t, ds){
   }
   if (ds.act==="msave"){ const v=document.getElementById("mId").value.replace(/\D/g,""); if (v && (v.length<5||v.length>12)) { toast("Номер счётчика — 5–12 цифр"); return true; } SITE.metrika=v; render(); toast(v?"Метрика подключена":"Метрика отключена"); cookieBar(); mkStart(); return true; }
   if (ds.ptab){ adm.ptab=ds.ptab; render(); window.scrollTo(0,0); return true; }
-  if (ds.cst){ adm.cf.st=ds.cst; render(); return true; }
+  if (ds.cst){ return true; }
   if (ds.crewopen){ const id=+ds.crewopen; adm.crewOpen = adm.crewOpen===id ? null : id; adm.crewDel=null; render(); return true; }
   if (ds.crewdel){ adm.crewDel=+ds.crewdel; render(); return true; }
   if (ds.crewdelno){ adm.crewDel=null; render(); return true; }
   if (ds.crewdelyes){ const id=+ds.crewdelyes; api("DELETE","/api/admin/crew/"+id).then(()=>{ ADM.CREW=ADM.CREW.filter(c=>c.id!==id); adm.crewOpen=null; adm.crewDel=null; render(); toast("Удалён из команды"); }).catch(err=>toast(err.message)); return true; }
   if (ds.act==="crewadd"){
-    const g=id=>document.getElementById(id).value; const A={name:g("caName").trim(), phone:g("caPhone").trim(), role:g("caRole"), status:g("caSt")}; adm.cAdd=A;
+    const g=id=>document.getElementById(id).value; const A={name:g("caName").trim(), phone:g("caPhone").trim(), role:g("caRole"), status:"confirmed", open:true}; adm.cAdd=A;
     if (!A.name){ toast("Укажите имя"); return true; }
-    api("POST","/api/admin/crew",{event:curEv().id, ...A}).then(r=>{ ADM.CREW.push(r.crew); adm.cAdd={role:A.role, status:A.status}; render(); toast(`${r.crew.name} добавлен(а)`); }).catch(err=>toast(err.message)); return true;
+    api("POST","/api/admin/crew",{event:curEv().id, ...A}).then(r=>{ ADM.CREW.push(r.crew); adm.cAdd={role:A.role, open:true}; render(); toast(`${r.crew.name} добавлен(а)`); }).catch(err=>toast(err.message)); return true;
   }
+  if (ds.mev){ S.p={...S.p, ev:ds.mev}; adm.evId=ds.mev; render(); return true; }
+  if (ds.crewok || ds.crewno || ds.crewback){ const id=+(ds.crewok||ds.crewno||ds.crewback), body={status:ds.crewok?"confirmed":ds.crewno?"declined":"request"};
+    if (ds.crewok){ const r=document.getElementById("crRole_"+id); if (r) body.role=r.value; }
+    api("PATCH",crewApi(id),body).then(r=>{ ADM.CREW=ADM.CREW.map(c=>c.id===id?r.crew:c); adm.crewOpen=null; render(); toast(ds.crewok?`${r.crew.name} в команде`:ds.crewno?"Отказано":"Возвращён в заявки"); }).catch(err=>toast(err.message)); return true; }
   if (ds.crewsave){
-    const id=+ds.crewsave, ev=curEv(), g=k=>document.getElementById(k+"_"+id).value, work={};
+    const id=+ds.crewsave, ev=curEv(), g=k=>{ const el=document.getElementById(k+"_"+id); return el?el.value:undefined; }, work={};
     for (const d of crewDays(ev)){ const k=document.getElementById(`ceW_${id}_${d}`).value, h=document.getElementById(`ceH_${id}_${d}`).value.replace(",",".").trim();
       if (k==="h"){ if (!(+h>0)){ toast(`${dayShort(d)}: укажите, сколько часов`); return true; } work[d]={k, h:+h}; } else if (k) work[d]={k}; }
     const cur=ADM.CREW.find(c=>c.id===id); Object.entries(cur.work||{}).forEach(([d,w])=>{ if (!crewDays(ev).includes(d)) work[d]=w; });
-    api("PATCH","/api/admin/crew/"+id,{name:g("ceName"), phone:g("cePhone"), role:g("ceRole"), status:g("ceSt"), rate:g("ceRate").replace(/\s/g,""), contact:g("ceCont"), note:g("ceNote"), work})
+    const rate=g("ceRate");
+    api("PATCH",crewApi(id),{role:g("ceRole"), note:g("ceNote"), work, ...(rate!==undefined?{rate:rate.replace(/\s/g,"")}:{})})
       .then(r=>{ ADM.CREW=ADM.CREW.map(c=>c.id===id?r.crew:c); adm.crewOpen=null; render(); toast("Сохранено"); }).catch(err=>toast(err.message)); return true;
   }
   if (ds.act==="crewrates"){
@@ -1680,7 +1698,7 @@ function adminClick(t, ds){
   if (ds.act==="crewrates-go"){ adm.err={}; adm.delAsk=false; adm.st=curEv().status; go("adminEvent",{}); setTimeout(()=>{ const el=document.getElementById("crewcfg"); if (el) el.scrollIntoView({block:"start"}); },50); return true; }
   if (ds.act==="crewlist"){ adm.ptab="crew"; go("adminPeople",{}); return true; }
   if (ds.act==="crewcsv"){
-    const ev=curEv(), days=crewDays(ev), crew=ADM.CREW.filter(c=>c.event===ev.id).sort((a,b)=>CREW_ORDER.indexOf(a.role)-CREW_ORDER.indexOf(b.role)||a.name.localeCompare(b.name,"ru"));
+    const ev=curEv(), days=crewDays(ev), crew=ADM.CREW.filter(c=>c.event===ev.id && c.status==="confirmed").sort((a,b)=>CREW_ORDER.indexOf(a.role)-CREW_ORDER.indexOf(b.role)||a.name.localeCompare(b.name,"ru"));
     const head=["Должность","Имя","Телефон","Контакт","Статус",...days.map(dayShort),"Смен","Ставка за смену","К выплате","Комментарий"];
     const rows=crew.map(c=>[CREW_ROLE[c.role][0],c.name,c.phone,c.contact,CREW_STL[c.status][0],...days.map(d=>workLbl(c.work[d])),fmtShift(crewShifts(ev,c)),crewRate(ev,c),crewPay(ev,c),c.note]);
     rows.push(["Итого","","","","",...days.map(()=>""),fmtShift(crew.reduce((a,c)=>a+crewShifts(ev,c),0)),"",crew.reduce((a,c)=>a+crewPay(ev,c),0),""]);
@@ -2396,54 +2414,56 @@ const crewShifts = (ev,c) => crewDays(ev).reduce((a,d)=>a+workFrac(ev,c.work[d])
 const crewPay = (ev,c) => Math.round(crewShifts(ev,c)*crewRate(ev,c));
 const fmtShift = n => n ? (Math.round(n*100)/100).toString().replace(".",",") : "0";
 const workLbl = w => !w ? "" : w.k==="full" ? "смена" : w.k==="half" ? "½" : `${String(w.h).replace(".",",")} ч`;
-function crewTab(ev, crew){
-  const cfg = crewCfg(ev), days = crewDays(ev), F = adm.cf = adm.cf && adm.cf.ev===ev.id ? adm.cf : {ev:ev.id, st:"all"};
-  const cnt = k => crew.filter(c=>k==="all"||c.status===k).length;
-  const list = crew.filter(c=>F.st==="all"||c.status===F.st);
-  const total = crew.reduce((a,c)=>a+crewPay(ev,c),0);
-  const ratesTxt = CREW_ORDER.map(k=>`${CREW_ROLE[k][0]} — ${cfg.rates[k]!=null?fmtRub(cfg.rates[k]):"не задана"}`).join(" · ");
+/* crew tab: requests (name, expected role, phone) -> confirmed by organizer or head judge -> work per day and pay */
+function crewTab(ev, crew, money=true){
+  const cfg = crewCfg(ev), days = crewDays(ev);
+  const req = crew.filter(c=>c.status==="request"), ok = crew.filter(c=>c.status==="confirmed"), no = crew.filter(c=>c.status==="declined");
+  const total = ok.reduce((a,c)=>a+crewPay(ev,c),0), shifts = ok.reduce((a,c)=>a+crewShifts(ev,c),0);
   const opt = (o,cur) => o.map(([k,l])=>`<option value="${k}" ${k===cur?"selected":""}>${l}</option>`).join("");
+  const roleSel = (id,cur) => `<select class="inp sm" id="${id}" aria-label="Должность">${opt(CREW_ORDER.map(k=>[k,CREW_ROLE[k][0]]), cur)}</select>`;
   const A = adm.cAdd || {};
-  return `<div class="stats flat" style="margin-top:0"><div><b>${cnt("confirmed")}</b><span>Подтверждены</span></div><div><b class="${cnt("request")?"acc":""}">${cnt("request")}</b><span>Запросы</span></div><div><b style="font-size:17px">${fmtRub(total)}</b><span>К выплате</span></div></div>
-    <div class="card stack" style="gap:6px"><div class="row"><b class="sp">Ставки за смену · ${fmtShift(cfg.shift)} ч</b><button class="btn sm ghost" data-act="crewrates-go">Изменить</button></div><div class="muted small">${ratesTxt}</div>
-      <div class="muted tiny">Галочка в дне — полная смена. Пол смены или часы — откройте человека по имени. Оплата считается от ставки: ½ смены — половина ставки, часы — доля от ${fmtShift(cfg.shift)} ч.</div></div>
-    <h2 class="sec">Добавить в команду</h2>
-    <div class="card"><div class="crewadd">
+  return `<div class="stats flat${money?" s4":""}" style="margin-top:0"><div><b>${ok.length}</b><span>В команде</span></div><div><b class="${req.length?"acc":""}">${req.length}</b><span>Заявки</span></div><div><b>${fmtShift(shifts)}</b><span>Смен отработано</span></div>${money?`<div><b style="font-size:17px">${fmtRub(total)}</b><span>Затраты на команду</span></div>`:""}</div>
+
+    <h2 class="sec">Заявки в команду${req.length?` · ${req.length}`:""}</h2>
+    ${req.length?`<div class="card" style="padding:4px 14px">${req.map(c=>`<div class="crq"><div class="sp"><b>${esc(c.name)}</b>${c.source==="site"?' <span class="chip neutral">с сайта</span>':""}
+        <div class="small">${esc(c.phone||"телефон не указан")}${c.info&&c.info.dob?` · ${esc(c.info.dob.slice(0,4))} г.р.`:""}${c.info&&c.info.gym?` · ${esc(c.info.gym)}`:""}</div>
+        ${c.avail&&c.avail.length&&days.length>1?`<div class="muted tiny">может: ${c.avail.filter(d=>days.includes(d)).map(dayShort).join(", ")}</div>`:""}${c.note?`<div class="tiny regnote">${esc(c.note)}</div>`:""}</div>
+        <div class="crq-act">${roleSel("crRole_"+c.id, c.role)}<button class="btn sm" data-crewok="${c.id}">Подтвердить</button><button class="btn sm ghost" data-crewno="${c.id}">Отказать</button></div></div>`).join("")}</div>`
+      :'<div class="muted small">Новых заявок нет.</div>'}
+
+    ${money?`<details class="card crewadd-box"${A.open?" open":""}><summary><b>+ Добавить человека вручную</b></summary><div class="crewadd" style="margin-top:10px">
       <label class="f">Имя и фамилия<input class="inp" id="caName" value="${esc(A.name||"")}" placeholder="Иван Петров"></label>
       <label class="f">Телефон<input class="inp" id="caPhone" inputmode="tel" value="${esc(A.phone||"")}" placeholder="+7 914 …"></label>
       <label class="f">Должность<select class="inp" id="caRole">${opt(CREW_ORDER.map(k=>[k,CREW_ROLE[k][0]]), A.role||"judge")}</select></label>
-      <label class="f">Статус<select class="inp" id="caSt">${opt(Object.entries(CREW_STL).map(([k,v])=>[k,v[0]]), A.status||"request")}</select></label>
-      <button class="btn" data-act="crewadd">Добавить</button></div>
-      <div class="muted tiny" style="margin-top:6px">«Запрос» — предварительно: человек может прийти. «Подтверждён» — точно работает на старте.</div></div>
-    <h2 class="sec">Команда · ${crew.length}</h2>
-    ${crew.length?`<div class="pills" role="tablist">${["all","confirmed","request","declined"].filter(k=>k==="all"||cnt(k)).map(k=>`<button role="tab" aria-selected="${F.st===k}" data-cst="${k}">${k==="all"?"Все":CREW_STL[k][0]} · ${cnt(k)}</button>`).join("")}</div>`:""}
-    ${list.length?`<div class="card tbl-wrap" style="padding:0 4px"><table class="tbl crew"><thead><tr><th>Человек</th>${days.map(d=>`<th class="dcol">${dayShort(d)}</th>`).join("")}<th class="num">Смен</th><th class="num">К выплате</th></tr></thead><tbody>
-      ${CREW_ORDER.map(role=>{ const rs=list.filter(c=>c.role===role).sort((a,b)=>(a.status==="declined")-(b.status==="declined")||a.name.localeCompare(b.name,"ru")); if(!rs.length) return "";
-        return `<tr class="grp"><td colspan="${days.length+3}">${CREW_ROLE[role][rs.length>1?1:0]}${CREW_ROLE[role][2]?' <span class="chip neutral" style="margin-left:6px">высшее звено</span>':""}</td></tr>`+rs.map(c=>{ const open=adm.crewOpen===c.id;
-          return `<tr class="${open?"open":""}${c.status==="declined"?" off":""}"><td><button class="linkbtn regname" data-crewopen="${c.id}">${esc(c.name)}</button> <span class="chip ${CREW_STL[c.status][1]}">${CREW_STL[c.status][0]}</span>${c.source==="site"?' <span class="chip neutral">с сайта</span>':""}<div class="muted tiny">${esc(c.phone)}${c.info&&c.info.dob?` · ${esc(c.info.dob.slice(0,4))} г.р.`:""}${c.info&&c.info.gym?` · ${esc(c.info.gym)}`:""}${c.rate!=null?` · своя ставка ${fmtRub(c.rate)}`:""}${c.avail&&c.avail.length&&days.length>1?` · может: ${c.avail.filter(d=>days.includes(d)).map(dayShort).join(", ")}`:""}</div>${c.note?`<div class="tiny regnote">${esc(c.note.length>60?c.note.slice(0,60)+"…":c.note)}</div>`:""}</td>
+      <button class="btn" data-act="crewadd">Добавить в команду</button></div><div class="muted tiny" style="margin-top:6px">Добавленный вручную сразу попадает в подтверждённую команду.</div></details>`:""}
+
+    <h2 class="sec">Команда · ${ok.length}</h2>
+    ${money?`<div class="muted small" style="margin:-4px 0 10px">Ставки за смену (${fmtShift(cfg.shift)} ч): ${CREW_ORDER.filter(k=>cfg.rates[k]!=null).map(k=>`${CREW_ROLE[k][0].toLowerCase()} ${fmtRub(cfg.rates[k])}`).join(" · ")||"не заданы"} · <button class="linkbtn" data-act="crewrates-go">изменить</button></div>`:""}
+    ${ok.length?`<div class="card tbl-wrap" style="padding:0 4px"><table class="tbl crew"><thead><tr><th>Человек</th>${days.map(d=>`<th class="dcol">${dayShort(d)}</th>`).join("")}<th class="num">Смен</th>${money?'<th class="num">К выплате</th>':""}</tr></thead><tbody>
+      ${CREW_ORDER.map(role=>{ const rs=ok.filter(c=>c.role===role).sort((a,b)=>a.name.localeCompare(b.name,"ru")); if(!rs.length) return "";
+        return `<tr class="grp"><td colspan="${days.length+(money?3:2)}">${CREW_ROLE[role][rs.length>1?1:0]}</td></tr>`+rs.map(c=>{ const open=adm.crewOpen===c.id;
+          return `<tr class="${open?"open":""}"><td><button class="linkbtn regname" data-crewopen="${c.id}">${esc(c.name)}</button><div class="muted tiny">${esc(c.phone)}</div></td>
             ${days.map(d=>{ const w=c.work[d]; return `<td class="dcol">${!w||w.k==="full"?`<input type="checkbox" data-cwd="${c.id}|${d}" ${w?"checked":""} aria-label="${esc(c.name)}: ${dayShort(d)}, полная смена">`:`<button class="linkbtn wk" data-crewopen="${c.id}">${workLbl(w)}</button>`}</td>`; }).join("")}
-            <td class="num mono">${fmtShift(crewShifts(ev,c))}</td><td class="num mono">${fmtRub(crewPay(ev,c))}</td></tr>
-            ${open?`<tr class="detail"><td colspan="${days.length+3}">${crewDetail(ev,c)}</td></tr>`:""}`; }).join(""); }).join("")}
-      <tr><td><b>Итого</b></td>${days.map(d=>`<td class="dcol muted tiny">${list.filter(c=>c.work[d]).length} чел.</td>`).join("")}<td class="num mono"><b>${fmtShift(list.reduce((a,c)=>a+crewShifts(ev,c),0))}</b></td><td class="num mono"><b>${fmtRub(list.reduce((a,c)=>a+crewPay(ev,c),0))}</b></td></tr>
+            <td class="num mono">${fmtShift(crewShifts(ev,c))}</td>${money?`<td class="num mono">${fmtRub(crewPay(ev,c))}</td>`:""}</tr>
+            ${open?`<tr class="detail"><td colspan="${days.length+(money?3:2)}">${crewDetail(ev,c,money)}</td></tr>`:""}`; }).join(""); }).join("")}
+      <tr class="tot"><td><b>Итого на команду</b></td>${days.map(d=>`<td class="dcol muted tiny">${ok.filter(c=>c.work[d]).length} чел.</td>`).join("")}<td class="num mono"><b>${fmtShift(shifts)}</b></td>${money?`<td class="num mono"><b>${fmtRub(total)}</b></td>`:""}</tr>
       </tbody></table></div>
-      <div class="row wrap" style="margin-top:12px"><button class="btn sm ghost" data-act="crewcsv">Скачать ведомость для Excel</button></div>`
-    : `<div class="empty">${crew.length?"Никого с таким статусом":"В команде пока никого. Добавьте судей, волонтёров и помощников выше."}</div>`}`;
+      <div class="muted tiny" style="margin-top:6px">Галочка — полная смена. Пол смены или часы — нажмите на имя.</div>
+      ${money?'<div class="row wrap" style="margin-top:12px"><button class="btn sm" data-act="crewcsv">Скачать ведомость для Excel</button></div>':""}`
+    : '<div class="empty">Подтверждённых пока нет. Подтвердите заявки выше или добавьте человека вручную.</div>'}
+    ${no.length?`<details style="margin-top:14px"><summary class="muted small">Отказано: ${no.length}</summary><div class="card" style="padding:4px 14px;margin-top:8px">${no.map(c=>`<div class="arow"><div class="sp small">${esc(c.name)} · ${CREW_ROLE[c.role][0].toLowerCase()} · ${esc(c.phone)}</div><button class="btn sm ghost" data-crewback="${c.id}">Вернуть в заявки</button>${money?`<button class="btn sm ghost" data-crewdelyes="${c.id}">Удалить</button>`:""}</div>`).join("")}</div></details>`:""}`;
 }
-function crewDetail(ev, c){
+const crewApi = id => (S.route==="crewManage" ? "/api/crew/manage/" : "/api/admin/crew/") + id;
+function crewDetail(ev, c, money=true){
   const cfg = crewCfg(ev), opt = (o,cur) => o.map(([k,l])=>`<option value="${k}" ${k===cur?"selected":""}>${l}</option>`).join("");
   return `<div class="stack" style="gap:10px">
+    <div class="f">Отработано${crewDays(ev).map(d=>{ const w=c.work[d]||{}; return `<div class="crewday"><span class="small">${dayShort(d)}</span><select class="inp" id="ceW_${c.id}_${d}">${opt([["","не работал"],["full","полная смена"],["half","½ смены"],["h","часы"]], w.k||"")}</select><input class="inp mono" id="ceH_${c.id}_${d}" inputmode="decimal" placeholder="ч" value="${w.k==="h"?String(w.h).replace(".",","):""}" aria-label="Часов"></div>`; }).join("")}</div>
     <div class="regedit">
-      <label class="f">Имя и фамилия<input class="inp" id="ceName_${c.id}" value="${esc(c.name)}"></label>
-      <label class="f">Телефон<input class="inp" id="cePhone_${c.id}" value="${esc(c.phone)}"></label>
       <label class="f">Должность<select class="inp" id="ceRole_${c.id}">${opt(CREW_ORDER.map(k=>[k,CREW_ROLE[k][0]]), c.role)}</select></label>
-      <label class="f">Статус<select class="inp" id="ceSt_${c.id}">${opt(Object.entries(CREW_STL).map(([k,v])=>[k,v[0]]), c.status)}</select></label>
-      <label class="f">Своя ставка за смену, ₽<input class="inp mono" id="ceRate_${c.id}" inputmode="numeric" value="${c.rate??""}" placeholder="по должности: ${cfg.rates[c.role]!=null?cfg.rates[c.role]:"не задана"}"></label>
-      <label class="f">Контакт (Telegram, VK, email)<input class="inp" id="ceCont_${c.id}" value="${esc(c.contact)}"></label>
+      ${money?`<label class="f">Своя ставка за смену, ₽<input class="inp mono" id="ceRate_${c.id}" inputmode="numeric" value="${c.rate??""}" placeholder="по должности: ${cfg.rates[c.role]!=null?cfg.rates[c.role]:"—"}"></label>`:""}
+      <label class="f">Комментарий<input class="inp" id="ceNote_${c.id}" value="${esc(c.note)}" placeholder="Необязательно"></label>
     </div>
-    <div class="f">Отработано${crewDays(ev).map(d=>{ const w=c.work[d]||{}; return `<div class="crewday"><span class="small">${dayShort(d)}</span><select class="inp" id="ceW_${c.id}_${d}">${opt([["","не работал"],["full","смена"],["half","½ смены"],["h","часы"]], w.k||"")}</select><input class="inp mono" id="ceH_${c.id}_${d}" inputmode="decimal" placeholder="ч" value="${w.k==="h"?String(w.h).replace(".",","):""}" aria-label="Часов"></div>`; }).join("")}</div>
-    <label class="f">Комментарий<textarea class="inp" id="ceNote_${c.id}" rows="2" placeholder="Например: только утро субботы, нужен пропуск на парковку">${esc(c.note)}</textarea></label>
-    <div class="row wrap"><button class="btn sm" data-crewsave="${c.id}">Сохранить</button><span class="sp"></span>
-      ${adm.crewDel===c.id?`<span class="small">Удалить из команды?</span><button class="btn sm danger" data-crewdelyes="${c.id}">Удалить</button><button class="btn sm ghost" data-crewdelno="1">Нет</button>`:`<button class="btn sm ghost" data-crewdel="${c.id}">Удалить</button>`}</div>
+    <div class="row wrap"><button class="btn sm" data-crewsave="${c.id}">Сохранить</button><span class="sp"></span><button class="btn sm ghost" data-crewno="${c.id}">Убрать из команды</button></div>
   </div>`;
 }
 function crewPanel(ev){
@@ -2634,7 +2654,7 @@ document.addEventListener("change", e=>{
   if (id==="regDiv"){ adm.rf.div=e.target.value; adm.rf.sel={}; return render(); }
   if (id==="regAll"){ const ev=curEv(), {list}=regFilter(ev, ADM.REGS.filter(o=>o.event===ev.id)); list.filter(o=>o.status==="new").forEach(o=>{ adm.rf.sel[o.id]=e.target.checked; }); return render(); }
   if (e.target.dataset && e.target.dataset.cwd){ const [cid,d]=e.target.dataset.cwd.split("|"), c=ADM.CREW.find(x=>x.id===+cid); if (!c) return; const work={...c.work}; if (e.target.checked) work[d]={k:"full"}; else delete work[d]; const y=window.scrollY;
-    api("PATCH","/api/admin/crew/"+c.id,{work}).then(r=>{ ADM.CREW=ADM.CREW.map(x=>x.id===c.id?r.crew:x); render(); window.scrollTo(0,y); }).catch(err=>{ toast(err.message); render(); }); return; }
+    api("PATCH",crewApi(c.id),{work}).then(r=>{ ADM.CREW=ADM.CREW.map(x=>x.id===c.id?r.crew:x); render(); window.scrollTo(0,y); }).catch(err=>{ toast(err.message); render(); }); return; }
   if (e.target.dataset && e.target.dataset.sel){ adm.rf.sel[e.target.dataset.sel]=e.target.checked; return render(); }
   if (["c1","c2","c3","c4","c5","rSize","rAff"].includes(id)){ keepForm(); const y=window.scrollY; render(); window.scrollTo(0,y); }
   if (id==="lbDiv"){ S.lb.div=e.target.value; S.lb.open=null; render(); }
