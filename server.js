@@ -89,6 +89,7 @@ alter table crew add column if not exists user_id bigint references users(id) on
 alter table crew add column if not exists avail jsonb not null default '[]';
 alter table crew add column if not exists source text not null default 'manual';
 create unique index if not exists crew_user_ev on crew(event_id, user_id) where user_id is not null;
+create table if not exists notify_emails (email text primary key, added_by text, created_at timestamptz not null default now());
 create table if not exists tg_chats (chat_id text primary key, email text, name text, created_at timestamptz not null default now());
 create table if not exists tg_links (code text primary key, email text not null, expires_at timestamptz not null);
 create table if not exists crew_rates (event_id text primary key, rates jsonb not null default '{}', shift_hours numeric not null default 8, updated_by text);
@@ -328,7 +329,8 @@ route('POST', '/api/lead', async (req, res, u, body) => {
   const { rows } = await db.query('insert into leads(name, phone, dir, who, age, pref_time) values ($1,$2,$3,$4,$5,$6) returning id',
     [name, phone, str(body.dir, 80), str(body.who, 40), str(body.age, 20), str(body.time, 40)]);
   await logConsent(req, 'lead:' + rows[0].id, 'pd', 'trial');
-  notify(`🏋️ <b>Заявка на пробную</b>\n${tg.esc(str(body.dir, 80))} · ${tg.esc(str(body.who, 40))}\nИмя и телефон — в панели: ${SITE_URL()}/#admin`);
+  notify(`🏋️ <b>Заявка на пробную</b>\n${tg.esc(str(body.dir, 80))} · ${tg.esc(str(body.who, 40))}\nИмя и телефон — в панели: ${SITE_URL()}/#admin`,
+    { title: 'заявка на пробную тренировку', lines: [`Имя: ${name}`, `Телефон: ${phone}`, `Направление: ${str(body.dir, 80)}`, `Кто: ${str(body.who, 40)}${body.age ? `, возраст ${str(body.age, 20)}` : ''}`, `Удобное время: ${str(body.time, 40)}`] });
   return { ok: true };
 });
 
@@ -414,7 +416,8 @@ route('POST', '/api/register', async (req, res, u, body) => {
   if (cons.publish) await logConsent(req, subj, 'publish', out.id);
   if (cons.photo) await logConsent(req, subj, 'photo', out.id);
   dirty();
-  notify(`🏁 <b>Новая заявка на старт</b>\n${tg.esc(ev.name)} · ${tg.esc(div.name)}\n${out.due ? `К оплате: ${rub(out.due)}` : 'Бесплатно'} · ${out.id}\n${SITE_URL()}/#admin`);
+  notify(`🏁 <b>Новая заявка на старт</b>\n${tg.esc(ev.name)} · ${tg.esc(div.name)}\n${out.due ? `К оплате: ${rub(out.due)}` : 'Бесплатно'} · ${out.id}\n${SITE_URL()}/#admin`,
+    { title: 'новая заявка на старт', lines: [`Старт: ${ev.name}`, `Категория: ${div.name}`, `Участник: ${`${snap.last || ''} ${snap.first || ''}`.trim()}${snap.parent ? ` (родитель: ${snap.parent})` : ''}`, ...(out.team ? [`Команда: ${out.team}`] : []), `Телефон: ${snap.phone || ''}`, `Заказ: ${out.id}`, out.due ? `К оплате: ${rub(out.due)} — ждёт отметки об оплате` : 'Взнос: бесплатно'] });
   return { order: orderOut(out) };
 });
 
@@ -423,7 +426,8 @@ route('POST', '/api/refund', async (req, res, u, body) => {
   const r = await db.query(`update registrations set status='refund_requested' where id=$1 and user_id=$2 and status in ('new','paid') returning *`, [str(body.id, 40), u.id]);
   if (!r.rows.length) throw bad('Заказ не найден');
   dirty();
-  { const o = r.rows[0]; notify(`↩️ <b>Запрос на возврат</b>\n${tg.esc(await evName(o.event_id))} · ${tg.esc(await divName(o.event_id, o.div_id))}\nОплачено ${rub(o.paid)} · ${o.id}\n${SITE_URL()}/#admin`); }
+  { const o = r.rows[0]; notify(`↩️ <b>Запрос на возврат</b>\n${tg.esc(await evName(o.event_id))} · ${tg.esc(await divName(o.event_id, o.div_id))}\nОплачено ${rub(o.paid)} · ${o.id}\n${SITE_URL()}/#admin`,
+    { title: 'запрос на возврат взноса', lines: [`Старт: ${await evName(o.event_id)} · ${await divName(o.event_id, o.div_id)}`, `Участник: ${`${o.person.last || ''} ${o.person.first || ''}`.trim()}`, `Телефон: ${o.person.phone || ''}`, `Заказ: ${o.id}`, `Оплачено: ${rub(o.paid)}`] }); }
   return { order: orderOut(r.rows[0]) };
 });
 
@@ -574,10 +578,22 @@ route('PATCH', '/api/admin/regs/:id', async (req, res, u, body, p) => {
   return { order: orderOut(r.rows[0]) };
 });
 /* ---------- Telegram notifications for organizers ---------- */
-async function notify(html) {
-  if (!tg.configured()) return;
-  try { const chats = (await db.query('select chat_id from tg_chats')).rows.map(r => r.chat_id); await tg.send(chats, html); }
-  catch (e) { console.error('notify failed:', e.message); }
+/* email: events are collected for 30 s and sent as one letter, so a rush of registrations does not flood the mailbox */
+let mailQueue = [], mailTimer = null;
+async function flushMail() {
+  mailTimer = null;
+  const items = mailQueue.splice(0); if (!items.length || !mail.configured()) return;
+  try {
+    const to = (await db.query('select email from notify_emails order by created_at')).rows.map(r => r.email);
+    if (!to.length) return;
+    const subject = items.length === 1 ? `Рекорд: ${items[0].title}` : `Рекорд: новые уведомления (${items.length})`;
+    const text = items.map(i => [i.title.toUpperCase(), ...i.lines].join('\n')).join('\n\n— — —\n\n') + `\n\nПанель организатора: ${SITE_URL()}/#admin\nНастроить уведомления: панель → «Управление сайтом» → «Уведомления на почту».`;
+    for (const addr of to) await mail.send({ to: addr, subject, text }).catch(e => console.error('notify mail failed:', e.message));
+  } catch (e) { console.error('notify failed:', e.message); }
+}
+function notify(tgHtml, msg) {
+  if (msg && mail.configured()) { mailQueue.push(msg); if (!mailTimer) mailTimer = setTimeout(flushMail, +process.env.NOTIFY_DELAY_MS || 30000); }
+  if (tg.configured()) db.query('select chat_id from tg_chats').then(r => tg.send(r.rows.map(x => x.chat_id), tgHtml)).catch(e => console.error('notify tg failed:', e.message));
 }
 const evName = async id => { const e = ((await rawContent()).EVENTS || []).find(x => x.id === id); return e ? e.name : id; };
 const divName = async (evId, divId) => { const e = ((await rawContent()).EVENTS || []).find(x => x.id === evId); const d = e && e.divisions.find(x => x.id === divId); return d ? d.name : divId; };
@@ -615,9 +631,30 @@ route('DELETE', '/api/admin/tg/:chat', async (req, res, u, body, p) => {
   await db.query('delete from tg_chats where chat_id=$1', [decodeURIComponent(p.chat)]);
   return { ok: true };
 });
-route('POST', '/api/admin/tg/test', async (req, res, u) => {
+route('POST', '/api/admin/notify/test', async (req, res, u) => {
   need(u, 'owner', 'admin');
-  await notify('🔔 Проверка: уведомления «Рекорда» работают.');
+  limit('notify-test:' + u.id, 10, 3600e3);
+  if (!mail.configured()) throw bad('Отправка писем не настроена');
+  const to = (await db.query('select email from notify_emails')).rows.map(r => r.email);
+  if (!to.length && !tg.configured()) throw bad('Сначала добавьте адрес');
+  notify('🔔 Проверка: уведомления «Рекорда» работают.', { title: 'проверка уведомлений', lines: ['Уведомления работают. Сюда будут приходить заявки на старты, на пробную тренировку, в команду и запросы на возврат.'] });
+  return { ok: true, to: to.length };
+});
+route('GET', '/api/admin/notify', async (req, res, u) => {
+  need(u, 'owner', 'admin');
+  return { mail: mail.configured(), emails: (await db.query('select email, created_at from notify_emails order by created_at')).rows.map(r => r.email), tg: tg.configured() };
+});
+route('POST', '/api/admin/notify', async (req, res, u, body) => {
+  need(u, 'owner', 'admin');
+  const email = str(body.email, 254).toLowerCase();
+  if (!isEmail(email)) throw bad('Проверьте адрес почты');
+  if ((await db.query('select count(*)::int n from notify_emails')).rows[0].n >= 10) throw bad('Можно до 10 адресов');
+  await db.query('insert into notify_emails(email, added_by) values ($1,$2) on conflict do nothing', [email, u.email]);
+  return { ok: true };
+});
+route('DELETE', '/api/admin/notify/:email', async (req, res, u, body, p) => {
+  need(u, 'owner', 'admin');
+  await db.query('delete from notify_emails where email=$1', [decodeURIComponent(p.email).toLowerCase()]);
   return { ok: true };
 });
 
@@ -641,7 +678,8 @@ route('POST', '/api/crew/apply', async (req, res, u, body) => {
   } catch (e) { if (e.code === '23505') throw bad('Вы уже подали заявку в команду этого старта'); throw e; }
   await logConsent(req, 'user:' + u.id, 'pd', 'crew:' + r.rows[0].id);
   const ROLE = { judge: 'судья', volunteer: 'волонтёр', assistant: 'ассистент организатора' };
-  notify(`🙋 <b>Заявка в команду</b>\n${tg.esc(ev.name)}\nРоль: ${ROLE[body.role]}${avail.length ? `\nДни: ${avail.map(d => d.slice(8) + '.' + d.slice(5, 7)).join(', ')}` : ''}\n${SITE_URL()}/#admin`);
+  notify(`🙋 <b>Заявка в команду</b>\n${tg.esc(ev.name)}\nРоль: ${ROLE[body.role]}${avail.length ? `\nДни: ${avail.map(d => d.slice(8) + '.' + d.slice(5, 7)).join(', ')}` : ''}\n${SITE_URL()}/#admin`,
+    { title: 'заявка в команду старта', lines: [`Старт: ${ev.name}`, `Имя: ${name}`, `Телефон: ${p.phone}`, `Email: ${u.email}`, `Роль: ${ROLE[body.role]}`, ...(avail.length ? [`Может: ${avail.map(d => d.slice(8) + '.' + d.slice(5, 7)).join(', ')}`] : []), ...(note ? [`Комментарий: ${note}`] : [])] });
   return { crew: { id: Number(r.rows[0].id), event: ev.id, role: body.role, status: 'request', avail } };
 });
 route('DELETE', '/api/crew/apply/:id', async (req, res, u, body, p) => {
@@ -726,7 +764,7 @@ route('PATCH', '/api/admin/scores/:id', async (req, res, u, body, p) => {
 });
 
 /* ---------- backups: a daily snapshot of every table, kept 14 days; the owner downloads them ---------- */
-const BACKUP_TABLES = ['content', 'users', 'staff', 'leads', 'teams', 'registrations', 'scores', 'consents', 'crew', 'crew_rates', 'tg_chats'];
+const BACKUP_TABLES = ['content', 'users', 'staff', 'leads', 'teams', 'registrations', 'scores', 'consents', 'crew', 'crew_rates', 'tg_chats', 'notify_emails'];
 async function makeBackup(kind) {
   const tables = {}; let rows = 0;
   for (const t of BACKUP_TABLES) { tables[t] = (await db.query(`select * from ${t}`)).rows; rows += tables[t].length; }

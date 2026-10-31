@@ -1578,7 +1578,9 @@ function adminClick(t, ds){
   }
   if (ds.act==="tglink"){ api("POST","/api/admin/tg/link",{}).then(r=>{ adm.tg.link=r.url; render(); window.open(r.url,"_blank","noopener"); }).catch(err=>toast(err.message)); return true; }
   if (ds.act==="tgrefresh"){ adm.tg=undefined; render(); return true; }
-  if (ds.act==="tgtest"){ api("POST","/api/admin/tg/test",{}).then(()=>toast("Отправил проверку в Telegram")).catch(err=>toast(err.message)); return true; }
+  if (ds.act==="nftest"){ api("POST","/api/admin/notify/test",{}).then(()=>toast("Проверка уйдёт в течение 30 секунд")).catch(err=>toast(err.message)); return true; }
+  if (ds.act==="nfadd"){ const v=document.getElementById("nfEmail").value.trim(); api("POST","/api/admin/notify",{email:v}).then(()=>{ adm.nf=undefined; render(); toast("Адрес добавлен"); }).catch(err=>toast(err.message)); return true; }
+  if (ds.nfdel){ api("DELETE","/api/admin/notify/"+encodeURIComponent(ds.nfdel)).then(()=>{ adm.nf.emails=adm.nf.emails.filter(e=>e!==ds.nfdel); render(); toast("Адрес убран"); }).catch(err=>toast(err.message)); return true; }
   if (ds.tgdel){ api("DELETE","/api/admin/tg/"+encodeURIComponent(ds.tgdel)).then(()=>{ adm.tg.chats=adm.tg.chats.filter(c=>c.id!==ds.tgdel); render(); toast("Чат отключён"); }).catch(err=>toast(err.message)); return true; }
   if (ds.area){ adm.area=ds.area; render(); window.scrollTo(0,0); return true; }
   if (ds.regsave){
@@ -1643,7 +1645,7 @@ admin(){
      <button class="btn sm" data-act="csave" style="align-self:flex-start">Сохранить контакты</button>
    </div>
 
-   ${tgCard()}
+   ${notifyCard()}
    <h2 class="sec">Яндекс Метрика</h2>
    <div class="card stack">
      <label class="f">Номер счётчика<input class="inp" id="mId" inputmode="numeric" value="${esc(SITE.metrika||"")}" placeholder="например, 98765432"></label>
@@ -2202,6 +2204,15 @@ function myCrewList(){
   if (!MYCREW.length) return "";
   return `<h2 class="sec">Заявки в команду</h2><div class="card" style="padding:4px 14px">${MYCREW.map(c=>{ const ev=EVENTS.find(e=>e.id===c.event); return `<div class="arow"><div class="sp"><b>${esc(ev?ev.name:c.event)}</b><div class="muted tiny">${CREW_ROLE[c.role]?CREW_ROLE[c.role][0]:""}${ev&&ev.date?` · ${dateRange(ev)}`:""}</div></div><span class="chip ${CREW_STL[c.status][1]}">${c.status==="request"?"На рассмотрении":c.status==="confirmed"?"В команде":"Не в этот раз"}</span></div>`; }).join("")}</div>`;
 }
+function notifyCard(){
+  if (adm.nf===undefined){ adm.nf=null; api("GET","/api/admin/notify").then(r=>{ adm.nf=r; render(); }).catch(()=>{ adm.nf={mail:false, emails:[], tg:false}; render(); }); }
+  const N = adm.nf;
+  return `<h2 class="sec">Уведомления на почту</h2><div class="card stack">
+    ${!N ? '<div class="muted small">Загружаю…</div>' : `<div class="muted small">Письмо приходит, когда появляется заявка на старт, заявка на пробную, заявка в команду или запрос на возврат. Если заявок много подряд, они собираются в одно письмо (раз в 30 секунд), чтобы не засыпать почту.${N.mail?"":" <b>Сейчас отправка писем с сайта не настроена.</b>"}</div>
+      ${N.emails.length?`<div>${N.emails.map(e=>`<div class="arow"><b class="sp">${esc(e)}</b><button class="btn sm ghost" data-nfdel="${esc(e)}">Убрать</button></div>`).join("")}</div>`:'<div class="small">Адресов пока нет — уведомления не приходят.</div>'}
+      <div class="row wrap"><input class="inp sp" id="nfEmail" type="email" placeholder="почта@example.ru" style="min-width:200px"><button class="btn sm" data-act="nfadd">Добавить</button>${N.emails.length?'<button class="btn sm ghost" data-act="nftest">Прислать проверку</button>':""}</div>`}
+  </div>${N&&N.tg?tgCard():""}`;
+}
 function tgCard(){
   if (adm.tg===undefined){ adm.tg=null; api("GET","/api/admin/tg").then(r=>{ adm.tg=r; render(); }).catch(()=>{ adm.tg={ready:false, chats:[], err:true}; render(); }); }
   const T = adm.tg;
@@ -2210,7 +2221,7 @@ function tgCard(){
     : `<div class="muted small">Бот @${esc(T.bot||"…")} присылает: заявки на старты, заявки на пробную, заявки в команду и запросы на возврат. В сообщениях нет имён, телефонов и email — только старт, категория, сумма и номер заказа; всё остальное в панели.</div>
       ${T.chats.length?`<div style="padding:0">${T.chats.map(c=>`<div class="arow"><div class="sp"><b>${esc(c.name||"Чат "+c.id)}</b><div class="muted tiny">${esc(c.email)}${c.email?" · ":""}подключён ${dShort(String(c.created).slice(0,10))}</div></div><button class="btn sm ghost" data-tgdel="${esc(c.id)}">Отключить</button></div>`).join("")}</div>`:'<div class="small">Пока никто не подключён.</div>'}
       ${T.link?`<div class="rule small">Откройте ссылку на телефоне или компьютере, где у вас Telegram, и нажмите «Запустить» (Start): <a href="${esc(T.link)}" target="_blank" rel="noopener">${esc(T.link)}</a><br>Ссылка действует 30 минут. Потом нажмите «Обновить».</div>`:""}
-      <div class="row wrap"><button class="btn sm" data-act="tglink">Подключить мой Telegram</button>${T.chats.length?'<button class="btn sm ghost" data-act="tgtest">Прислать проверку</button>':""}<button class="btn sm ghost" data-act="tgrefresh">Обновить</button></div>`}
+      <div class="row wrap"><button class="btn sm" data-act="tglink">Подключить мой Telegram</button>${T.chats.length?'<button class="btn sm ghost" data-act="nftest">Прислать проверку</button>':""}<button class="btn sm ghost" data-act="tgrefresh">Обновить</button></div>`}
   </div>`;
 }
 function crewInvite(ev){
