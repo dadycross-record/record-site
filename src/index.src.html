@@ -447,6 +447,9 @@ const addDays = (d,n) => new Date(Date.parse(d)+n*864e5).toISOString().slice(0,1
 const evDays = ev => { if (ev.format==="online" || !ev.date || !ev.dateEnd || ev.dateEnd<=ev.date) return [ev.date]; const out=[]; for (let d=ev.date; d<=ev.dateEnd && out.length<14; d=addDays(d,1)) out.push(d); return out; };
 const dayShort = d => `${WD[new Date(d+"T00:00:00Z").getUTCDay()]} ${+d.slice(8)} ${MONS[+d.slice(5,7)-1]}`;
 const dayLabel = (ev,d) => `День ${evDays(ev).indexOf(d)+1} · ${dayShort(d)}`;
+/* годы: 1 год, 2–4 года, 5–20 лет, 21 год…; после «от/до» — родительный: от 1 года, до 21 года, до 15 лет */
+const yNom = n => { n=Math.abs(+n)%100; const d=n%10; return n>10&&n<20 ? "лет" : d===1 ? "год" : d>=2&&d<=4 ? "года" : "лет"; };
+const yGen = n => { n=Math.abs(+n)%100; return n%10===1&&n!==11 ? "года" : "лет"; };
 const plDays = n => n%10===1&&n%100!==11 ? "день" : (n%10>=2&&n%10<=4&&(n%100<10||n%100>=20)) ? "дня" : "дней";
 const durTxt = ev => { const n=evDays(ev).length; return n>1 ? ` · ${n} ${plDays(n)}` : ""; };
 function dateRange(ev){
@@ -728,8 +731,8 @@ function eligibility(ev, d){
   if (hasReg(ev.id, S.who)) return S.who==="me" ? "Вы уже зарегистрированы на этот старт" : `${p.first} уже зарегистрирован на этот старт`;
   const age = athleteAge(ev, p);
   if (d.g!=="any" && d.g!==p.gender) return d.g==="M" ? "Категория для мужского пола" : "Категория для женского пола";
-  if (d.min && age<d.min) return `С ${d.min} лет`;
-  if (d.max && age>d.max) return `Для участников до ${d.max} лет`;
+  if (d.min && age<d.min) return `С ${d.min} ${yGen(d.min)}`;
+  if (d.max && age>d.max) return `Для участников до ${d.max} ${yGen(d.max)}`;
   if (d.type!=="team" && d.taken>=d.limit) return "Мест нет";
   return null;
 }
@@ -867,7 +870,7 @@ divisions(){
       ${why===WHY_LOGIN?`<button class="btn sm ghost" data-act="divlogin">Войти и записаться</button>`:why===WHY_PROFILE?`<button class="btn sm ghost" data-act="divprofile">Заполнить анкету</button>`:why?`<button class="btn sm" disabled>${esc(why)}</button>`:`<button class="btn sm" data-pick="${d.id}">${label} →</button>`}
       ${why?"":(d.type==="team"&&s.k==="full"?'<div class="why">Новых команд создать нельзя, но можно вступить в уже созданную по коду капитана.</div>':"")}
     </div>`; };
-  const whoSw = ME.kids.length ? `<div class="f" style="margin-bottom:12px">Кого записываете<div class="tabs" role="radiogroup">${[["me",`Себя${ME.dob?` · ${athleteAge(ev,ME)} лет`:""}`],...ME.kids.map(k=>[k.id,`${k.first} · ${athleteAge(ev,k)} лет`])].map(([k,l])=>`<button type="button" role="radio" aria-selected="${S.who===k}" data-who="${k}">${esc(l)}</button>`).join("")}</div></div>` : "";
+  const whoSw = ME.kids.length ? `<div class="f" style="margin-bottom:12px">Кого записываете<div class="tabs" role="radiogroup">${[["me",`Себя${ME.dob?` · ${athleteAge(ev,ME)} ${yNom(athleteAge(ev,ME))}`:""}`],...ME.kids.map(k=>[k.id,`${k.first} · ${athleteAge(ev,k)} ${yNom(athleteAge(ev,k))}`])].map(([k,l])=>`<button type="button" role="radio" aria-selected="${S.who===k}" data-who="${k}">${esc(l)}</button>`).join("")}</div></div>` : "";
   return {title:"Категории", html:`
     <div class="muted small" style="margin-bottom:10px">${esc(ev.name)} · ${dHuman(ev.date)}${ev.ageMode==="year"?" · возраст по году рождения":""}</div>${whoSw}
     <div class="tabs" role="tablist">${[["ind","Индивидуальные"],["team","Командные"]].map(([k,t])=>`<button role="tab" aria-selected="${type===k}" data-dtype="${k}">${t}</button>`).join("")}</div>
@@ -1193,7 +1196,7 @@ const IC = {
   del:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg>'
 };
 function ageLabel(d, ev){
-  let s = d.min&&d.max ? `${d.min}–${d.max} лет` : d.min ? `${d.min}+ лет` : d.max ? `до ${d.max} лет` : "любой возраст";
+  let s = d.min&&d.max ? `${d.min}–${d.max} ${yNom(d.max)}` : d.min ? `${d.min}+ ${yNom(d.min)}` : d.max ? `до ${d.max} ${yGen(d.max)}` : "любой возраст";
   if (ev && ev.ageMode==="year" && d.min && d.max){ const Y=+ev.date.slice(0,4); s += ` · ${Y-d.max}–${Y-d.min} г.р.`; }
   return s;
 }
@@ -1303,8 +1306,8 @@ function whoText(){
   const mn = dv.min==="" ? 0 : +dv.min, mx = dv.max==="" ? 0 : +dv.max;
   let a;
   if (!mn && !mx) a = "без ограничения по возрасту";
-  else if (ev.ageMode==="year"){ const Y=+ev.date.slice(0,4); a = mn&&mx ? `${mn}–${mx} лет по году рождения, то есть ${Y-mx}–${Y-mn} годов рождения` : mn ? `от ${mn} лет: ${Y-mn} г.р. и старше` : `до ${mx} лет: ${Y-mx} г.р. и младше`; }
-  else a = mn&&mx ? `от ${mn} до ${mx} лет на ${dHuman(ev.date)}` : mn ? `от ${mn} лет на ${dHuman(ev.date)}` : `до ${mx} лет на ${dHuman(ev.date)}`;
+  else if (ev.ageMode==="year"){ const Y=+ev.date.slice(0,4); a = mn&&mx ? `${mn}–${mx} ${yNom(mx)} по году рождения, то есть ${Y-mx}–${Y-mn} годов рождения` : mn ? `от ${mn} ${yGen(mn)}: ${Y-mn} г.р. и старше` : `до ${mx} ${yGen(mx)}: ${Y-mx} г.р. и младше`; }
+  else a = mn&&mx ? `от ${mn} до ${mx} ${yGen(mx)} на ${dHuman(ev.date)}` : mn ? `от ${mn} ${yGen(mn)} на ${dHuman(ev.date)}` : `до ${mx} ${yGen(mx)} на ${dHuman(ev.date)}`;
   return `<b>Кто сможет записаться:</b> ${g}, ${a}. Остальным категория покажется недоступной с причиной.`;
 }
 const extOf = n => (n.includes(".") ? n.split(".").pop() : "файл").toUpperCase().slice(0,4);
@@ -2003,7 +2006,7 @@ SCREENS.adminClub = function(){
   return {title:"Заявки на пробную", html:`
    <h2 class="sec" style="margin-top:0">Заявки на пробную · ${CLUB_LEADS.length}${nNew?` · новых ${nNew}`:""}</h2>
    ${leads.length ? `<div class="card" style="padding:4px 14px">${leads.map(l=>{ const i=l.id; return `<div class="arow ${l.status==="new"?"lead-new":""}" style="padding-left:10px"><div class="sp"><b>${esc(l.name)}</b> <a href="tel:${esc(l.phone.replace(/[^\d+]/g,""))}" class="mono" style="color:var(--accent);margin-left:6px;white-space:nowrap">${esc(l.phone)}</a>
-       <div class="muted tiny">${dShort(l.date)} · ${esc(l.dir)} · ${esc(l.who)}${l.age?`, ${esc(l.age)} лет`:""} · ${esc(l.time)}</div></div>
+       <div class="muted tiny">${dShort(l.date)} · ${esc(l.dir)} · ${esc(l.who)}${l.age?`, ${esc(l.age)}${/^\d+$/.test(l.age)?" "+yNom(l.age):""}`:""} · ${esc(l.time)}</div></div>
        ${l.status==="new"?`<button class="btn sm" data-leaddone="${i}">Позвонили</button>`:'<span class="chip ok">Связались</span>'}<button class="iconbtn sm" data-leaddel="${i}" aria-label="Удалить заявку">${IC.del}</button></div>`; }).join("")}</div>
      <div class="row wrap" style="margin-top:10px"><button class="btn sm ghost" data-act="leadcsv">Скачать таблицу для Excel</button></div>`
      : '<div class="empty">Заявок пока нет. Они появятся, когда посетители заполнят форму «Записаться на пробную».</div>'}
