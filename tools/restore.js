@@ -11,15 +11,15 @@ if (!file || !process.env.DATABASE_URL) { console.error('usage: DATABASE_URL=...
 const dump = JSON.parse(zlib.gunzipSync(fs.readFileSync(file)).toString('utf8'));
 if (dump.app !== 'record-site' || !dump.tables) { console.error('not a record-site backup'); process.exit(1); }
 
-const ORDER = ['content', 'users', 'staff', 'leads', 'teams', 'registrations', 'scores', 'consents'];
-const SERIAL = ['users', 'leads', 'teams', 'scores', 'consents'];
+const ORDER = ['content', 'users', 'staff', 'leads', 'teams', 'registrations', 'scores', 'consents', 'crew', 'crew_rates'];
+const SERIAL = ['users', 'leads', 'teams', 'scores', 'consents', 'crew'];
 const db = new Pool(process.env.DATABASE_URL, 1);
 
 (async () => {
   await db.tx(async q => {
     await q(`truncate ${[...ORDER].reverse().join(', ')} restart identity cascade`);
     for (const t of ORDER) {
-      for (const row of dump.tables[t] || []) {
+      for (const row of dump.tables[t] || []) if (row) {
         const cols = Object.keys(row);
         await q(`insert into ${t} (${cols.map(c => `"${c}"`).join(', ')}) values (${cols.map((_, i) => `$${i + 1}`).join(', ')})`, cols.map(c => row[c]));
       }

@@ -81,6 +81,10 @@ create table if not exists registrations (id text primary key, pub text unique n
 create index if not exists registrations_ev on registrations(event_id, div_id);
 alter table registrations add column if not exists note text;
 alter table registrations add column if not exists updated_by text;
+create table if not exists crew (id bigserial primary key, event_id text not null, name text not null, phone text, contact text, role text not null, status text not null default 'request',
+  rate int, work jsonb not null default '{}', note text, created_at timestamptz not null default now(), updated_by text);
+create index if not exists crew_ev on crew(event_id);
+create table if not exists crew_rates (event_id text primary key, rates jsonb not null default '{}', shift_hours numeric not null default 8, updated_by text);
 create index if not exists registrations_user on registrations(user_id);
 create table if not exists scores (id bigserial primary key, reg_id text not null references registrations(id) on delete cascade, workout_id text not null, value jsonb not null, video text,
   state text not null default 'pending', created_at timestamptz not null default now(), reviewed_by text, unique(reg_id, workout_id));
@@ -470,6 +474,8 @@ route('GET', '/api/admin/state', async (req, res, u) => {
     REGS: regs.map(r => ({ ...orderOut(r), email: r.email || '' })),
     PENDING: pending,
     SCORES: (await db.query('select id, reg_id, workout_id, value, state from scores')).rows.map(scoreOut),
+    CREW: (await db.query('select * from crew order by created_at')).rows.map(crewOut),
+    CREW_CFG: Object.fromEntries((await db.query('select * from crew_rates')).rows.map(r => [r.event_id, { rates: r.rates, shift: Number(r.shift_hours) }])),
   };
 });
 const scoreOut = s => ({ id: s.id, reg: s.reg_id, workout: s.workout_id, value: s.value, state: s.state });
@@ -555,6 +561,64 @@ route('PATCH', '/api/admin/regs/:id', async (req, res, u, body, p) => {
   dirty();
   return { order: orderOut(r.rows[0]) };
 });
+/* ---------- event crew: judges, volunteers, venue staff; pay per shift ---------- */
+const CREW_ROLES = ['head_judge', 'judge', 'venue_admin', 'assistant', 'volunteer'];
+const CREW_ST = ['request', 'confirmed', 'declined'];
+const crewOut = c => ({ id: Number(c.id), event: c.event_id, name: c.name, phone: c.phone || '', contact: c.contact || '', role: c.role, status: c.status, rate: c.rate, work: c.work || {}, note: c.note || '' });
+const money = (v, label) => { if (v === '' || v == null) return null; const n = Math.round(Number(v)); if (!Number.isFinite(n) || n < 0 || n > 1e6) throw bad(label + ': целое число рублей'); return n; };
+function cleanWork(w) {
+  const out = {};
+  for (const [d, v] of Object.entries(w && typeof w === 'object' ? w : {}).slice(0, 31)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !v) continue;
+    if (v.k === 'full' || v.k === 'half') out[d] = { k: v.k };
+    else if (v.k === 'h') { const h = Math.round(Number(v.h) * 4) / 4; if (!(h > 0 && h <= 24)) throw bad('Часы: число от 0,25 до 24'); out[d] = { k: 'h', h }; }
+  }
+  return out;
+}
+function crewFields(body, cur) {
+  const f = { ...cur };
+  if (body.name !== undefined) { f.name = str(body.name, 120); if (!f.name) throw bad('Укажите имя'); }
+  if (body.phone !== undefined) f.phone = str(body.phone, 40) || null;
+  if (body.contact !== undefined) f.contact = str(body.contact, 200) || null;
+  if (body.role !== undefined) { if (!CREW_ROLES.includes(body.role)) throw bad('Неверная должность'); f.role = body.role; }
+  if (body.status !== undefined) { if (!CREW_ST.includes(body.status)) throw bad('Неверный статус'); f.status = body.status; }
+  if (body.rate !== undefined) f.rate = money(body.rate, 'Ставка');
+  if (body.work !== undefined) f.work = cleanWork(body.work);
+  if (body.note !== undefined) f.note = str(body.note, 1000) || null;
+  return f;
+}
+route('POST', '/api/admin/crew', async (req, res, u, body) => {
+  need(u, 'owner', 'admin');
+  const ev = str(body.event, 60); if (!ev) throw bad('Не выбран старт');
+  const f = crewFields({ role: 'judge', status: 'request', ...body }, {});
+  if (!f.name) throw bad('Укажите имя');
+  const r = await db.query('insert into crew(event_id, name, phone, contact, role, status, rate, work, note, updated_by) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning *',
+    [ev, f.name, f.phone || null, f.contact || null, f.role, f.status, f.rate ?? null, f.work || {}, f.note || null, u.email]);
+  return { crew: crewOut(r.rows[0]) };
+});
+route('PATCH', '/api/admin/crew/:id', async (req, res, u, body, p) => {
+  need(u, 'owner', 'admin');
+  const cur = (await db.query('select * from crew where id=$1', [Number(p.id) || 0])).rows[0];
+  if (!cur) throw bad('Человек не найден');
+  const f = crewFields(body, cur);
+  const r = await db.query('update crew set name=$1, phone=$2, contact=$3, role=$4, status=$5, rate=$6, work=$7, note=$8, updated_by=$9 where id=$10 returning *',
+    [f.name, f.phone, f.contact, f.role, f.status, f.rate, f.work, f.note, u.email, cur.id]);
+  return { crew: crewOut(r.rows[0]) };
+});
+route('DELETE', '/api/admin/crew/:id', async (req, res, u, body, p) => {
+  need(u, 'owner', 'admin');
+  await db.query('delete from crew where id=$1', [Number(p.id) || 0]);
+  return { ok: true };
+});
+route('PUT', '/api/admin/crew-rates/:event', async (req, res, u, body, p) => {
+  need(u, 'owner', 'admin');
+  const ev = decodeURIComponent(p.event);
+  const rates = {}; for (const k of CREW_ROLES) { const v = money(body.rates && body.rates[k], 'Ставка'); if (v != null) rates[k] = v; }
+  const shift = Number(body.shift); if (!(shift >= 1 && shift <= 24)) throw bad('Длина смены: от 1 до 24 часов');
+  await db.query('insert into crew_rates(event_id, rates, shift_hours, updated_by) values ($1,$2,$3,$4) on conflict (event_id) do update set rates=excluded.rates, shift_hours=excluded.shift_hours, updated_by=excluded.updated_by', [ev, rates, shift, u.email]);
+  return { cfg: { rates, shift } };
+});
+
 route('DELETE', '/api/admin/regs/:id', async (req, res, u, body, p) => {
   need(u, 'owner', 'admin');
   const r = await db.query('delete from registrations where id=$1 returning id', [decodeURIComponent(p.id)]);
@@ -572,7 +636,7 @@ route('PATCH', '/api/admin/scores/:id', async (req, res, u, body, p) => {
 });
 
 /* ---------- backups: a daily snapshot of every table, kept 14 days; the owner downloads them ---------- */
-const BACKUP_TABLES = ['content', 'users', 'staff', 'leads', 'teams', 'registrations', 'scores', 'consents'];
+const BACKUP_TABLES = ['content', 'users', 'staff', 'leads', 'teams', 'registrations', 'scores', 'consents', 'crew', 'crew_rates'];
 async function makeBackup(kind) {
   const tables = {}; let rows = 0;
   for (const t of BACKUP_TABLES) { tables[t] = (await db.query(`select * from ${t}`)).rows; rows += tables[t].length; }
