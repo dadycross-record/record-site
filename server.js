@@ -189,6 +189,7 @@ function mixRoom(div, mainRows, sex, minus) {
 }
 const SEXW = { m: 'мужчин', f: 'женщин' };
 function divDaySet(ev, d) { const days = evDaysSrv(ev); const own = ((d && d.days) || []).filter(x => days.includes(x)); return own.length ? own : days; }
+let lastDraftResults = {};
 async function publicContent() {
   if (cache) return cache;
   const c = await rawContent();
@@ -201,13 +202,17 @@ async function publicContent() {
     const k = counts.find(x => x.event_id === ev.id && x.div_id === d.id);
     d.taken = !k ? 0 : d.type === 'team' ? (TEAMS[`${ev.id}:${d.id}`] || []).length : k.n;
   }));
-  const RESULTS = await liveResults(EVENTS);
+  const ALLRES = await liveResults(EVENTS);
+  const drafts = new Set(EVENTS.filter(e => e.status === 'draft').map(e => e.id));
+  const RESULTS = Object.fromEntries(Object.entries(ALLRES).filter(([k]) => !drafts.has(k.split(/[:@]/)[0])));
+  lastDraftResults = Object.fromEntries(Object.entries(ALLRES).filter(([k]) => drafts.has(k.split(/[:@]/)[0])));
   await loadGyms();
   const json = JSON.stringify({ EVENTS, SITE: c.SITE || {}, TEAMS, RESULTS, GYMS, today: today() });
   cache = { json, gz: zlib.gzipSync(json), etag: '"' + sha(json).slice(0, 20) + '"' };
   return cache;
 }
 
+const divWorkoutsSrv = (ev, divId) => (ev.workouts || []).filter(w => !w.divs || !w.divs.length || w.divs.includes(divId));
 async function liveResults(EVENTS) {
   const { rows } = await db.query(`select s.workout_id, s.value, r.id reg, r.pub, r.event_id, r.div_id, r.team, r.person, r.publish
     from scores s join registrations r on r.id=s.reg_id where s.state='accepted' and r.status in ${ACTIVE} order by s.created_at`);
@@ -217,8 +222,8 @@ async function liveResults(EVENTS) {
     const ev = EVENTS.find(e => e.id === s.event_id); if (!ev) continue;
     const div = (ev.divisions || []).find(d => d.id === s.div_id); const w = (ev.workouts || []).find(x => x.id === s.workout_id);
     if (!div || !w) continue;
-    const wl = ev.permanent ? ev.workouts.filter(x => x.month === w.month) : ev.workouts;
-    const idx = wl.findIndex(x => x.id === w.id);
+    const dw = divWorkoutsSrv(ev, div.id), wl = ev.permanent ? dw.filter(x => x.month === w.month) : dw;
+    const idx = wl.findIndex(x => x.id === w.id); if (idx < 0) continue;
     const key = ev.permanent ? `${ev.id}@${w.month}:${div.id}` : `${ev.id}:${div.id}`;
     const map = RES[key] ||= new Map();
     const isTeam = div.type === 'team' && s.team;
@@ -665,9 +670,9 @@ route('POST', '/api/publish', async (req, res, u, body) => {
 
 function checkValue(type, v) {
   if (type === 'time') {
-    if (typeof v === 'number' && Number.isInteger(v) && v > 0 && v < 86400) return v;
+    if (typeof v === 'number' && isFinite(v) && v > 0 && v < 86400) return Math.round(v * 100) / 100;
     if (v && typeof v === 'object' && Number.isInteger(v.cap) && v.cap >= 0 && v.cap < 100000) return { cap: v.cap };
-  } else if (typeof v === 'number' && isFinite(v) && v > 0 && v < 100000) return Math.round(v * 100) / 100;
+  } else if (typeof v === 'number' && isFinite(v) && (v > 0 || (v === 0 && type === 'reps')) && v < 100000) return Math.round(v * 100) / 100;
   throw bad('Неверный результат');
 }
 
@@ -680,6 +685,7 @@ route('POST', '/api/score', async (req, res, u, body) => {
   const ev = ((await rawContent()).EVENTS || []).find(e => e.id === reg.event_id);
   if (!ev || ev.format !== 'online' || ev.status !== 'live') throw bad('Сейчас сдача результатов на этот старт закрыта');
   const w = (ev.workouts || []).find(x => x.id === body.workout); if (!w) throw bad('Задание не найдено');
+  if (w.divs && w.divs.length && !w.divs.includes(reg.div_id)) throw bad('У вашей категории нет такого задания');
   if (ev.permanent && (ev.months || []).some(m => m.id === w.month && m.done)) throw bad('Итоги этого месяца уже подведены');
   if (!ev.permanent && ev.submitTo && today() > ev.submitTo) throw bad('Окно сдачи результатов закрыто');
   const value = checkValue(w.type, body.value);
@@ -698,7 +704,13 @@ route('GET', '/api/admin/state', async (req, res, u) => {
   const pending = (await db.query(`select s.id, s.workout_id, s.value, s.video, s.state, s.created_at, r.id reg, r.event_id, r.div_id, r.person, r.team
     from scores s join registrations r on r.id=s.reg_id where s.state='pending' order by s.created_at`)).rows
     .map(s => ({ id: s.id, workout: s.workout_id, value: s.value, video: s.video, reg: s.reg, event: s.event_id, div: s.div_id, team: s.team, name: `${s.person.last || ''} ${s.person.first || ''}`.trim() }));
-  if (u.role === 'judge') return { role: u.role, PENDING: pending };
+  await publicContent();
+  const DRAFT_RESULTS = lastDraftResults;
+  if (u.role === 'judge') {
+    const rr = (await db.query(`select id, pub, event_id, div_id, person, team, status, team_role from registrations where status in ${ACTIVE} order by created_at`)).rows;
+    return { role: u.role, PENDING: pending, DRAFT_RESULTS, SCORES: (await db.query('select id, reg_id, workout_id, value, state from scores')).rows.map(scoreOut),
+      REGS: rr.map(r => ({ id: r.id, pub: r.pub, event: r.event_id, div: r.div_id, person: { first: r.person.first, last: r.person.last, gender: r.person.gender }, team: r.team, status: r.status, role: r.team_role })) };
+  }
   const c = await rawContent();
   const used = await promoUsed();
   const staff = (await db.query('select email, name, role from staff order by created_at')).rows;
@@ -710,6 +722,7 @@ route('GET', '/api/admin/state', async (req, res, u) => {
     ACCESS: [{ email: u.role === 'owner' ? u.email : '', name: 'Владелец', role: 'owner' }, ...staff],
     CLUB_LEADS: leads.map(l => ({ id: l.id, date: new Date(l.created_at.getTime() + 8 * 3600e3).toISOString().slice(0, 10), name: l.name, phone: l.phone, dir: l.dir, who: l.who, age: l.age, time: l.pref_time, status: l.status })),
     REGS: regs.map(r => ({ ...orderOut(r), email: r.email || '', captain: !!r.is_cap })),
+    DRAFT_RESULTS,
     PENDING: pending,
     SCORES: (await db.query('select id, reg_id, workout_id, value, state from scores')).rows.map(scoreOut),
     WAIVERS: [...new Set(['Рекорд Талант', ...(await db.query("select waiver, count(*) n from registrations where waiver is not null group by 1 order by n desc limit 20")).rows.map(r => r.waiver)])],
@@ -726,6 +739,10 @@ route('POST', '/api/admin/score', async (req, res, u, body) => {
   if (reg.status !== 'paid') throw bad('Результат можно внести после оплаты');
   const ev = ((await rawContent()).EVENTS || []).find(e => e.id === reg.event_id);
   const w = ev && (ev.workouts || []).find(x => x.id === body.workout); if (!w) throw bad('Задание не найдено');
+  if (w.divs && w.divs.length && !w.divs.includes(reg.div_id)) throw bad('У этой категории нет такого комплекса');
+  if (body.value === null || body.value === '') {
+    await db.query('delete from scores where reg_id=$1 and workout_id=$2', [reg.id, w.id]); dirty(); return { score: null };
+  }
   const value = checkValue(w.type, body.value);
   const r = await db.query(`insert into scores(reg_id, workout_id, value, video, state, reviewed_by) values ($1,$2,$3,null,'accepted',$4)
     on conflict (reg_id, workout_id) do update set value=excluded.value, state='accepted', reviewed_by=excluded.reviewed_by returning id, reg_id, workout_id, value, state`,

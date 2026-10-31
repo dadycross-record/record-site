@@ -234,6 +234,10 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 .waiver{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.waiver .inp{flex:1;min-width:200px}
 .crq{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--line)}.crq:last-child{border-bottom:0}.crq-act{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .crewadd-box summary{cursor:pointer;list-style:none}.crewadd-box summary::-webkit-details-marker{display:none}.tbl.crew tr.tot td{border-top:2px solid var(--line)}
+.wodcard{padding:0;overflow:hidden}.wodhead{display:flex;gap:10px;align-items:center;width:100%;padding:12px 14px;background:none;border:0;color:inherit;cursor:pointer}.wodbody{padding:0 14px 14px;font-size:15px;line-height:1.6}.wodbody div{padding:2px 0;border-bottom:1px dashed var(--line)}.wodbody div:last-child{border:0}
+.mine .lr{box-shadow:inset 3px 0 0 var(--accent)}
+.admtabs.t4{grid-template-columns:repeat(4,1fr)}@media(max-width:700px){.admtabs.t4{grid-template-columns:repeat(2,1fr)}}
+.tbl.resin td{vertical-align:middle}.tbl.resin .inp{max-width:200px;height:38px}.inp.saving{opacity:.6}
 .big-av.xl{width:84px;height:84px;font-size:28px;border-radius:20px;flex:none}
 .big-av{width:60px;height:60px;border-radius:16px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--f-display);font-weight:800;font-size:22px}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}.stats.s4{grid-template-columns:repeat(4,1fr)}.stats.s2{grid-template-columns:repeat(2,1fr)}@media(max-width:600px){.stats.s4{grid-template-columns:repeat(2,1fr)}}
@@ -626,6 +630,21 @@ let SITE = {leagueSeeded:true, hero:null, contacts:{phone:"",email:"",vk:"",tg:"
 let SCORES = {};
 
 /* ---------- ranking ---------- */
+/* points by place; the table depends on how many athletes / teams are ranked in the category (2026 scoring rules) */
+const PT_TABLES = [
+  [14,[100,90,81,73,66,60,55,50,45,40,35,30,25,20]],
+  [28,[100,95,90,85,80,76,72,68,64,60,57,54,51,48,45,42,39,36,34,32,30,28,26,24,22,20,18,16]],
+  [42,[100,96,92,88,84,80,76,72,68,65,62,59,56,53,50,47,44,41,39,37,35,33,31,29,27,25,23,21,19,17,16,15,14,13,12,11,10,9,8,7,6,5]],
+  [56,[100,97,94,91,88,85,82,79,76,73,70,68,66,64,62,60,58,56,54,52,50,48,46,44,42,40,38,36,34,32,30,28,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3]],
+  [84,[100,98,96,94,92,90,88,86,84,82,80,78,76,74,72,70,69,68,67,66,65,64,63,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2]],
+  [98,Array.from({length:98},(_,i)=>100-i)]
+];
+const ptTable = n => (PT_TABLES.find(([size])=>n<=size) || PT_TABLES[PT_TABLES.length-1])[1];
+const ptsFor = (place, n) => { if (!place || place>n) return 0; const t=ptTable(n); return place<=t.length ? t[place-1] : Math.max(0, t[t.length-1]-(place-t.length)); };
+const usesPoints = ev => !ev.permanent && ev.scoring!=="places";
+const allResults = () => (ADM && ADM.DRAFT_RESULTS) ? {...RESULTS, ...ADM.DRAFT_RESULTS} : RESULTS;
+/* which complexes a category does: w.divs empty = all categories */
+const divWorkouts = (ev, divId) => (ev.workouts||[]).filter(w=>!w.divs || !w.divs.length || w.divs.includes(divId));
 function keyOf(type, v){
   if (v===null || v===undefined) return null;
   if (type==="time") return typeof v==="number" ? [0,v] : [1,-v.cap];
@@ -647,10 +666,10 @@ const monthTitle = id => cap1(MON_NOM[+id.slice(5,7)-1]);
 const nextMonthId = id => { let [y,m]=id.split("-").map(Number); m++; if (m>12){ m=1; y++; } return `${y}-${String(m).padStart(2,"0")}`; };
 const monthEnd = id => { const [y,m]=id.split("-").map(Number); return new Date(Date.UTC(y,m,0)).toISOString().slice(0,10); };
 const curMonth = ev => (ev.months||[]).find(m=>!m.done) || (ev.months||[]).slice(-1)[0] || {id:TODAY.slice(0,7)};
-const lbEv = (ev, month) => ev.permanent ? {...ev, workouts: ev.workouts.filter(w=>w.month===month)} : ev;
+const lbEv = (ev, month, divId) => { const ws = divId ? divWorkouts(ev, divId) : (ev.workouts||[]); return {...ev, workouts: ev.permanent ? ws.filter(w=>w.month===month) : ws}; };
 const resKey = (ev, div, month) => ev.permanent ? `${ev.id}@${month}:${div}` : `${ev.id}:${div}`;
 function leagueYear(ev, divId){
-  const ms = (ev.months||[]).filter(m=>RESULTS[resKey(ev,divId,m.id)]), sizes=[], map=new Map();
+  const ms = (ev.months||[]).filter(m=>allResults()[resKey(ev,divId,m.id)]), sizes=[], map=new Map();
   ms.forEach((m,mi)=>{ const {rows}=leaderboard(ev.id,divId,m.id); sizes[mi]=rows.length;
     rows.forEach(r=>{ if (!map.has(r.n)) map.set(r.n,{n:r.n,a:r.a,me:r.me,team:r.team,r:ms.map(()=>null)}); map.get(r.n).r[mi]=r.place; }); });
   const rows=[...map.values()];
@@ -662,11 +681,14 @@ function leagueYear(ev, divId){
 function leaderboard(evId, divId, month){
   const ev0 = EVENTS.find(e=>e.id===evId);
   if (!ev0) return {ev:null, rows:[]};
-  const ev = lbEv(ev0, month);
-  const rows = (RESULTS[resKey(ev0,divId,month)]||[]).map(r=>({...r, r:[...r.r]}));
+  const ev = lbEv(ev0, month, divId);
+  const rows = (allResults()[resKey(ev0,divId,month)]||[]).map(r=>({...r, r:[...r.r]}));
   const ranks = ev.workouts.map((w,i)=>rankWorkout(rows,i,w.type));
-  rows.forEach((r,i)=>{ r.wr = ranks.map(x=>x[i]); r.pts = r.wr.reduce((a,b)=>a+b,0); r.sorted=[...r.wr].sort((a,b)=>a-b); });
-  const cmp = (a,b) => a.pts-b.pts || cmpArr(a.sorted,b.sorted) || a.wr[a.wr.length-1]-b.wr[b.wr.length-1];
+  const pts = usesPoints(ev0), n = rows.length;
+  rows.forEach((r,i)=>{ r.wr = ranks.map(x=>x[i]); r.wp = r.wr.map((pl,k)=>r.r[k]==null ? 0 : ptsFor(pl,n)); r.pts = pts ? r.wp.reduce((a,b)=>a+b,0) : r.wr.reduce((a,b)=>a+b,0); r.sorted=[...r.wr].sort((a,b)=>a-b); });
+  // tie on total: best single placings first, then the last complex, the one before it, and so on
+  const rev = (a,b) => { for (let k=a.wr.length-1;k>=0;k--) if (a.wr[k]!==b.wr[k]) return a.wr[k]-b.wr[k]; return 0; };
+  const cmp = pts ? (a,b) => b.pts-a.pts || cmpArr(a.sorted,b.sorted) || rev(a,b) : (a,b) => a.pts-b.pts || cmpArr(a.sorted,b.sorted) || a.wr[a.wr.length-1]-b.wr[b.wr.length-1];
   rows.sort(cmp);
   rows.forEach((r,j)=>{ r.place = (j>0 && cmp(rows[j-1],r)===0) ? rows[j-1].place : j+1; });
   return {ev, rows};
@@ -677,19 +699,19 @@ function parseRes(type, raw){
   const t = String(raw||"").trim().replace(",",".");
   if (!t) return {err:"Пусто"};
   if (type==="time"){
-    const m = t.match(/^(\d{1,3}):([0-5]\d)$/); if (m) return {v:+m[1]*60 + +m[2]};
-    const c = t.match(/^(?:лимит|cap|кап)\s*\+?\s*(\d+)$/i); if (c) return {v:{cap:+c[1]}};
-    return {err:"Время мм:сс или «лимит 142»"};
+    const m = t.match(/^(\d{1,3}):([0-5]\d)(?:[.:](\d{1,2}))?$/); if (m) return {v: Math.round((+m[1]*60 + +m[2] + (m[3] ? +m[3].padEnd(2,"0")/100 : 0))*100)/100};
+    const c = t.match(/^(?:(?:лимит|cap|кап)\s*\+?\s*)?(\d+)$/i); if (c) return {v:{cap:+c[1]}};
+    return {err:"Время 12:54,15 или число повторений, если не уложился в лимит"};
   }
-  const n = Number(t); if (!isFinite(n) || n<=0) return {err:"Нужно число больше нуля"};
+  const n = Number(t); if (!isFinite(n) || n<0 || (n===0 && type!=="reps")) return {err:"Нужно число больше нуля"};
   return {v: type==="place" ? Math.round(n) : n};
 }
-const resInput = (type, v) => v===null || v===undefined ? "" : type==="time" ? (typeof v==="object" ? `лимит ${v.cap}` : fmtRes("time", v)) : String(v);
-const resHint = type => type==="time" ? "13:45 или лимит 142" : type==="reps" ? "повторений" : type==="place" ? "место" : "кг";
+const resInput = (type, v) => v===null || v===undefined ? "" : type==="time" ? (typeof v==="object" ? String(v.cap) : fmtRes("time", v)) : String(v).replace(".",",");
+const resHint = type => type==="time" ? "12:54,15 или повторы" : type==="reps" ? "повторений" : type==="place" ? "место" : "кг";
 function openWorkouts(ev){ return (ev.workouts||[]).filter(w=>!ev.permanent || !((ev.months||[]).find(m=>m.id===w.month)||{}).done); }
 function fmtRes(type, v){
   if (v===null || v===undefined) return "—";
-  if (type==="time"){ if (typeof v==="object") return `CAP+${v.cap}`; return `${Math.floor(v/60)}:${String(v%60).padStart(2,"0")}`; }
+  if (type==="time"){ if (typeof v==="object") return `лимит · ${v.cap} повт.`; const sec=Math.floor(v%60), cs=Math.round((v-Math.floor(v))*100); return `${Math.floor(v/60)}:${String(sec).padStart(2,"0")}${cs?","+String(cs).padStart(2,"0"):""}`; }
   if (type==="place") return "";
   if (type==="reps") return `${v} повт.`;
   return `${v} кг`;
@@ -734,6 +756,9 @@ function topnav(){ const cur = ROOT_TAB[S.route]; return `<nav class="topnav" ar
 const WIDTH = {club:"wide",adminClub:"mid",home:"wide",events:"wide",leaderboard:"wide",admin:"wide",adminPeople:"wide",orders:"wide",divisions:"wide",event:"mid",teamJoin:"mid"};
 const statusChip = s => ({open:'<span class="chip open">Регистрация открыта</span>',live:'<span class="chip live">Идёт</span>',ended:'<span class="chip ended">Завершён</span>',draft:'<span class="chip neutral">Черновик</span>'}[s]);
 const isPub = e => e.status!=="draft";
+const isStaffView = () => ["owner","admin","judge"].includes(S.viewAs);
+const lbEvents = () => { const rank = e => e.status==="live"?0:e.status==="open"?1:e.status==="ended"?2:3;
+  return EVENTS.filter(e=>isPub(e) || (isStaffView() && e.status==="draft")).sort((a,b)=>rank(a)-rank(b) || (rank(a)===1 ? (a.date||"").localeCompare(b.date||"") : (b.date||"").localeCompare(a.date||""))); };
 function divState(d){
   if (d.taken>=d.limit) return {k:"full",t:"Мест нет"};
   if (d.taken/d.limit>=0.85) return {k:"warn",t:"Почти заполнена"};
@@ -1025,17 +1050,20 @@ fail(){
 },
 leaderboard(){
   const L = S.lb;
-  if (!EVENTS.some(e=>e.id===L.ev && isPub(e))){ const f = EVENTS.find(isPub); if (!f) return {title:null, html:'<div class="empty">Стартов пока нет</div>'}; L.ev=f.id; L.div="m"; L.w=-1; }
+  const LE = lbEvents();
+  if (!L.init && USER){ L.init = true; const mineEv = LE.find(e=>e.status!=="open" && ORDERS.some(o=>o.event===e.id && ACTIVE_ST.includes(o.status)));
+    if (mineEv){ const o=ORDERS.filter(o=>o.event===mineEv.id && ACTIVE_ST.includes(o.status)).pop(), d=mineEv.divisions.find(x=>x.id===o.div); L.ev=mineEv.id; L.div=o.div; L.tab=d&&d.type==="team"?"team":"ind"; L.w=-1; } }
+  if (!LE.some(e=>e.id===L.ev)){ const f = LE[0]; if (!f) return {title:null, html:'<div class="empty">Стартов пока нет</div>'}; L.ev=f.id; L.div="m"; L.w=-1; }
   const ev0 = EVENTS.find(e=>e.id===L.ev);
   let month = null;
   if (ev0.permanent){ if (L.month!=="year" && !(ev0.months||[]).some(m=>m.id===L.month)) L.month = curMonth(ev0).id; month = L.month; }
   let ev = month==="year" ? leagueYear(ev0, L.div).ev : lbEv(ev0, month);
   const mpills = ev0.permanent ? `<div class="pills" role="tablist" style="margin-top:10px">${(ev0.months||[]).map(m=>`<button role="tab" aria-selected="${month===m.id}" data-lbm="${m.id}">${monthTitle(m.id)}${m.done?"":" · идёт"}</button>`).join("")}<button role="tab" aria-selected="${month==="year"}" data-lbm="year">Таблица года</button></div>` : "";
-  const head = `<div class="card" style="padding:12px 14px"><button class="selbtn" data-act="evsheet"><div><div class="row" style="gap:6px;margin-bottom:6px">${statusChip(ev.status)}</div><b>${ev.name}</b></div><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button></div>
+  const head = `<div class="card" style="padding:12px 14px"><button class="selbtn" data-act="evsheet"><div><div class="row" style="gap:6px;margin-bottom:6px">${statusChip(ev.status)}${ev.status==="draft"?'<span class="chip neutral">видите только вы</span>':""}</div><b>${esc(ev.name)}</b></div><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button></div>
    <div class="utabs" role="tablist" style="margin-top:10px">${[["ind","Атлеты"],["team","Команды"],["aff","Залы"]].map(([k,t])=>`<button role="tab" aria-selected="${L.tab===k}" data-lbt="${k}">${t}</button>`).join("")}</div>${L.tab==="aff"?"":mpills}`;
   if (ev.status==="open") return {title:null, html: head + `<div class="empty" style="margin-top:16px">Старт ${dHuman(ev.date)}. Лидерборд заполнится, когда судьи внесут первые результаты.</div>`};
   if (L.tab==="aff") return {title:null, html: head + affBoard(ev)};
-  const hasRes = d => month==="year" ? (ev0.months||[]).some(m=>RESULTS[resKey(ev0,d.id,m.id)]) : RESULTS[resKey(ev0,d.id,month)];
+  const RS = allResults(), hasRes = d => month==="year" ? (ev0.months||[]).some(m=>RS[resKey(ev0,d.id,m.id)]) : RS[resKey(ev0,d.id,month)];
   const divs = ev.divisions.filter(d=> L.tab==="team" ? d.type==="team" : d.type==="ind").filter(hasRes);
   if (!divs.length && ev0.permanent) return {title:null, html: head + '<div class="empty" style="margin-top:16px">За этот месяц результатов пока нет</div>'};
   if (!divs.length) return {title:null, html: head + '<div class="empty" style="margin-top:16px">В этом старте нет командных категорий с результатами</div>'};
@@ -1052,9 +1080,11 @@ leaderboard(){
    <button class="iconbtn" data-act="lbsearch" aria-label="Поиск"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></button></div>
    ${S.searchOpen?`<input class="inp" id="lbq" style="margin-top:8px" placeholder="Имя атлета или команды" value="${esc(L.q)}" autocomplete="off">`:""}
    ${month==="year"?"":`<div class="pills" role="tablist" style="margin-top:12px"><button role="tab" aria-selected="${wi<0}" data-lbw="-1">${ev0.permanent?"Итог месяца":"Общий зачёт"}</button>${ev.workouts.map((w,i)=>`<button role="tab" aria-selected="${wi===i}" data-lbw="${i}">${w.name.split(" · ")[0]}</button>`).join("")}</div>`}
-   <div class="lb-head" style="margin-top:8px"><span>#</span><span></span><span>${L.tab==="team"?"Команда":"Атлет"}</span><span class="wcols">${wi<0?ev.workouts.map(w=>`<span class="wc">${esc(w.name.split(" · ")[0])}</span>`).join(""):""}</span><span class="hpts">${wi<0?"Очки":"Результат"}</span><span></span></div>
+   ${wi>=0?wodCard(ev.workouts[wi], ev0):""}
+   ${(()=>{ const me=rows.find(r=>r.me); return me && !q ? `<div class="mine"><div class="muted tiny" style="margin:12px 0 6px">ВАШ РЕЗУЛЬТАТ</div><div class="lb">${row(me,ev,wi)}</div></div>` : ""; })()}
+   <div class="lb-head" style="margin-top:8px"><span>#</span><span></span><span>${L.tab==="team"?"Команда":"Атлет"}</span><span class="wcols">${wi<0?ev.workouts.map(w=>`<span class="wc">${esc(w.name.split(" · ")[0])}</span>`).join(""):""}</span><span class="hpts">${wi<0?(usesPoints(ev0)?"Баллы":"Очки"):"Результат"}</span><span></span></div>
    <div class="lb">${shown.map(r=>row(r,ev,wi)).join("") || '<div class="empty">Никого не нашли</div>'}</div>
-   ${month==="year"?'<div class="rule" style="margin-top:12px">Таблица года: очки — сумма мест за месяцы, меньше значит выше. Пропущенный месяц — место «последний + 1».</div>':wi<0?'<div class="rule" style="margin-top:12px">Очки — сумма мест по заданиям, меньше значит выше. Равный результат делит место, следующее пропускается. Без результата — место «последний + 1».</div>':""}`;
+   ${month==="year"?'<div class="rule" style="margin-top:12px">Таблица года: очки — сумма мест за месяцы, меньше значит выше. Пропущенный месяц — место «последний + 1».</div>':wi<0?(usesPoints(ev0)?`<div class="rule" style="margin-top:12px">За место в каждом комплексе — баллы по таблице для ${rows.length} ${rows.length%10===1&&rows.length%100!==11?"участника":"участников"} (1 место — 100). Итог — сумма баллов, больше значит выше. Равный результат делит место, следующее пропускается. Без результата — 0 баллов.</div>`:'<div class="rule" style="margin-top:12px">Очки — сумма мест по заданиям, меньше значит выше. Равный результат делит место, следующее пропускается. Без результата — место «последний + 1».</div>'):""}`;
   return {title:null, html};
 },
 me(){
@@ -1193,20 +1223,25 @@ function evCard(ev){
    <div class="row">${statusChip(ev.status)}<span class="sp"></span><span class="muted tiny">${ev.format==="online"?"Онлайн":"Очный"}</span></div>
    <h3>${esc(ev.name)}</h3><div class="meta"><span>${dateRange(ev)}${durTxt(ev)}</span><span>${ev.city}</span><span>${ev.divisions.length} категорий</span></div></div></button>`;
 }
+function wodCard(w, ev0){
+  const open = S.lb.desc===w.id, cap = w.cap ? ` · лимит ${Math.floor(w.cap/60)}:${String(w.cap%60).padStart(2,"0")}` : "";
+  return `<div class="card wodcard" style="margin-top:12px"><button class="wodhead" data-lbdesc="${w.id}" aria-expanded="${open}"><div class="sp" style="text-align:left"><b>${esc(w.name)}</b><div class="muted tiny">${{time:"На время",reps:"На повторения",load:"На вес"}[w.type]||""}${cap}${w.note && !/^(на время|максим|на повтор|на вес|повторени)/i.test(w.note)?` · ${esc(w.note)}`:""}</div></div><span class="small" style="color:var(--accent)">${open?"Скрыть":"Описание"}</span></button>
+    ${open?`<div class="wodbody">${(w.body&&w.body.length)?w.body.map(l=>`<div>${esc(l)}</div>`).join(""):'<div class="muted">Описание комплекса ещё не опубликовано</div>'}</div>`:""}</div>`;
+}
 function row(r, ev, wi){
   const place = wi<0 ? r.place : r.wr[wi];
   const cls = place<=3 && (wi>=0 || r.pts) ? `r${place}` : "";
   const id = `${r.n}`;
   const right = wi<0 ? `<span class="pts">${r.pts}<small>PTS</small></span>` : `<span class="pts mono" style="font-size:16px">${fmtRes(ev.workouts[wi].type, r.r[wi])}</span>`;
   const initials = r.n.split(" ").map(x=>x[0]).slice(0,2).join("");
-  const wcols = `<span class="wcols">${wi<0 ? ev.workouts.map((w,i)=>`<span class="wc ${r.wr[i]===1?"first":""}"><b>#${r.wr[i]}</b><i>${fmtRes(w.type,r.r[i])}</i></span>`).join("") : ""}</span>`;
+  const wcols = `<span class="wcols">${wi<0 ? ev.workouts.map((w,i)=>`<span class="wc ${r.wr[i]===1?"first":""}"><b>#${r.wr[i]}</b><i>${r.r[i]&&typeof r.r[i]==="object"&&r.r[i].cap!=null ? `${r.r[i].cap} повт.` : fmtRes(w.type,r.r[i])}</i></span>`).join("") : ""}</span>`;
   const open = S.lb.open===id;
   return `<div class="lr ${cls} ${r.me?"me":""} ${open?"open":""}"><button data-row="${esc(id)}" aria-expanded="${open}">
     <span class="rk">${place}</span><span class="av">${esc(initials)}</span>
     <span class="nm"><b>${esc(r.n)}${r.me?' <span class="chip warn" style="height:18px;font-size:10px;vertical-align:2px">Вы</span>':""}</b><span>${r.team?esc(r.team.join(" · ")):esc(r.a)}</span></span>
     ${wcols}${right}<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
-    <div class="split"><table><thead><tr><th>Задание</th><th>Место</th><th>Результат</th></tr></thead><tbody>
-    ${ev.workouts.map((w,i)=>`<tr><td>${w.name.split(" · ")[0]}</td><td class="mono ${r.wr[i]===1?"first":""}">#${r.wr[i]}</td><td class="mono">${fmtRes(w.type,r.r[i])}</td></tr>`).join("")}
+    <div class="split"><table><thead><tr><th>Комплекс</th><th>Место</th><th>Результат</th>${r.wp&&usesPoints(EVENTS.find(e=>e.id===ev.id)||{})?"<th>Баллы</th>":""}</tr></thead><tbody>
+    ${ev.workouts.map((w,i)=>`<tr><td>${w.name.split(" · ")[0]}</td><td class="mono ${r.wr[i]===1?"first":""}">#${r.wr[i]}</td><td class="mono">${fmtRes(w.type,r.r[i])}</td>${r.wp&&usesPoints(EVENTS.find(e=>e.id===ev.id)||{})?`<td class="mono">${r.wp[i]}</td>`:""}</tr>`).join("")}
     </tbody></table>${r.team?"":`<div class="muted tiny" style="margin-top:8px">${esc(r.a)}</div>`}</div></div>`;
 }
 function affBoard(ev){
@@ -1438,7 +1473,7 @@ const LOGIN_ROUTES = ["me","orders","crewApply","crewManage","score","profile","
 function allowed(route){
   if (!ADMIN_ROUTES.includes(route)) return true;
   if (!["owner","admin","judge"].includes(S.viewAs)) return false;
-  if (S.viewAs==="judge") return route==="admin";
+  if (S.viewAs==="judge") return route==="admin" || route==="adminPeople";
   return true;
 }
 const canEdit = () => S.viewAs==="owner" || S.viewAs==="admin";
@@ -1551,6 +1586,7 @@ function adminClick(t, ds){
   if (ds.afmt){ ev.format=ds.afmt; render(); return true; }
   if (ds.aage){ ev.ageMode=ds.aage; render(); return true; }
   if (ds.ast){ adm.st=ds.ast; render(); return true; }
+  if (ds.ascr){ curEv().scoring = ds.ascr; render(); return true; }
   if (ds.apreset!==undefined){ const p=PRESETS[+ds.apreset]; ev.divisions.push({...p,id:"d"+Date.now().toString(36),taken:0}); adm.err.divs=null; render(); toast(`Добавлена категория «${p.name}»`); return true; }
   if (ds.adiv!==undefined){
     adm.divIdx = ds.adiv==="new" ? null : +ds.adiv; const d = adm.divIdx===null ? null : ev.divisions[adm.divIdx];
@@ -1560,7 +1596,7 @@ function adminClick(t, ds){
   if (ds.adel!==undefined){ ev.divisions.splice(+ds.adel,1); render(); return true; }
   if (ds.awod!==undefined){
     adm.wodIdx = ds.awod==="new" ? null : +ds.awod; const w = adm.wodIdx===null ? null : ev.workouts[adm.wodIdx];
-    adm.wd = w ? {...w,cap:w.cap?String(Math.round(w.cap/60)):"10",text:w.body.join("\n"),note:w.note||"",day:w.day||evDays(ev)[0],month:w.month||curMonth(ev).id} : {name:"",type:"time",cap:"10",text:"",note:"",day:evDays(ev)[0],month:curMonth(ev).id};
+    adm.wd = w ? {...w,divs:[...(w.divs||[])],cap:w.cap?String(Math.round(w.cap/60)):"10",text:w.body.join("\n"),note:w.note||"",day:w.day||evDays(ev)[0],month:w.month||curMonth(ev).id} : {name:"",type:"time",cap:"10",text:"",note:"",divs:[],day:evDays(ev)[0],month:curMonth(ev).id};
     adm.werr={}; go("adminWod",{}); return true;
   }
   if (ds.awdel!==undefined){ ev.workouts.splice(+ds.awdel,1); render(); return true; }
@@ -1586,6 +1622,10 @@ function adminClick(t, ds){
     if (adm.schIdx===null) ev.schedule.push(row); else ev.schedule[adm.schIdx]=row;
     adm.err.days=null; back(); toast("Программа обновлена"); return true;
   }
+  if (ds.wdiv){ const w=adm.wd, all=ev.divisions.map(d=>d.id); let sel = w.divs.length ? [...w.divs] : [...all];
+    sel = sel.includes(ds.wdiv) ? sel.filter(x=>x!==ds.wdiv) : [...sel, ds.wdiv];
+    if (!sel.length){ toast("Нужна хотя бы одна категория"); return true; }
+    w.divs = sel.length===all.length ? [] : all.filter(x=>sel.includes(x)); render(); return true; }
   if (ds.dday){
     const all=evDays(ev), v=adm.dv; let sel = v.days.length ? v.days.filter(x=>all.includes(x)) : [...all];
     sel = sel.includes(ds.dday) ? sel.filter(x=>x!==ds.dday) : [...sel, ds.dday];
@@ -1664,6 +1704,7 @@ function adminClick(t, ds){
     if (w.type==="time") o.cap=+w.cap*60;
     if (evDays(ev).length>1) o.day=w.day;
     if (ev.permanent) o.month = w.month || curMonth(ev).id;
+    if (w.divs.length && w.divs.length<ev.divisions.length) o.divs=[...w.divs];
     if (old) ev.workouts[adm.wodIdx]=o; else ev.workouts.push(o);
     back(); toast(old?"Задание сохранено":"Задание добавлено"); return true;
   }
@@ -1835,7 +1876,7 @@ admin(){
 adminEvent(){
   const ev=curEv(), E=adm.err||{}, on=ev.format==="online", days=evDays(ev), multi=days.length>1;
   const divRows = ev.divisions.map((d,i)=>`<div class="arow"><div class="sp"><b>${esc(d.name)}</b><div class="muted tiny">${d.type==="team"?`Команда ${d.size} чел. · `:""}${gLabel(d)} · ${ageLabel(d,ev)}${multi?` · ${divDays(ev,d)}`:""} · ${fmtRub(d.price)} · <span class="mono">${d.taken}/${d.limit}</span></div></div><button class="iconbtn sm" data-adiv="${i}" aria-label="Изменить категорию">${IC.edit}</button><button class="iconbtn sm" data-adel="${i}" aria-label="Удалить категорию" ${d.taken?'disabled title="Есть записавшиеся"':""}>${IC.del}</button></div>`).join("");
-  const wodRows = ev.workouts.map((w,i)=>`<div class="arow"><div class="sp"><b>${esc(w.name)}</b><div class="muted tiny">${ev.permanent&&w.month?`${monthTitle(w.month)} · `:""}${multi?`${dayShort(days.includes(w.day)?w.day:days[0])} · `:""}${TYPE_L[w.type]}${w.cap?` · лимит ${w.cap/60}:00`:""}</div></div><button class="iconbtn sm" data-awod="${i}" aria-label="Изменить задание">${IC.edit}</button><button class="iconbtn sm" data-awdel="${i}" aria-label="Удалить задание">${IC.del}</button></div>`).join("");
+  const wodRows = ev.workouts.map((w,i)=>`<div class="arow"><div class="sp"><b>${esc(w.name)}</b><div class="muted tiny">${ev.permanent&&w.month?`${monthTitle(w.month)} · `:""}${multi?`${dayShort(days.includes(w.day)?w.day:days[0])} · `:""}${TYPE_L[w.type]}${w.cap?` · лимит ${w.cap/60}:00`:""} · ${w.divs&&w.divs.length?w.divs.map(id=>(ev.divisions.find(d=>d.id===id)||{name:"?"}).name).join(", "):"все категории"}</div></div><button class="iconbtn sm" data-awod="${i}" aria-label="Изменить задание">${IC.edit}</button><button class="iconbtn sm" data-awdel="${i}" aria-label="Удалить задание">${IC.del}</button></div>`).join("");
   const regs = ev.divisions.reduce((a,d)=>a+d.taken,0);
   ev.docs = ev.docs || [];
   const stHint = {draft:"Черновик видите только вы.",open:"Старт виден в приложении, запись открыта до даты окончания регистрации.",live:"Старт идёт: открыт лидерборд, для онлайн-стартов — сдача результатов.",ended:"Регистрация и сдача закрыты, лидерборд остаётся."}[adm.st];
@@ -1891,7 +1932,9 @@ adminEvent(){
     <button class="btn ghost block" data-adiv="new">+ Своя категория</button>
     <div class="muted tiny">Быстро добавить готовую:</div>
     <div class="pills wrap">${PRESETS.map((p,i)=>`<button data-apreset="${i}">+ ${p.name}</button>`).join("")}</div>
-    <h2 class="sec">Задания · ${ev.workouts.length}</h2>
+    <h2 class="sec">Комплексы · ${ev.workouts.length}</h2>
+    ${ev.permanent?"":`<div class="f">Общий зачёт${seg("ascr",ev.scoring==="places"?"places":"points",[["points","Баллы по таблице"],["places","Сумма мест"]])}</div>
+    <div class="muted tiny">${ev.scoring==="places"?"Места в комплексах складываются, меньше сумма — выше в итоге.":"За место в комплексе — баллы по таблице. Таблица выбирается по числу участников категории: до 14, 28, 42, 56, 84 и 98 и больше. Больше баллов — выше в итоге. При равенстве — лучшие места в комплексах, затем последний комплекс."}</div>`}
     <div class="card" style="padding:4px 14px">${wodRows || '<div class="muted small" style="padding:12px 0">Заданий пока нет</div>'}</div>
     <button class="btn ghost block" data-awod="new">+ Задание</button>
     ${crewPanel(ev)}
@@ -1928,7 +1971,9 @@ adminWod(){
     <label class="f">Название<input class="inp ${E.name?"err":""}" id="wName" value="${esc(w.name)}" placeholder="Полоса препятствий"></label>${fErr(E.name)}
     ${ev.permanent?`<label class="f">Месяц<select class="inp" id="wMonth">${(ev.months||[]).map(m=>`<option value="${m.id}" ${m.id===w.month?"selected":""}>${monthTitle(m.id)} ${m.id.slice(0,4)}${m.done?" · итоги подведены":""}</option>`).join("")}</select></label>`:""}
     ${days.length>1?`<label class="f">День<select class="inp" id="wDay">${days.map(d=>`<option value="${d}" ${d===w.day?"selected":""}>${dayLabel(ev,d)}</option>`).join("")}</select></label>`:""}
+    <div class="f">Для каких категорий<div class="pills wrap">${ev.divisions.map(d=>`<button type="button" role="checkbox" aria-checked="${!w.divs.length||w.divs.includes(d.id)}" aria-selected="${!w.divs.length||w.divs.includes(d.id)}" data-wdiv="${d.id}">${esc(d.name)}</button>`).join("")}</div><div class="muted tiny">${w.divs.length?`Комплекс у ${w.divs.length} из ${ev.divisions.length} категорий.`:"Сейчас — у всех категорий. Снимите лишние."}</div></div>
     <div class="f">Как считается результат${seg("wtp",w.type,[["time","На время"],["reps","Повторения"],["load","Вес"]])}</div>
+    <div class="muted tiny">${w.type==="time"?"Быстрее — лучше. Кто не уложился в лимит, получает результат в повторениях: больше — лучше, но любое время лучше любых повторений. Время вводится до сотых: 12:54,15.":w.type==="load"?"Больше вес — лучше.":"Больше повторений — лучше."}</div>
     ${w.type==="time"?`<label class="f">Лимит времени, минут<input class="inp mono ${E.cap?"err":""}" id="wCap" inputmode="numeric" value="${esc(w.cap)}"></label>${fErr(E.cap)}<div class="muted tiny">Кто не уложился, вводит повторения к лимиту и стоит ниже всех финишировавших.</div>`:""}
     <label class="f">Описание, каждое движение с новой строки<textarea class="inp ${E.body?"err":""}" id="wBody" placeholder="10 прыжков через скакалку&#10;Спринт 20 м">${esc(w.text)}</textarea></label>${fErr(E.body)}
     <label class="f">Подпись<input class="inp" id="wNote" value="${esc(w.note||"")}" placeholder="Заполнится сама по формату"></label>
@@ -1963,15 +2008,18 @@ adminPeople(){
   const ev=curEv(); if (!ev) return {title:"Участники", html:'<div class="empty">Старт не найден</div>'};
   const regs = ADM.REGS.filter(o=>o.event===ev.id), nNew = regs.filter(o=>o.status==="new").length;
   const crew = ADM.CREW.filter(c=>c.event===ev.id), nReq = crew.filter(c=>c.status==="request").length;
-  const t = ["stats","regs","crew"].includes(adm.ptab) ? adm.ptab : "stats";
-  const tabs = `<div class="admtabs t3" role="tablist">
+  const judge = S.viewAs==="judge";
+  const t = judge ? "res" : ["stats","regs","crew","res"].includes(adm.ptab) ? adm.ptab : "stats";
+  if (judge) return {title:"Результаты", html:`<div class="muted small" style="margin-bottom:10px">${esc(ev.name)} · ${ev.date?dHuman(ev.date):""}</div>${resultsTab(ev)}`};
+  const tabs = `<div class="admtabs t4" role="tablist">
     <button role="tab" aria-selected="${t==="stats"}" data-ptab="stats"><b>Участники</b><span>статистика старта</span></button>
     <button role="tab" aria-selected="${t==="regs"}" data-ptab="regs"><b>Заявки${nNew?` <i class="tabn">${nNew}</i>`:""}</b><span>${nNew?`${nNew} не обработано`:"все обработаны"}</span></button>
-    <button role="tab" aria-selected="${t==="crew"}" data-ptab="crew"><b>Судьи и волонтёры${nReq?` <i class="tabn">${nReq}</i>`:""}</b><span>заявки и команда старта</span></button></div>`;
+    <button role="tab" aria-selected="${t==="crew"}" data-ptab="crew"><b>Судьи и волонтёры${nReq?` <i class="tabn">${nReq}</i>`:""}</b><span>заявки и команда старта</span></button>
+    <button role="tab" aria-selected="${t==="res"}" data-ptab="res"><b>Результаты</b><span>ввод по комплексам</span></button></div>`;
   const body = t==="regs" ? `${nNew?`<div class="rule small" style="margin:0 0 4px">Подсвечены заявки, по которым ещё нет оплаты: <b>${nNew}</b>. Когда участник оплатил — нажмите «Оплачено» или откройте заявку по фамилии.</div>`:""}
       ${regs.length ? regTable(ev, regs) : '<div class="empty">Заявок пока нет</div>'}
       <div class="row wrap" style="margin-top:12px"><button class="btn sm ghost" data-act="regcsv" ${regs.length?"":"disabled"}>Скачать заявки для Excel</button></div>`
-    : t==="crew" ? crewTab(ev, crew) : peopleStats(ev, regs);
+    : t==="crew" ? crewTab(ev, crew) : t==="res" ? resultsTab(ev) : peopleStats(ev, regs);
   return {title:"Участники", html:`<div class="muted small" style="margin-bottom:10px">${esc(ev.name)} · ${ev.date?dHuman(ev.date):""}</div>${tabs}${body}`};
 }
 });
@@ -2223,7 +2271,7 @@ async function api(method, url, body){
 }
 function markMe(){
   const mine = new Set(ORDERS.map(o=>o.pub));
-  Object.values(RESULTS).forEach(rows=>rows.forEach(r=>{ r.me = (r.k||[]).some(k=>mine.has(k)); }));
+  Object.values(allResults()).forEach(rows=>rows.forEach(r=>{ r.me = (r.k||[]).some(k=>mine.has(k)); }));
 }
 async function loadContent(){
   const c = await api("GET","/api/content");
@@ -2248,7 +2296,7 @@ async function loadSession(){
 }
 async function loadAdmin(){
   const a = await api("GET","/api/admin/state");
-  ADM = {REGS:a.REGS||[], PENDING:a.PENDING||[], SCORES:a.SCORES||[], CREW:a.CREW||[], CREW_CFG:a.CREW_CFG||{}, WAIVERS:a.WAIVERS||["Рекорд Талант"]};
+  ADM = {REGS:a.REGS||[], PENDING:a.PENDING||[], SCORES:a.SCORES||[], CREW:a.CREW||[], CREW_CFG:a.CREW_CFG||{}, WAIVERS:a.WAIVERS||["Рекорд Талант"], DRAFT_RESULTS:a.DRAFT_RESULTS||null};
   if (a.PROMOS) PROMOS = a.PROMOS;
   if (a.ACCESS) ACCESS = a.ACCESS;
   if (a.CLUB_LEADS) CLUB_LEADS = a.CLUB_LEADS;
@@ -2262,7 +2310,7 @@ function scoreTargets(){
   const out = [];
   ORDERS.filter(o=>o.status==="paid").forEach(o=>{ const ev=EVENTS.find(e=>e.id===o.event); if (!ev || ev.format!=="online" || ev.status!=="live") return;
     if (!ev.permanent && ev.submitTo && TODAY>ev.submitTo) return;
-    const ws = ev.permanent ? ev.workouts.filter(w=>w.month===curMonth(ev).id && !(ev.months||[]).some(m=>m.id===w.month&&m.done)) : ev.workouts;
+    const dws = divWorkouts(ev, o.div), ws = ev.permanent ? dws.filter(w=>w.month===curMonth(ev).id && !(ev.months||[]).some(m=>m.id===w.month&&m.done)) : dws;
     if (ws.length) out.push({o, ev, ws}); });
   return out;
 }
@@ -2394,6 +2442,49 @@ function crewInvite(ev){
     <div class="muted small">${mine.status==="confirmed"?"Организатор свяжется с вами перед стартом.":mine.status==="request"?"Организатор посмотрит заявку и свяжется с вами.":"Спасибо за отклик! Будем рады видеть вас на следующих стартах."}</div>
     ${mine.status!=="confirmed"?`<button class="btn sm ghost" style="align-self:flex-start" data-crewwd="${mine.id}">Отозвать заявку</button>`:""}</div>`;
   return `<h2 class="sec">Команда старта</h2><div class="card stack"><b>Станьте судьёй или волонтёром</b><div class="muted small">Нам нужны судьи, волонтёры и помощники организатора. Работа судей и ассистентов оплачивается — условия обсудим после заявки. Волонтёрство — без оплаты.</div><button class="btn sm" style="align-self:flex-start" data-crewapply="${ev.id}">Хочу в команду</button></div>`;
+}
+/* results entry: category -> complex -> one field per athlete (or team); saved on Enter / leaving the field */
+function resultsTab(ev){
+  const R = adm.rs = adm.rs && adm.rs.ev===ev.id ? adm.rs : {ev:ev.id, div:"", w:""};
+  const divs = ev.divisions.filter(d=>ADM.REGS.some(o=>o.event===ev.id && o.div===d.id && o.status==="paid"));
+  if (!divs.length) return '<div class="empty">Нет оплаченных участников — вносить результаты пока некому.</div>';
+  if (!divs.some(d=>d.id===R.div)) R.div = divs[0].id;
+  const div = divs.find(d=>d.id===R.div), ws = divWorkouts(ev, div.id);
+  if (!ws.length) return `<div class="filters"><select class="inp" id="rsDiv">${divs.map(d=>`<option value="${d.id}" ${d.id===R.div?"selected":""}>${esc(d.name)}</option>`).join("")}</select></div><div class="empty">У этой категории нет комплексов. Добавьте их в редакторе старта и отметьте категорию.</div>`;
+  if (!ws.some(w=>w.id===R.w)) R.w = ws[0].id;
+  const w = ws.find(x=>x.id===R.w), wi = ws.indexOf(w);
+  const regs = ADM.REGS.filter(o=>o.event===ev.id && o.div===div.id && o.status==="paid");
+  // one line per athlete; for team categories — one line per team (result stored on the first member)
+  const lines = div.type==="team" ? [...new Set(regs.filter(o=>o.team && (o.role||"main")==="main").map(o=>o.team))].map(tn=>{ const ms=regs.filter(o=>o.team===tn); return {name:tn, reg:(ms.find(o=>o.captain)||ms[0]).id, regs:ms.map(o=>o.id), pubs:ms.map(o=>o.pub)}; })
+    : regs.map(o=>({name:`${(o.person||{}).last||""} ${(o.person||{}).first||""}`.trim(), reg:o.id, regs:[o.id], pubs:[o.pub]}));
+  lines.sort((a,b)=>a.name.localeCompare(b.name,"ru"));
+  const lb = leaderboard(ev.id, div.id), pts = usesPoints(ev);
+  const val = L => { const sc = ADM.SCORES.find(x=>L.regs.includes(x.reg) && x.workout===w.id && x.state!=="rejected"); return sc ? sc.value : null; };
+  const rk = L => lb.rows.find(r=>(r.k||[]).some(k=>L.pubs.includes(k)));
+  const done = lines.filter(L=>val(L)!==null).length;
+  return `<div class="filters"><select class="inp" id="rsDiv" aria-label="Категория">${divs.map(d=>`<option value="${d.id}" ${d.id===R.div?"selected":""}>${esc(d.name)}</option>`).join("")}</select></div>
+    <div class="pills" role="tablist" style="margin-top:10px">${ws.map(x=>`<button role="tab" aria-selected="${x.id===w.id}" data-rsw="${x.id}">${esc(x.name)}</button>`).join("")}</div>
+    <div class="muted small" style="margin:10px 0">${w.type==="time"?`На время${w.cap?`, лимит ${Math.floor(w.cap/60)}:${String(w.cap%60).padStart(2,"0")}`:""}: вводите время до сотых — <b>12:54,15</b>. Не уложился в лимит — просто число повторений.`:w.type==="load"?"На вес: вводите килограммы, например 112,5. Больше — лучше.":"На повторения: число. Больше — лучше."} Сохраняется само, когда нажимаете Enter или переходите к следующему. Пустое поле — результата нет. Внесено: <b>${done} из ${lines.length}</b>.</div>
+    <div class="card tbl-wrap" style="padding:0 4px"><table class="tbl resin"><thead><tr><th>${div.type==="team"?"Команда":"Атлет"}</th><th>Результат</th><th class="num">Место</th>${pts?'<th class="num">Баллы</th>':""}</tr></thead><tbody>
+    ${lines.map((L,i)=>{ const v=val(L), r=rk(L); return `<tr><td>${esc(L.name)}</td><td><input class="inp mono" id="rs_${L.reg}" data-rsreg="${L.reg}" data-rsi="${i}" value="${esc(resInput(w.type,v))}" placeholder="${resHint(w.type)}" inputmode="${w.type==="time"?"text":"decimal"}" autocomplete="off"></td>
+      <td class="num mono">${v!==null&&r?r.wr[wi]:"—"}</td>${pts?`<td class="num mono">${v!==null&&r?r.wp[wi]:"—"}</td>`:""}</tr>`; }).join("")}
+    </tbody></table></div>
+    <div class="row wrap" style="margin-top:12px"><button class="btn sm" data-lbopen="${ev.id}|${div.id}">Открыть лидерборд категории</button></div>`;
+}
+async function saveResult(input){
+  const ev=curEv(), R=adm.rs, w=(ev.workouts||[]).find(x=>x.id===R.w), reg=input.dataset.rsreg, raw=input.value.trim();
+  const prev = ADM.SCORES.find(x=>x.reg===reg && x.workout===w.id);
+  if (!raw && !prev) return;
+  let value = null;
+  if (raw){ const p=parseRes(w.type, raw); if (p.err){ input.classList.add("err"); toast(p.err); return false; } value=p.v; }
+  if (prev && JSON.stringify(prev.value)===JSON.stringify(value)) return;
+  input.classList.remove("err"); input.classList.add("saving");
+  try {
+    const r = await api("POST","/api/admin/score",{reg, workout:w.id, value});
+    ADM.SCORES = ADM.SCORES.filter(x=>!(x.reg===reg && x.workout===w.id)); if (r.score) ADM.SCORES.push(r.score);
+    await loadContent(); if (ev.status==="draft") await loadAdmin();
+    return true;
+  } catch(err){ input.classList.add("err"); toast(err.message); return false; }
 }
 function peopleStats(ev, regs){
   const act = regs.filter(o=>ACTIVE_ST.includes(o.status)), paidL = act.filter(o=>o.status==="paid"), newL = act.filter(o=>o.status==="new");
@@ -2559,7 +2650,7 @@ function drawQR(){
 /* ---------- sheet ---------- */
 function evSheet(){
   const scrim = document.createElement("div"); scrim.className="scrim";
-  scrim.innerHTML = `<div class="sheet" role="dialog" aria-label="Выбор старта"><div class="grab"></div><div class="muted small" style="text-align:center;margin-bottom:6px">Выберите старт</div>${EVENTS.filter(isPub).map(e=>`<button class="opt" data-sel="${e.id}" aria-selected="${S.lb.ev===e.id}"><span>${e.name}</span>${statusChip(e.status)}</button>`).join("")}</div>`;
+  scrim.innerHTML = `<div class="sheet" role="dialog" aria-label="Выбор старта"><div class="grab"></div><div class="muted small" style="text-align:center;margin-bottom:6px">Выберите старт</div>${lbEvents().map(e=>`<button class="opt" data-sel="${e.id}" aria-selected="${S.lb.ev===e.id}"><span>${e.name}</span>${statusChip(e.status)}</button>`).join("")}</div>`;
   scrim.addEventListener("click", e=>{ const b=e.target.closest("[data-sel]"); if(b){ S.lb.ev=b.dataset.sel; S.lb.w=-1; S.lb.open=null; S.lb.div="m"; scrim.remove(); render(); } else if(e.target===scrim) scrim.remove(); });
   document.body.appendChild(scrim);
 }
@@ -2637,7 +2728,10 @@ document.addEventListener("click", e=>{
       .catch(err=>{ S.reg.f.promoOk=false; S.reg.f.promoOff=0; S.reg.f.promoMsg=err.message; render(); }); return; }
   if (ds.act==="evsheet") return evSheet();
   if (ds.lbt){ S.lb.tab=ds.lbt; S.lb.w=-1; S.lb.open=null; S.lb.div = ds.lbt==="team"?"pair":"m"; return render(); }
-  if (ds.lbw!==undefined){ S.lb.w=+ds.lbw; return render(); }
+  if (ds.lbw!==undefined){ S.lb.w=+ds.lbw; S.lb.desc=null; return render(); }
+  if (ds.rsw){ adm.rs.w=ds.rsw; render(); return; }
+  if (ds.lbopen){ const [e,d]=ds.lbopen.split("|"), dv=(EVENTS.find(x=>x.id===e)||{divisions:[]}).divisions.find(x=>x.id===d); S.lb.ev=e; S.lb.div=d; S.lb.tab=dv&&dv.type==="team"?"team":"ind"; S.lb.w=-1; S.lb.init=true; return tab("leaderboard"); }
+  if (ds.lbdesc){ S.lb.desc = S.lb.desc===ds.lbdesc ? null : ds.lbdesc; return render(); }
   if (ds.lbm){ S.lb.month=ds.lbm; S.lb.w=-1; S.lb.open=null; return render(); }
   if (ds.lbmonth){ S.lb.ev=ds.lbev; S.lb.month=ds.lbmonth; S.lb.w=-1; S.lb.open=null; S.lb.tab="ind"; S.lb.div="m"; return tab("leaderboard"); }
   if (ds.act==="lbsearch"){ S.searchOpen=!S.searchOpen; if(!S.searchOpen) S.lb.q=""; render(); const i=document.getElementById("lbq"); i&&i.focus(); return; }
@@ -2659,8 +2753,11 @@ document.addEventListener("click", e=>{
   if (ds.sw!==undefined){ S.p={o:S.p.o,w:+ds.sw}; return render(); }
 });
 function keepForm(){ const f=S.reg.f; const g=id=>document.getElementById(id); if(g("rSize")) f.size=g("rSize").value; if(g("rAff")) f.aff=g("rAff").value.trim(); ["c1","c2","c3","c4","c5"].forEach(k=>{ if(g(k)) f[k]=g(k).checked; }); }
+document.addEventListener("keydown", e=>{ if (e.key==="Enter" && e.target.dataset && e.target.dataset.rsreg){ e.preventDefault(); adm.rsNext=true; e.target.blur(); } });
 document.addEventListener("change", e=>{
   const id = e.target.id;
+  if (id==="rsDiv"){ adm.rs.div=e.target.value; adm.rs.w=""; return render(); }
+  if (e.target.dataset && e.target.dataset.rsreg){ const i=+e.target.dataset.rsi; saveResult(e.target).then(ok=>{ if (ok!==false){ const y=window.scrollY; render(); window.scrollTo(0,y); const nx=document.querySelector(`[data-rsi="${i+1}"]`); if (nx && adm.rsNext){ nx.focus(); nx.select(); } adm.rsNext=false; } }); return; }
   if (id==="regDiv"){ adm.rf.div=e.target.value; adm.rf.sel={}; return render(); }
   if (id==="regAll"){ const ev=curEv(), {list}=regFilter(ev, ADM.REGS.filter(o=>o.event===ev.id)); list.filter(o=>o.status==="new").forEach(o=>{ adm.rf.sel[o.id]=e.target.checked; }); return render(); }
   if (e.target.dataset && e.target.dataset.cwd){ const [cid,d]=e.target.dataset.cwd.split("|"), c=ADM.CREW.find(x=>x.id===+cid); if (!c) return; const work={...c.work}; if (e.target.checked) work[d]={k:"full"}; else delete work[d]; const y=window.scrollY;
