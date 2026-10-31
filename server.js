@@ -109,6 +109,12 @@ alter table crew add column if not exists avail jsonb not null default '[]';
 alter table crew add column if not exists source text not null default 'manual';
 alter table crew add column if not exists info jsonb not null default '{}';
 alter table users add column if not exists avatar text;
+alter table teams add column if not exists invite text;
+alter table teams add column if not exists captain_reg text;
+alter table registrations add column if not exists team_role text;
+update registrations set team_role='main' where team is not null and team_role is null;
+update teams t set captain_reg = (select r.id from registrations r where r.event_id=t.event_id and r.div_id=t.div_id and r.team=t.name order by r.created_at limit 1) where captain_reg is null;
+update teams set invite = substr(md5(random()::text || id::text), 1, 16) where invite is null;
 update users set profile = jsonb_set(profile, '{affiliate}', '"RECORD"') where profile->>'affiliate' ilike 'record пивовариха';
 update registrations set person = jsonb_set(person, '{affiliate}', '"RECORD"') where person->>'affiliate' ilike 'record пивовариха';
 create unique index if not exists crew_user_ev on crew(event_id, user_id) where user_id is not null;
@@ -123,6 +129,7 @@ create table if not exists backups (id bigserial primary key, created_at timesta
 create table if not exists consents (id bigserial primary key, created_at timestamptz not null default now(), subject text not null, kind text not null, version text not null, ip text, ua text, ref text);
 `;
 const ACTIVE = `('new','paid','refund_requested')`;
+const INTEAM = `('new','paid','refund_requested','pending','reserve')`;
 
 async function init() {
   for (let i = 0; ; i++) {
@@ -291,11 +298,12 @@ route('GET', '/api/session', async (req, res, u) => {
   return {
     user: { email: u.email, role: u.role, profile: u.profile, kids: u.kids, avatar: u.avatar || '' },
     orders: regs.map(orderOut).map(o => ['blocked', 'cancelled'].includes(o.status) ? o : { ...o, note: '' }), scores,
+    teams: await myTeams(u.id),
     crew: (await db.query('select id, event_id, role, status, avail from crew where user_id=$1 order by created_at', [u.id])).rows
       .map(c => ({ id: Number(c.id), event: c.event_id, role: c.role, status: c.status, avail: c.avail || [] })),
   };
 });
-const orderOut = r => ({ note: r.note || '', id: r.id, pub: r.pub, event: r.event_id, div: r.div_id, who: r.who, person: r.person, team: r.team, size: r.size, promo: r.promo,
+const orderOut = r => ({ role: r.team_role || null, note: r.note || '', id: r.id, pub: r.pub, event: r.event_id, div: r.div_id, who: r.who, person: r.person, team: r.team, size: r.size, promo: r.promo,
   price: r.price, due: r.due, paid: r.paid, status: r.status, date: new Date(r.created_at.getTime() + 8 * 3600e3).toISOString().slice(0, 10), publish: r.publish });
 
 route('POST', '/api/auth/code', async (req, res, u, body) => {
@@ -425,33 +433,40 @@ route('POST', '/api/register', async (req, res, u, body) => {
   const size = ['XS', 'S', 'M', 'L', 'XL', 'XXL'].includes(body.size) ? body.size : null;
   const snap = { ...cleanPerson(person, who !== 'me'), phone: u.profile.phone, emName: u.profile.emName || '', emPhone: u.profile.emPhone || '', affiliate: canonGym(nm(body.affiliate, 80)) || person.affiliate || '' };
   if (who !== 'me') snap.parent = `${u.profile.first || ''} ${u.profile.last || ''}`.trim();
+  let out_captain = null;
   const out = await db.tx(async q => {
     await q('select pg_advisory_xact_lock(hashtext($1))', [`${ev.id}:${div.id}`]);
-    const dup = await q(`select 1 from registrations where user_id=$1 and who=$2 and event_id=$3 and status in ${ACTIVE}`, [u.id, who, ev.id]);
+    const dup = await q(`select 1 from registrations where user_id=$1 and who=$2 and event_id=$3 and status in ${INTEAM}`, [u.id, who, ev.id]);
     if (dup.rows.length) throw bad('Этот участник уже зарегистрирован на старт');
-    let team = null;
+    let team = null, role = null, initial = null, teamRow = null;
     if (div.type === 'team') {
-      const t = body.team || {};
-      const name = nm(t.name, 20).toUpperCase(), code = digits(t.code);
-      if (!name) throw bad('Укажите команду');
-      if (code.length < 4 || code.length > 6) throw bad('Код команды — от 4 до 6 цифр');
-      const ex = (await q('select * from teams where event_id=$1 and div_id=$2 and name=$3', [ev.id, div.id, name])).rows[0];
-      const members = ex ? (await q(`select count(*)::int n from registrations where event_id=$1 and div_id=$2 and team=$3 and status in ${ACTIVE}`, [ev.id, div.id, name])).rows[0].n : 0;
+      const t = body.team || {}, size = +div.size || 1;
       if (t.mode === 'create') {
-        if (ex && members > 0) throw bad('Команда с таким названием уже есть');
+        const name = nm(t.name, 20).toUpperCase();
+        if (!name) throw bad('Укажите название команды');
+        const ex = (await q('select * from teams where event_id=$1 and div_id=$2 and name=$3', [ev.id, div.id, name])).rows[0];
+        const live = ex ? (await q(`select count(*)::int n from registrations where event_id=$1 and div_id=$2 and team=$3 and status in ${INTEAM}`, [ev.id, div.id, name])).rows[0].n : 0;
+        if (ex && live > 0) throw bad('Команда с таким названием уже есть');
         const nTeams = (await q(`select count(distinct team)::int n from registrations where event_id=$1 and div_id=$2 and status in ${ACTIVE}`, [ev.id, div.id])).rows[0].n;
         if (div.limit && nTeams >= div.limit) throw bad('Лимит команд в категории набран');
-        const h = sha(`${ev.id}:${div.id}:${name}:${code}`);
-        if (ex) await q('update teams set code_hash=$1 where id=$2', [h, ex.id]);
-        else await q('insert into teams(event_id, div_id, name, code_hash) values ($1,$2,$3,$4)', [ev.id, div.id, name, h]);
+        const invite = rnd(16);
+        if (ex) await q('update teams set code_hash=$1, invite=$2, captain_reg=null where id=$3', ['', invite, ex.id]);
+        else await q(`insert into teams(event_id, div_id, name, code_hash, invite) values ($1,$2,$3,'',$4)`, [ev.id, div.id, name, invite]);
+        teamRow = (await q('select * from teams where event_id=$1 and div_id=$2 and name=$3', [ev.id, div.id, name])).rows[0];
+        team = name; role = 'main';
       } else {
-        limit('team-join:' + u.id, 10, 3600e3);
-        if (!ex || members === 0) throw bad('Такой команды нет');
-        if (ex.code_hash !== sha(`${ev.id}:${div.id}:${name}:${code}`)) throw bad('Неверный код команды. Уточните его у капитана');
-        if (members >= (div.size || 1)) throw bad('В команде уже полный состав');
+        limit('team-join:' + u.id, 20, 3600e3);
+        teamRow = t.mode === 'invite'
+          ? (await q('select * from teams where invite=$1 and event_id=$2 and div_id=$3', [str(t.invite, 40), ev.id, div.id])).rows[0]
+          : (await q('select * from teams where event_id=$1 and div_id=$2 and name=$3', [ev.id, div.id, nm(t.name, 20).toUpperCase()])).rows[0];
+        if (!teamRow) throw bad(t.mode === 'invite' ? 'Приглашение устарело — попросите у капитана новую ссылку' : 'Такой команды нет');
+        const main = (await q(`select count(*)::int n from registrations where event_id=$1 and div_id=$2 and team=$3 and status in ${ACTIVE}`, [ev.id, div.id, teamRow.name])).rows[0].n;
+        if (!main) throw bad('Такой команды нет');
+        team = teamRow.name;
+        if (t.mode === 'invite') { if (main < size) role = 'main'; else { role = 'reserve'; initial = 'reserve'; } }
+        else initial = 'pending';
       }
-      team = name;
-    } else {
+        } else {
       const n = (await q(`select count(*)::int n from registrations where event_id=$1 and div_id=$2 and status in ${ACTIVE}`, [ev.id, div.id])).rows[0].n;
       if (div.limit && n >= div.limit) throw bad('Места в категории закончились');
     }
@@ -465,9 +480,11 @@ route('POST', '/api/register', async (req, res, u, body) => {
     const due = Math.max(0, price - off);
     const id = `RC-${today().slice(5, 7)}${today().slice(8)}-${rnd(5)}`;
     const pub = rnd(10);
-    await q(`insert into registrations(id, pub, user_id, event_id, div_id, who, person, team, size, promo, price, due, paid, status, publish, photo)
-      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,0,$13,$14,$15)`,
-      [id, pub, u.id, ev.id, div.id, who, snap, team, size, promo, price, due, due === 0 ? 'paid' : 'new', !!cons.publish, !!cons.photo]);
+    await q(`insert into registrations(id, pub, user_id, event_id, div_id, who, person, team, team_role, size, promo, price, due, paid, status, publish, photo)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,0,$14,$15,$16)`,
+      [id, pub, u.id, ev.id, div.id, who, snap, team, role, size, promo, price, due, initial || (due === 0 ? 'paid' : 'new'), !!cons.publish, !!cons.photo]);
+    if (teamRow && role === 'main' && body.team && body.team.mode === 'create') await q('update teams set captain_reg=$1 where id=$2', [id, teamRow.id]);
+    if (initial === 'pending') out_captain = teamRow.captain_reg;
     return (await q('select * from registrations where id=$1', [id])).rows[0];
   });
   const subj = 'user:' + u.id;
@@ -479,11 +496,121 @@ route('POST', '/api/register', async (req, res, u, body) => {
   dirty();
   notify(`🏁 <b>Новая заявка на старт</b>\n${tg.esc(ev.name)} · ${tg.esc(div.name)}\n${out.due ? `К оплате: ${rub(out.due)}` : 'Бесплатно'} · ${out.id}\n${SITE_URL()}/#admin`,
     { title: 'новая заявка на старт', lines: [`Старт: ${ev.name}`, `Категория: ${div.name}`, `Участник: ${`${snap.last || ''} ${snap.first || ''}`.trim()}${snap.parent ? ` (родитель: ${snap.parent})` : ''}`, ...(out.team ? [`Команда: ${out.team}`] : []), `Телефон: ${snap.phone || ''}`, `Заказ: ${out.id}`, out.due ? `К оплате: ${rub(out.due)} — ждёт отметки об оплате` : 'Взнос: бесплатно'] });
+  if (out_captain) mailCaptain(out_captain, `Заявка в команду «${out.team}»`, [`${`${snap.first || ''} ${snap.last || ''}`.trim()} хочет в вашу команду «${out.team}» (${ev.name} · ${div.name}).`, '', `Принять или отклонить: ${SITE_URL()}/#orders → карточка старта → «Команда».`]);
   return { order: orderOut(out) };
+});
+
+/* ---------- teams: captain, roster, requests, reserves ---------- */
+const shortName = p => `${(p && p.first) || ''} ${((p && p.last) || '').slice(0, 1)}${p && p.last ? '.' : ''}`.trim();
+async function teamRoster(q, ev, div, name) {
+  return (await q(`select r.id, r.user_id, r.person, r.status, r.team_role, r.due, r.paid, r.created_at from registrations r
+    where r.event_id=$1 and r.div_id=$2 and r.team=$3 and r.status in ${INTEAM} order by r.created_at`, [ev, div, name])).rows;
+}
+async function myTeams(uid) {
+  const mine = (await db.query(`select distinct r.event_id, r.div_id, r.team from registrations r where r.user_id=$1 and r.team is not null and r.status in ${INTEAM}`, [uid])).rows;
+  const out = [];
+  for (const m of mine) {
+    const t = (await db.query('select * from teams where event_id=$1 and div_id=$2 and name=$3', [m.event_id, m.div_id, m.team])).rows[0]; if (!t) continue;
+    const roster = await teamRoster(db.query.bind(db), m.event_id, m.div_id, m.team);
+    const cap = roster.find(r => r.id === t.captain_reg), isCap = !!cap && Number(cap.user_id) === Number(uid);
+    out.push({ event: m.event_id, div: m.div_id, name: m.team, captain: isCap, captainReg: t.captain_reg, invite: isCap ? t.invite : null,
+      members: roster.filter(r => isCap || r.status !== 'pending' || Number(r.user_id) === Number(uid)).map(r => ({
+        reg: r.id, name: isCap || Number(r.user_id) === Number(uid) ? `${r.person.last || ''} ${r.person.first || ''}`.trim() : shortName(r.person),
+        role: r.status === 'pending' ? 'pending' : r.status === 'reserve' ? 'reserve' : 'main', paid: r.status === 'paid', cap: r.id === t.captain_reg, me: Number(r.user_id) === Number(uid) })) });
+  }
+  return out;
+}
+async function mailCaptain(capReg, subject, lines) {
+  try {
+    if (!mail.configured() || !capReg) return;
+    const r = (await db.query('select u.email from registrations r join users u on u.id=r.user_id where r.id=$1', [capReg])).rows[0];
+    if (r && r.email) await mail.send({ to: r.email, subject: 'Рекорд: ' + subject, text: lines.join('\n') });
+  } catch (e) { console.error('captain mail failed:', e.message); }
+}
+async function mailMember(regId, subject, lines) { return mailCaptain(regId, subject, lines); }
+// teams of a category for the search screen: short names only, signed-in athletes only
+route('GET', '/api/teams', async (req, res, u, body, p, qs) => {
+  need(u);
+  const url = new URL(req.url, 'http://x'), ev = str(url.searchParams.get('event'), 60), div = str(url.searchParams.get('div'), 60);
+  const teams = (await db.query('select * from teams where event_id=$1 and div_id=$2 order by created_at', [ev, div])).rows;
+  const out = [];
+  for (const t of teams) {
+    const roster = await teamRoster(db.query.bind(db), ev, div, t.name);
+    const main = roster.filter(r => ['new', 'paid', 'refund_requested'].includes(r.status));
+    if (!main.length) continue;
+    out.push({ name: t.name, main: main.map(r => ({ n: shortName(r.person), cap: r.id === t.captain_reg })), reserve: roster.filter(r => r.status === 'reserve').map(r => shortName(r.person)), pending: roster.filter(r => r.status === 'pending').length });
+  }
+  return { teams: out };
+});
+route('GET', '/api/invite/:token', async (req, res, u, body, p) => {
+  const t = (await db.query('select * from teams where invite=$1', [str(decodeURIComponent(p.token), 40)])).rows[0];
+  if (!t) throw bad('Приглашение устарело — попросите у капитана новую ссылку');
+  const roster = await teamRoster(db.query.bind(db), t.event_id, t.div_id, t.name);
+  const main = roster.filter(r => ['new', 'paid', 'refund_requested'].includes(r.status));
+  if (!main.length) throw bad('Команда расформирована');
+  return { event: t.event_id, div: t.div_id, name: t.name, main: main.map(r => shortName(r.person)), reserve: roster.filter(r => r.status === 'reserve').length };
+});
+route('POST', '/api/team/act', async (req, res, u, body) => {
+  need(u);
+  limit('team-act:' + u.id, 120, 3600e3);
+  const cap = (await db.query('select r.*, t.id tid, t.captain_reg from registrations r join teams t on t.event_id=r.event_id and t.div_id=r.div_id and t.name=r.team where r.id=$1 and r.user_id=$2', [str(body.reg, 40), u.id])).rows[0];
+  if (!cap || cap.captain_reg !== cap.id) throw bad('Это может делать только капитан команды');
+  const c = await rawContent(); const ev = (c.EVENTS || []).find(e => e.id === cap.event_id); const div = ev && ev.divisions.find(d => d.id === cap.div_id);
+  if (!div) throw bad('Категория не найдена');
+  const size = +div.size || 1, act = body.action;
+  let mailTo = null, mailText = null;
+  await db.tx(async q => {
+    await q('select pg_advisory_xact_lock(hashtext($1))', [`${cap.event_id}:${cap.div_id}`]);
+    const roster = await teamRoster(q, cap.event_id, cap.div_id, cap.team);
+    const get = id => roster.find(r => r.id === id);
+    const mainCount = () => roster.filter(r => ['new', 'paid', 'refund_requested'].includes(r.status)).length;
+    const toMain = async (r, extraPaid) => {
+      const paid = (r.paid || 0) + (extraPaid || 0); const st = paid >= r.due ? 'paid' : 'new';
+      await q("update registrations set status=$1, team_role='main', paid=$2, updated_by=$3 where id=$4", [st, paid, u.email, r.id]); r.status = st;
+    };
+    const drop = async (r, fee, why) => {
+      if (fee === 'transfer') await q("update registrations set status='cancelled', paid=0, team_role=null, note=$1, updated_by=$2 where id=$3", [why, u.email, r.id]);
+      else await q("update registrations set status=$1, team_role=null, note=$2, updated_by=$3 where id=$4", [r.paid > 0 && r.status !== 'reserve' && r.status !== 'pending' ? 'refund_requested' : 'cancelled', why, u.email, r.id]);
+      r.status = 'cancelled';
+    };
+    if (act === 'approve' || act === 'reserve') {
+      const r = get(str(body.target, 40)); if (!r || r.status !== 'pending') throw bad('Заявка не найдена');
+      if (act === 'approve') { if (mainCount() >= size) throw bad('Основной состав полный — возьмите в запас или сначала замените участника'); await toMain(r, 0); }
+      else await q("update registrations set status='reserve', team_role='reserve', updated_by=$1 where id=$2", [u.email, r.id]);
+      mailTo = r.id; mailText = act === 'approve' ? `Капитан принял вас в основной состав команды «${cap.team}». Оплатите взнос — организатор подтвердит участие.` : `Капитан взял вас в запас команды «${cap.team}». Взнос платить не нужно, пока вы не выйдете в основной состав.`;
+    } else if (act === 'reject') {
+      const r = get(str(body.target, 40)); if (!r || r.status !== 'pending') throw bad('Заявка не найдена');
+      await q("update registrations set status='cancelled', team_role=null, note='Капитан отклонил заявку в команду', updated_by=$1 where id=$2", [u.email, r.id]);
+      mailTo = r.id; mailText = `Капитан команды «${cap.team}» отклонил заявку. Можно подать заявку в другую команду или создать свою.`;
+    } else if (act === 'promote') {
+      const r = get(str(body.target, 40)); if (!r || r.status !== 'reserve') throw bad('Запасной не найден');
+      const out = body.replace ? get(str(body.replace, 40)) : null;
+      if (body.replace) {
+        if (!out || !['new', 'paid', 'refund_requested'].includes(out.status)) throw bad('Участник для замены не найден');
+        if (out.id === cap.id) throw bad('Капитана заменить нельзя — напишите организатору');
+        const fee = body.fee === 'transfer' ? 'transfer' : 'refund', amount = fee === 'transfer' ? (out.paid || 0) : 0;
+        await drop(out, fee, fee === 'transfer' ? `Заменён в команде: взнос ${amount} ₽ передан ${shortName(r.person)}` : 'Заменён в команде');
+        await toMain(r, amount);
+      } else { if (mainCount() >= size) throw bad('Основной состав полный — выберите, кого заменить'); await toMain(r, 0); }
+      mailTo = r.id; mailText = `Капитан перевёл вас в основной состав команды «${cap.team}».${r.status === 'paid' ? ' Взнос уже оплачен.' : ' Оплатите взнос — организатор подтвердит участие.'}`;
+    } else if (act === 'remove') {
+      const r = get(str(body.target, 40)); if (!r) throw bad('Участник не найден');
+      if (r.id === cap.id) throw bad('Капитана убрать нельзя — напишите организатору');
+      await drop(r, 'refund', 'Капитан убрал из команды');
+      mailTo = r.id; mailText = `Капитан убрал вас из команды «${cap.team}».${r.paid > 0 ? ' Взнос вернётся по правилам старта — организатор свяжется с вами.' : ''}`;
+    } else if (act === 'invite') {
+      await q('update teams set invite=$1 where id=$2', [rnd(16), cap.tid]);
+    } else throw bad('Неизвестное действие');
+  });
+  dirty();
+  if (mailTo) mailMember(mailTo, `команда «${cap.team}»`, [mailText, '', `${ev.name} · ${div.name}`, `${SITE_URL()}/#orders`]);
+  return { teams: await myTeams(u.id), orders: (await db.query('select * from registrations where user_id=$1 order by created_at', [u.id])).rows.map(orderOut) };
 });
 
 route('POST', '/api/refund', async (req, res, u, body) => {
   need(u);
+  { const w = await db.query(`update registrations set status='cancelled', team_role=null, note='Сам отозвал заявку в команду' where id=$1 and user_id=$2 and status in ('pending','reserve') returning *`, [str(body.id, 40), u.id]);
+    if (w.rows.length) { dirty(); return { order: orderOut(w.rows[0]) }; } }
   const r = await db.query(`update registrations set status='refund_requested' where id=$1 and user_id=$2 and status in ('new','paid') returning *`, [str(body.id, 40), u.id]);
   if (!r.rows.length) throw bad('Заказ не найден');
   dirty();
@@ -624,7 +751,7 @@ route('PATCH', '/api/admin/regs/:id', async (req, res, u, body, p) => {
   if (!cur) throw bad('Регистрация не найдена');
   let st = cur.status, paid = cur.paid, note = cur.note;
   if (body.status !== undefined) {
-    if (!['new', 'paid', 'refund_requested', 'refunded', 'cancelled', 'blocked'].includes(body.status)) throw bad('Неверный статус');
+    if (!['new', 'paid', 'refund_requested', 'refunded', 'cancelled', 'blocked', 'pending', 'reserve'].includes(body.status)) throw bad('Неверный статус');
     st = body.status;
     if (st === 'paid' && cur.status !== 'paid' && (body.paid === undefined || Number(body.paid) === Number(cur.paid))) paid = cur.due;
   }

@@ -230,6 +230,7 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 .cropvp img{position:absolute;left:0;top:0;max-width:none;transform-origin:0 0;pointer-events:none}
 .cropmask{position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 999px rgba(0,0,0,.5);border:2px solid rgba(255,255,255,.85);pointer-events:none}
 #cropZ{accent-color:var(--accent)}
+.teambox{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px}.teambox .arow{gap:8px}.inp.sm{height:34px;padding:0 8px;font-size:13px;width:auto}
 .big-av.xl{width:84px;height:84px;font-size:28px;border-radius:20px;flex:none}
 .big-av{width:60px;height:60px;border-radius:16px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--f-display);font-weight:800;font-size:22px}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}.stats.s4{grid-template-columns:repeat(4,1fr)}@media(max-width:600px){.stats.s4{grid-template-columns:repeat(2,1fr)}}
@@ -608,7 +609,7 @@ const RESULTS = {
 };
 
 /* orders: one preseeded online registration */
-let ORDERS = [], MYCREW = [];
+let ORDERS = [], MYCREW = [], MYTEAMS = [];
 /* promo codes: pct = percent off the entry fee, rub = fixed roubles off; event "all" = any start */
 let PROMOS = [];
 /* who may open the organizer panel: owner (everything), admin (everything except access), judge (result review only) */
@@ -718,7 +719,7 @@ function cookieBar(force){
   b.innerHTML=`<p>Мы используем cookies: необходимые — чтобы работали формы и вход, и аналитические Яндекс Метрики — чтобы понимать, что на сайте удобно, а что нет. Аналитические включим только с вашего согласия. <a href="/docs/privacy" target="_blank">Подробнее</a></p><div class="row"><button class="btn sm" data-ck="all">Принять</button><button class="btn sm ghost" data-ck="need">Только необходимые</button></div>`;
   document.body.appendChild(b);
 }
-const ROOT_TAB = {crewApply:"events",login:"me",home:"home",events:"events",event:"events",divisions:"events",team:"events",teamCreate:"events",teamJoin:"events",form:"events",pay:"events",done:"events",fail:"events",leaderboard:"leaderboard",me:"me",orders:"me",score:"me",qr:"me",profile:"me",admin:"me",adminEvent:"me",adminDiv:"me",adminWod:"me",adminPeople:"me",adminSch:"me",adminPromo:"me",adminClub:"me"};
+const ROOT_TAB = {invite:"events",crewApply:"events",login:"me",home:"home",events:"events",event:"events",divisions:"events",team:"events",teamCreate:"events",teamJoin:"events",form:"events",pay:"events",done:"events",fail:"events",leaderboard:"leaderboard",me:"me",orders:"me",score:"me",qr:"me",profile:"me",admin:"me",adminEvent:"me",adminDiv:"me",adminWod:"me",adminPeople:"me",adminSch:"me",adminPromo:"me",adminClub:"me"};
 
 function header(title){
   if (isClub()) return clubHeader();
@@ -901,37 +902,52 @@ divisions(){
 team(){
   const {ev,div} = S.reg;
   return {title:"Команда", html:`
-    <div class="card stack"><div class="muted small">${ev.name}</div><div style="font-weight:700;font-size:17px">${div.name}</div><div class="muted small">Команда из ${div.size} человек. Каждый участник регистрируется и платит за себя.</div></div>
+    <div class="card stack"><div class="muted small">${esc(ev.name)}</div><div style="font-weight:700;font-size:17px">${esc(div.name)}</div><div class="muted small">Команда из ${div.size} человек плюс сколько угодно запасных. Каждый регистрируется и платит за себя; запасной платит, только когда выходит в основной состав.</div></div>
     <div class="stack" style="margin-top:16px">
-      <button class="btn block" data-go="teamCreate" ${div.taken>=div.limit?"disabled":""}>Создать команду</button>
+      <button class="btn block" data-go="teamCreate" ${div.taken>=div.limit?"disabled":""}>Создать команду — я капитан</button>
       ${div.taken>=div.limit?'<div class="muted tiny" style="text-align:center">Лимит команд в категории набран</div>':""}
-      <button class="btn block dark" data-go="teamJoin">Вступить в команду</button>
+      <button class="btn block dark" data-go="teamJoin">Найти команду и подать заявку</button>
     </div>
-    <div class="rule" style="margin-top:16px">Капитан создаёт команду и придумывает код. Остальные находят команду по названию и вводят этот код.</div>`};
+    <div class="rule" style="margin-top:16px">Капитан создаёт команду и видит свободные места. Остальные находят команду в поиске и подают заявку — капитан принимает в основной состав или в запас. Своим капитан может просто отправить ссылку-приглашение: по ней вступают сразу.</div>`};
 },
 teamCreate(){
-  const v = S.p.v || {name:"",aff:ME.affiliate,code:"",code2:""}, e = S.p.e || {};
+  const v = S.p.v || {name:"",aff:ME.affiliate}, e = S.p.e || {};
   return {title:"Новая команда", html:`
    <form class="stack" id="fTeam" novalidate>
     <label class="f">Название команды<input class="inp ${e.name?"err":""}" id="tName" value="${esc(v.name)}" placeholder="BAIKAL POWER" autocomplete="off"></label>
     <div class="${e.name?"err-t":"muted tiny"}">${e.name||"Только латиница, до 5 слов и 20 символов. Сохраняется заглавными."}</div>
     <label class="f">Зал${gymInput("tAff", v.aff)}</label>
-    <div class="grid2"><label class="f">Код команды<input class="inp ${e.code?"err":""}" id="tCode" inputmode="numeric" value="${esc(v.code)}" placeholder="4–6 цифр"></label>
-    <label class="f">Повторите код<input class="inp ${e.code?"err":""}" id="tCode2" inputmode="numeric" value="${esc(v.code2)}"></label></div>
-    ${e.code?`<div class="err-t">${e.code}</div>`:'<div class="muted tiny">Код передайте партнёрам: без него вступить в команду нельзя.</div>'}
+    <div class="muted tiny">После регистрации в «Моих стартах» появится ссылка-приглашение для команды и заявки от желающих вступить.</div>
     <button class="btn block" type="submit">Создать и продолжить</button>
    </form>`};
 },
 teamJoin(){
-  const key = `${S.reg.ev.id}:${S.reg.div.id}`, q = (S.p.q||"").trim().toLowerCase();
-  const list = (TEAMS[key]||[]).filter(t=>!q || t.name.toLowerCase().includes(q));
-  const pick = S.p.pick;
-  return {title:"Вступить в команду", html:`
-    <input class="inp" id="tq" placeholder="Название команды" value="${esc(S.p.q||"")}" autocomplete="off">
-    <div class="stack" style="margin-top:12px">${list.map(t=>{ const full=t.m>=S.reg.div.size;
-      return `<div class="team"><div class="sp"><b>${esc(t.name)}</b><div class="slots">${Array.from({length:S.reg.div.size},(_,i)=>`<i class="${i<t.m?"on":""}"></i>`).join("")}</div><div class="muted tiny" style="margin-top:4px">Состав: ${t.m} из ${S.reg.div.size}</div></div>
-      ${full?'<span class="chip full">Полная</span>':`<button class="btn sm" data-join="${esc(t.name)}">Вступить</button>`}</div>
-      ${pick===t.name?`<form class="card stack" id="fJoin"><label class="f">Код от капитана<input class="inp ${S.p.err?"err":""}" id="jCode" inputmode="numeric" autocomplete="off"></label>${S.p.err?`<div class="err-t">${S.p.err}</div>`:""}<button class="btn block" type="submit">Подтвердить</button></form>`:""}`;}).join("") || '<div class="empty">Команд с таким названием нет</div>'}</div>`};
+  const {ev, div} = S.reg, key = `${ev.id}:${div.id}`;
+  if (!S.p.loaded){ S.p.loaded = true; api("GET",`/api/teams?event=${encodeURIComponent(ev.id)}&div=${encodeURIComponent(div.id)}`).then(r=>{ S.p.list=r.teams; render(); }).catch(err=>{ S.p.list=[]; toast(err.message); render(); }); }
+  const q = (S.p.q||"").trim().toLowerCase(), all = S.p.list;
+  const list = (all||[]).filter(t=>!q || t.name.toLowerCase().includes(q) || t.main.some(m=>m.n.toLowerCase().includes(q)));
+  return {title:"Найти команду", html:`
+    <input class="inp" id="tq" placeholder="Название команды или имя участника" value="${esc(S.p.q||"")}" autocomplete="off">
+    <div class="stack" style="margin-top:12px">${!all?'<div class="muted small">Загружаю команды…</div>':list.map(t=>{ const full=t.main.length>=div.size;
+      return `<div class="team"><div class="sp"><b>${esc(t.name)}</b><div class="slots">${Array.from({length:div.size},(_,i)=>`<i class="${i<t.main.length?"on":""}"></i>`).join("")}</div>
+        <div class="small" style="margin-top:6px">${t.main.map(m=>esc(m.n)+(m.cap?' <span class="chip neutral" style="height:18px;font-size:10px">капитан</span>':"")).join(", ")}</div>
+        <div class="muted tiny" style="margin-top:4px">Основной состав: ${t.main.length} из ${div.size}${full?"":` · свободно ${div.size-t.main.length}`}${t.reserve.length?` · запасные: ${t.reserve.map(esc).join(", ")}`:""}</div></div>
+        <button class="btn sm${full?" ghost":""}" data-join="${esc(t.name)}">${full?"В запас":"Подать заявку"}</button></div>`; }).join("") || '<div class="empty">Команд пока нет — создайте свою</div>'}</div>
+    <div class="muted tiny" style="margin-top:12px">Заявку подтверждает капитан. Платить взнос нужно после того, как он примет вас в основной состав.</div>`};
+},
+invite(){
+  const I = S.invite;
+  if (!I) return {title:"Приглашение", html:'<div class="empty">Ссылка-приглашение не найдена</div>'};
+  if (I.err) return {title:"Приглашение", html:`<div class="empty">${esc(I.err)}</div>`};
+  if (!I.name) return {title:"Приглашение", html:'<div class="muted">Загружаю…</div>'};
+  const ev = EVENTS.find(e=>e.id===I.event), div = ev && ev.divisions.find(d=>d.id===I.div);
+  if (!div) return {title:"Приглашение", html:'<div class="empty">Старт не найден</div>'};
+  const full = I.main.length >= div.size;
+  return {title:"Приглашение в команду", html:`<div class="card stack"><div class="muted small">${esc(ev.name)} · ${esc(div.name)}</div><div style="font-family:var(--f-display);font-weight:800;font-size:22px">${esc(I.name)}</div>
+    <div class="slots">${Array.from({length:div.size},(_,i)=>`<i class="${i<I.main.length?"on":""}"></i>`).join("")}</div>
+    <div class="small">В составе: ${I.main.map(esc).join(", ")}${I.reserve?` · запасных: ${I.reserve}`:""}</div>
+    <div class="muted small">${full?"Основной состав полный — вы вступите запасным. Платить взнос не нужно, пока капитан не переведёт вас в основной состав.":"Вы вступите в основной состав сразу, без подтверждения капитана. Взнос каждый платит за себя."}</div>
+    <button class="btn block" data-act="invjoin">${full?"Вступить запасным":"Вступить в команду"}</button></div>`};
 },
 form(){
   const {ev,div,team} = S.reg, f = S.reg.f, p = personOf(S.reg.who), kid = S.reg.who!=="me";
@@ -989,10 +1005,10 @@ done(){
   const nm = o.who==="me" ? "Вы в списке" : `${esc((o.person||{}).first||"")} в списке`;
   return {title:"Готово", html:`
    <div class="center"><div class="big-ic" style="background:var(--good-soft);color:var(--good)"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12l5 5 9-10"/></svg></div>
-   <div style="font-family:var(--f-display);font-weight:800;font-size:22px;text-transform:uppercase">${o.status==="paid"?nm:"Заявка принята"}</div>
+   <div style="font-family:var(--f-display);font-weight:800;font-size:22px;text-transform:uppercase">${o.status==="pending"?"Заявка у капитана":o.status==="reserve"?"Вы в запасе":o.status==="paid"?nm:"Заявка принята"}</div>
    <p class="muted">${esc(ev.name)} · ${esc(d.name)}${o.team?` · ${esc(o.team)}`:""}</p>
    <div class="card kv" style="text-align:left;margin:16px 0"><dt>Заказ</dt><dd class="mono">${o.id}</dd><dt>${o.status==="paid"?"Взнос":"К оплате"}</dt><dd class="mono">${fmtRub(o.status==="paid"?o.paid:o.due)}</dd><dt>Email</dt><dd>${esc(USER?USER.email:"")}</dd></div>
-   <p class="muted small">${o.status==="paid"?"Статус и возврат — в разделе «Мои старты».":"Организатор подтвердит заявку и подскажет, как оплатить взнос. Статус видно в разделе «Мои старты»."}</p>
+   <p class="muted small">${o.status==="pending"?"Капитан команды получит письмо и подтвердит заявку. Платить взнос нужно после того, как он примет вас в основной состав. Статус — в «Моих стартах».":o.status==="reserve"?"Взнос платить не нужно, пока капитан не переведёт вас в основной состав. Статус — в «Моих стартах».":o.status==="paid"?"Статус и возврат — в разделе «Мои старты».":"Организатор подтвердит заявку и подскажет, как оплатить взнос. Статус видно в разделе «Мои старты»."}${o.team&&o.role==="main"&&S.reg&&S.reg.newTeam?" Ссылка-приглашение для команды — в «Моих стартах», в карточке старта.":""}</p>
    <div class="stack"><button class="btn block" data-tab-go="me" data-sub="orders">Мои старты</button><button class="btn block ghost" data-tab-go="home">На главную</button></div></div>`};
 },
 fail(){
@@ -1186,7 +1202,7 @@ function affBoard(ev){
 }
 function orderCard(o){
   const ev = EVENTS.find(e=>e.id===o.event) || {name:"Старт удалён",divisions:[],format:"onsite",status:"ended",date:o.date}, d = ev.divisions.find(x=>x.id===o.div) || {name:""};
-  const stMap = {new:'<span class="chip warn">Ожидает оплаты</span>',paid:'<span class="chip ok">Зарегистрирован</span>',refund_requested:'<span class="chip warn">Запрошен возврат</span>',refunded:'<span class="chip neutral">Возврат оформлен</span>',cancelled:'<span class="chip neutral">Отменена</span>',blocked:'<span class="chip full">Отклонена</span>'};
+  const stMap = {new:'<span class="chip warn">Ожидает оплаты</span>',paid:'<span class="chip ok">Зарегистрирован</span>',refund_requested:'<span class="chip warn">Запрошен возврат</span>',refunded:'<span class="chip neutral">Возврат оформлен</span>',cancelled:'<span class="chip neutral">Отменена</span>',blocked:'<span class="chip full">Отклонена</span>',pending:'<span class="chip warn">Ждёт капитана</span>',reserve:'<span class="chip neutral">Запасной</span>'};
   const pct = refundPct(ev), p = o.person || {};
   const panel = S.p.refund===o.id ? `<div class="panel stack"><div>${o.status==="paid"&&o.paid>0?`По правилам старта возвращается ${pct}% взноса — <b class="mono">${fmtRub(Math.round(o.paid*pct/100))}</b>. Организатор оформит возврат и напишет вам.`:"Заявка будет отменена, место освободится для других."}</div><div class="row"><button class="btn sm" data-refund-ok="${o.id}">${o.status==="paid"&&o.paid>0?"Запросить возврат":"Отменить заявку"}</button><button class="btn sm ghost" data-refund-no>Назад</button></div></div>` : "";
   const scoring = scoreTargets().some(t=>t.o.id===o.id);
@@ -1194,8 +1210,31 @@ function orderCard(o){
    <div class="bd"><div style="font-family:var(--f-display);font-weight:600;font-size:16px;text-transform:uppercase">${esc(ev.name)}</div>
    <dl class="kv small" style="margin:10px 0 0"><dt>Участник</dt><dd>${esc(p.last||"")} ${esc(p.first||"")}</dd><dt>Категория</dt><dd>${esc(d.name)}${o.team?` · ${esc(o.team)}`:""}</dd><dt>Заказ</dt><dd class="mono">${o.id}</dd><dt>${o.status==="new"?"К оплате":"Взнос"}</dt><dd class="mono">${fmtRub(o.status==="new"?o.due:o.paid)}</dd><dt>Лидерборд</dt><dd>${o.publish?"с именем":"анонимно"} <button class="linkbtn" data-pubtoggle="${o.id}">${o.publish?"скрыть имя":"показывать имя"}</button></dd></dl></div>
    ${["new","paid"].includes(o.status)?`<div class="acts">${scoring?`<button class="btn sm" data-go="score">Сдать результат</button>`:""}<button class="btn sm ghost" data-go="profile">Анкета</button>${ev.status!=="ended"?`<button class="btn sm ghost" data-refund="${o.id}">${o.status==="paid"&&o.paid>0?"Возврат":"Отменить"}</button>`:""}</div>`:""}
+   ${o.team?teamBox(o):""}
    ${o.note && ["blocked","cancelled"].includes(o.status)?`<div class="rule" style="margin-top:10px"><b>Комментарий организатора:</b> ${esc(o.note)}</div>`:""}
    ${panel}</div>`;
+}
+function teamBox(o){
+  const ti = MYTEAMS.findIndex(t=>t.event===o.event && t.div===o.div && t.name===o.team); if (ti<0) return "";
+  const T = MYTEAMS[ti], ev = EVENTS.find(e=>e.id===o.event), div = ev && ev.divisions.find(d=>d.id===o.div), size = (div&&div.size)||0;
+  if (!T.members.some(m=>m.reg===o.id)) return "";
+  const main = T.members.filter(m=>m.role==="main"), res = T.members.filter(m=>m.role==="reserve"), pend = T.members.filter(m=>m.role==="pending");
+  const who = m => `${esc(m.name)}${m.cap?' <span class="chip neutral" style="height:18px;font-size:10px">капитан</span>':""}${m.me?' <span class="muted tiny">(вы)</span>':""}`;
+  const cap = T.captain, ask = S.p.rmAsk;
+  const rmBtn = m => !cap||m.cap ? "" : ask===m.reg ? `<span class="small">Убрать?</span><button class="btn sm danger" data-tact="remove|${m.reg}" data-ti="${ti}">Да</button><button class="btn sm ghost" data-rmno="1">Нет</button>` : `<button class="btn sm ghost" data-tact="remove|${m.reg}" data-ti="${ti}">Убрать</button>`;
+  return `<div class="teambox"><div class="row"><b class="sp">Команда «${esc(T.name)}»</b><span class="muted tiny">${main.length} из ${size}${res.length?` · запас ${res.length}`:""}</span></div>
+    <div class="slots" style="margin:6px 0">${Array.from({length:size},(_,i)=>`<i class="${i<main.length?"on":""}"></i>`).join("")}</div>
+    ${main.map(m=>`<div class="arow"><div class="sp small">${who(m)}</div>${cap?`<span class="chip ${m.paid?"ok":"warn"}">${m.paid?"оплачен":"ждёт оплаты"}</span>`:""}${rmBtn(m)}</div>`).join("")}
+    ${res.length?`<div class="muted tiny" style="margin-top:8px">ЗАПАСНЫЕ</div>${res.map(m=>`<div class="arow"><div class="sp small">${who(m)}</div>${cap?`<div class="row wrap" style="gap:6px;justify-content:flex-end">
+        <select class="inp sm" id="trep_${m.reg}" aria-label="Кого заменить"><option value="">${main.length<size?"на свободное место":"выберите, кого заменить"}</option>${main.filter(x=>!x.cap).map(x=>`<option value="${x.reg}">вместо: ${esc(x.name)}</option>`).join("")}</select>
+        <select class="inp sm" id="tfee_${m.reg}" aria-label="Взнос выбывшего"><option value="refund">взнос выбывшему — вернуть</option><option value="transfer">взнос выбывшего — передать</option></select>
+        <button class="btn sm" data-tact="promote|${m.reg}" data-ti="${ti}">В основной</button>${rmBtn(m)}</div>`:""}</div>`).join("")}`:""}
+    ${cap && pend.length?`<div class="muted tiny" style="margin-top:8px">ЗАЯВКИ В КОМАНДУ</div>${pend.map(m=>`<div class="arow"><div class="sp small">${who(m)}</div><div class="row wrap" style="gap:6px;justify-content:flex-end">${main.length<size?`<button class="btn sm" data-tact="approve|${m.reg}" data-ti="${ti}">В основной</button>`:""}<button class="btn sm ghost" data-tact="reserve|${m.reg}" data-ti="${ti}">В запас</button><button class="btn sm ghost" data-tact="reject|${m.reg}" data-ti="${ti}">Отклонить</button></div></div>`).join("")}`:""}
+    ${!cap && o.status==="pending"?'<div class="muted small" style="margin-top:6px">Капитан ещё не подтвердил вашу заявку. Платить взнос пока не нужно.</div>':""}
+    ${!cap && ["pending","reserve"].includes(o.status)?`<button class="btn sm ghost" style="margin-top:8px" data-teamwd="${o.id}">${o.status==="pending"?"Отозвать заявку":"Выйти из запаса"}</button>`:""}
+    ${!cap && o.status==="reserve"?'<div class="muted small" style="margin-top:6px">Вы в запасе. Взнос платить не нужно, пока капитан не переведёт вас в основной состав.</div>':""}
+    ${cap?`<div class="rule small" style="margin-top:10px">Ссылка-приглашение: по ней вступают сразу${main.length>=size?" (сейчас — в запас)":""}.<div class="row wrap" style="gap:6px;margin-top:6px"><code style="word-break:break-all">${esc(location.origin)}/#join=${esc(T.invite)}</code></div><div class="row wrap" style="gap:6px;margin-top:6px"><button class="btn sm" data-copyinv="${esc(T.invite)}">Скопировать ссылку</button><button class="btn sm ghost" data-tact="invite|" data-ti="${ti}">Новая ссылка</button></div></div>`:""}
+  </div>`;
 }
 function refundPct(ev){
   if (ev.r100 && TODAY<=ev.r100) return 100;
@@ -1346,7 +1385,7 @@ const promoOff = r => r && r.f.promoOk ? (r.f.promoOff || 0) : 0;
 const promoWhat = p => `${p.kind==="pct"?`−${p.value}%`:`−${fmtRub(p.value)}`} от взноса · ${p.event==="all"?"все старты":esc((EVENTS.find(e=>e.id===p.event)||{name:"удалённый старт"}).name)}`;
 /* participants table: one row per registration, downloadable for Excel */
 const SHEET_COLS = ["Дата заявки","Заказ","Старт","Категория","Дни выступления","Команда","Фамилия","Имя","Пол","Дата рождения","Возраст","Зал","Телефон","Email","Экстренный контакт","Футболка","Промокод","Взнос, ₽","Оплачено, ₽","Статус","Имя в лидерборде","Комментарий"];
-const REG_ST = {new:"Ожидает оплаты",paid:"Оплачен",refund_requested:"Запрошен возврат",refunded:"Возврат",cancelled:"Отменена",blocked:"Отклонена"};
+const REG_ST = {pending:"Ждёт подтверждения капитана",reserve:"Запасной",new:"Ожидает оплаты",paid:"Оплачен",refund_requested:"Запрошен возврат",refunded:"Возврат",cancelled:"Отменена",blocked:"Отклонена"};
 function sheetRows(ev){
   return ADM.REGS.filter(o=>o.event===ev.id).map(o=>{ const p=o.person||{}, d=ev.divisions.find(x=>x.id===o.div)||{name:""};
     return [dShort(o.date),o.id,ev.name,d.name,evDays(ev).length>1?divDays(ev,d):dShort(ev.date),o.team||"",p.last||"",p.first||"",p.gender==="F"?"Ж":"М",p.dob?dShort(p.dob):"",p.dob?athleteAge(ev,p):"",p.affiliate||"",p.phone||"",o.email||"",p.emName?`${p.emName}, ${p.emPhone||""}`:"",o.size||"",o.promo||"",o.due,o.paid,REG_ST[o.status]||o.status,o.publish?"да":"нет",o.note||""]; });
@@ -1746,8 +1785,7 @@ admin(){
   return {title:"Панель организатора", html: tabs + `
    <div class="stats flat" style="margin-top:0"><div><b>${act.length}</b><span>Активных стартов</span></div><div><b>${reg}</b><span>Записано</span></div><div><b class="acc" style="font-size:17px">${Math.round(money/1000)} тыс ₽</b><span>Взносы</span></div></div>
    <div style="margin-top:14px">${dataCard()}</div>
-   <div class="grid2" style="margin-top:14px"><button class="btn" data-act="anew">+ Новый старт</button><button class="btn dark" data-act="akids">Детский старт</button></div>
-   <div class="muted tiny" style="margin-top:8px">«Детский старт» создаёт черновик с группами мальчиков и девочек 6–13 лет по году рождения. Всё можно поправить.</div>
+   <button class="btn block" data-act="anew" style="margin-top:14px">+ Новый старт</button>
    ${pend.length?`<h2 class="sec">Результаты на проверке · ${pend.length}</h2><div class="stack">${pend.map(scoreReview).join("")}</div>`:""}
    <h2 class="sec">Старты</h2><div class="stack cards">${list.map(admEvRow).join("") || '<div class="empty">Стартов нет. Нажмите «+ Новый старт».</div>'}</div>
    <h2 class="sec">Промокоды · ${PROMOS.length}</h2>
@@ -2160,8 +2198,8 @@ async function loadSession(){
   const s = await api("GET","/api/session");
   USER = s.user; if (s.mailReady!==undefined) MAIL_READY = s.mailReady;
   Object.keys(ME).forEach(k=>{ if (k!=="kids") ME[k]=""; }); ME.gender="M"; ME.kids=[];
-  if (USER){ Object.assign(ME, USER.profile||{}); ME.kids = USER.kids||[]; ME.email = USER.email; ME.avatar = USER.avatar||""; ORDERS = s.orders||[]; MYSCORES = s.scores||[]; MYCREW = s.crew||[]; }
-  else { ORDERS = []; MYSCORES = []; MYCREW = []; }
+  if (USER){ Object.assign(ME, USER.profile||{}); ME.kids = USER.kids||[]; ME.email = USER.email; ME.avatar = USER.avatar||""; ORDERS = s.orders||[]; MYSCORES = s.scores||[]; MYCREW = s.crew||[]; MYTEAMS = s.teams||[]; }
+  else { ORDERS = []; MYSCORES = []; MYCREW = []; MYTEAMS = []; }
   S.viewAs = USER ? USER.role : "guest";
   markMe();
   if (USER && ["owner","admin","judge"].includes(USER.role)) await loadAdmin();
@@ -2258,8 +2296,8 @@ async function downloadBackup(id){
   setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
 }
 /* participants: a filterable table — pending payments first, search, bulk "paid" */
-const REG_TAB = {new:["Ждут оплаты","warn"],paid:["Оплачены","ok"],refund_requested:["Просят возврат","full"],refunded:["Возврат сделан","neutral"],cancelled:["Отменены","neutral"],blocked:["Отклонены","full"]};
-const REG_ST1 = {new:"ждёт оплаты",paid:"оплачен",refund_requested:"просит возврат",refunded:"возврат сделан",cancelled:"отменён",blocked:"отклонён"};
+const REG_TAB = {pending:["Ждут капитана","neutral"],reserve:["Запасные","neutral"],new:["Ждут оплаты","warn"],paid:["Оплачены","ok"],refund_requested:["Просят возврат","full"],refunded:["Возврат сделан","neutral"],cancelled:["Отменены","neutral"],blocked:["Отклонены","full"]};
+const REG_ST1 = {pending:"ждёт капитана",reserve:"запасной",new:"ждёт оплаты",paid:"оплачен",refund_requested:"просит возврат",refunded:"возврат сделан",cancelled:"отменён",blocked:"отклонён"};
 function regFilter(ev, regs){
   const F = adm.rf && adm.rf.ev===ev.id ? adm.rf : (adm.rf = {ev:ev.id, st: regs.some(o=>o.status==="new") ? "new" : "all", q:"", div:"", sel:{}});
   const q = F.q.trim().toLowerCase(), qd = q.replace(/\D/g,"");
@@ -2409,7 +2447,7 @@ function crewPanel(ev){
 function regTable(ev, regs){
   const {F, list} = regFilter(ev, regs);
   const cnt = k => regs.filter(o=>k==="all"||o.status===k).length;
-  const tabs = ["new","paid","refund_requested","refunded","cancelled","blocked","all"].filter(k=>k==="all"||k==="new"||k==="paid"||cnt(k));
+  const tabs = ["new","paid","pending","reserve","refund_requested","refunded","cancelled","blocked","all"].filter(k=>k==="all"||k==="new"||k==="paid"||cnt(k));
   const sel = list.filter(o=>F.sel[o.id] && o.status==="new"), selSum = sel.reduce((a,o)=>a+(o.due||0),0);
   const newIn = list.filter(o=>o.status==="new"), allSel = newIn.length && newIn.every(o=>F.sel[o.id]);
   const divName = id => (ev.divisions.find(x=>x.id===id)||{name:"—"}).name;
@@ -2530,7 +2568,20 @@ document.addEventListener("click", e=>{
     S.reg = {ev,div,team:null,who:S.who,f:{size:"L",promo:"",promoOk:false,promoMsg:"",c1:false,c2:false,c3:false}};
     return go(div.type==="team"?"team":"form",{});
   }
-  if (ds.join){ S.p={...S.p,pick:ds.join,err:null}; render(); const i=document.getElementById("jCode"); i&&i.focus(); return; }
+  if (ds.join){ S.reg.team=ds.join; S.reg.newTeam=false; S.reg.teamReq={mode:"join",name:ds.join}; return go("form",{}); }
+  if (ds.act==="invjoin"){ const I=S.invite, ev=EVENTS.find(e=>e.id===I.event), div=ev&&ev.divisions.find(d=>d.id===I.div);
+    if (!USER) return needLogin("Войдите, чтобы вступить в команду");
+    if (!profileReady()){ toast("Сначала заполните анкету участника"); return go("profile",{edit:true,then:"invite"}); }
+    S.who="me"; const why=eligibility(ev,div); if (why){ toast(why); return; }
+    S.reg={ev,div,team:I.name,newTeam:false,teamReq:{mode:"invite",invite:I.token},who:"me",f:{size:"L",promo:"",promoOk:false,promoMsg:"",c1:false,c2:false,c3:false}}; return go("form",{}); }
+  if (ds.tact){ const [act,target]=ds.tact.split("|"), T=MYTEAMS[+ds.ti]; const body={reg:T.captainReg, action:act, target};
+    if (act==="promote"){ const rep=document.getElementById("trep_"+target), fee=document.getElementById("tfee_"+target); if (rep&&rep.value){ body.replace=rep.value; body.fee=fee?fee.value:"refund"; } }
+    if (act==="remove" && !S.p.rmAsk){ S.p={...S.p,rmAsk:target}; return render(); }
+    S.p={...S.p,rmAsk:null};
+    api("POST","/api/team/act",body).then(r=>{ MYTEAMS=r.teams; ORDERS=r.orders; render(); toast({approve:"Принят в основной состав",reserve:"Взят в запас",reject:"Заявка отклонена",promote:"Переведён в основной состав",remove:"Убран из команды",invite:"Старая ссылка больше не работает — вот новая"}[act]||"Готово"); }).catch(err=>toast(err.message)); return; }
+  if (ds.teamwd){ api("POST","/api/refund",{id:ds.teamwd}).then(async()=>{ await loadSession(); render(); toast("Готово"); }).catch(err=>toast(err.message)); return; }
+  if (ds.rmno){ S.p={...S.p,rmAsk:null}; return render(); }
+  if (ds.copyinv){ const url=location.origin+"/#join="+ds.copyinv; (navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject()).then(()=>toast("Ссылка скопирована — отправьте её команде")).catch(()=>toast("Скопируйте ссылку из карточки команды")); return; }
   if (ds.act==="promo"){ const v=document.getElementById("rPromo").value.trim().toUpperCase(); S.reg.f.promo=v; keepForm();
     api("POST","/api/promo",{code:v,event:S.reg.ev.id,div:S.reg.div.id}).then(res=>{ S.reg.f.promoOk=true; S.reg.f.promoOff=res.off; S.reg.f.promoMsg=`Скидка ${res.label} применена: −${fmtRub(res.off)}`; render(); })
       .catch(err=>{ S.reg.f.promoOk=false; S.reg.f.promoOff=0; S.reg.f.promoMsg=err.message; render(); }); return; }
@@ -2581,7 +2632,7 @@ document.addEventListener("input", e=>{
   if (e.target.id==="regQ"){ adm.rf.q=e.target.value; const pos=e.target.selectionStart; render(); const i=document.getElementById("regQ"); if(i){ i.focus(); i.setSelectionRange(pos,pos); } return; }
   if (e.target.id==="pVal"){ syncPromo(); const el=document.getElementById("promoPrev"); if (el) el.innerHTML=promoPreview(); }
   if (e.target.id==="dMin"||e.target.id==="dMax"){ syncDiv(); const w=document.getElementById("whoTxt"); if(w) w.innerHTML=whoText(); }
-  if (e.target.id==="tq"){ S.p={...S.p,q:e.target.value,pick:null}; const pos=e.target.selectionStart; render(); const i=document.getElementById("tq"); i.focus(); i.setSelectionRange(pos,pos); }
+  if (e.target.id==="tq"){ S.p={...S.p,q:e.target.value}; const pos=e.target.selectionStart; render(); const i=document.getElementById("tq"); i.focus(); i.setSelectionRange(pos,pos); }
   if (e.target.id==="lbq"){ S.lb.q=e.target.value; const pos=e.target.selectionStart; render(); const i=document.getElementById("lbq"); i.focus(); i.setSelectionRange(pos,pos); }
 });
 document.addEventListener("submit", e=>{
@@ -2628,17 +2679,12 @@ document.addEventListener("submit", e=>{
     return;
   }
   if (e.target.id==="fTeam"){
-    const v={name:g("tName").value.trim(),aff:g("tAff").value.trim(),code:g("tCode").value.trim(),code2:g("tCode2").value.trim()}, er={};
+    const v={name:g("tName").value.trim(),aff:g("tAff").value.trim()}, er={};
     const words=v.name.split(/\s+/).filter(Boolean);
     if (!/^[A-Za-z ]+$/.test(v.name) || v.name.length>20 || words.length>5) er.name="Название: только латинские буквы и пробелы, до 5 слов и 20 символов";
     else if ((TEAMS[`${S.reg.ev.id}:${S.reg.div.id}`]||[]).some(t=>t.name===v.name.toUpperCase())) er.name="Команда с таким названием уже есть в этой категории";
-    if (!/^\d{4,6}$/.test(v.code)) er.code="Код — от 4 до 6 цифр"; else if (v.code!==v.code2) er.code="Коды не совпадают";
-    if (er.name||er.code){ S.p={v,e:er}; return render(); }
-    S.reg.team=v.name.toUpperCase(); S.reg.newTeam=true; S.reg.teamReq={mode:"create",name:S.reg.team,code:v.code}; return go("form",{});
-  }
-  if (e.target.id==="fJoin"){
-    const jc=g("jCode").value.trim(); if (!/^\d{4,6}$/.test(jc)){ S.p={...S.p,err:"Код — от 4 до 6 цифр. Уточните его у капитана"}; render(); g("jCode")&&g("jCode").focus(); return; }
-    S.reg.team=S.p.pick; S.reg.newTeam=false; S.reg.teamReq={mode:"join",name:S.p.pick,code:jc}; return go("form",{});
+    if (er.name){ S.p={v,e:er}; return render(); }
+    S.reg.team=v.name.toUpperCase(); S.reg.newTeam=true; S.reg.f.aff=v.aff; S.reg.teamReq={mode:"create",name:S.reg.team}; return go("form",{});
   }
   if (e.target.id==="fReg"){ keepForm(); return submitReg(); }
   if (e.target.id==="fScore"){
@@ -2652,6 +2698,11 @@ document.addEventListener("submit", e=>{
   }
 });
 if (location.hash==="#admin") S.route="admin";
+if (location.hash==="#orders") S.route="orders";
+function openInvite(){ if (!/^#join=[A-Za-z0-9]+$/.test(location.hash)) return false; const tok=location.hash.slice(6); S.invite={token:tok}; S.route="invite"; S.p={}; history.replaceState(null,"",location.pathname);
+  api("GET","/api/invite/"+tok).then(r=>{ S.invite={...r,token:tok}; render(); }).catch(err=>{ S.invite={token:tok,err:err.message}; render(); }); return true; }
+openInvite();
+window.addEventListener("hashchange", ()=>{ if (openInvite()) render(); });
 if (location.hash==="#comp") S.route="home";
 render();
 (async()=>{
