@@ -109,6 +109,7 @@ alter table crew add column if not exists avail jsonb not null default '[]';
 alter table crew add column if not exists source text not null default 'manual';
 alter table crew add column if not exists info jsonb not null default '{}';
 alter table users add column if not exists avatar text;
+alter table registrations add column if not exists waiver text;
 alter table teams add column if not exists invite text;
 alter table teams add column if not exists captain_reg text;
 alter table registrations add column if not exists team_role text;
@@ -317,7 +318,7 @@ route('GET', '/api/session', async (req, res, u) => {
       .map(c => ({ id: Number(c.id), event: c.event_id, role: c.role, status: c.status, avail: c.avail || [] })),
   };
 });
-const orderOut = r => ({ role: r.team_role || null, note: r.note || '', id: r.id, pub: r.pub, event: r.event_id, div: r.div_id, who: r.who, person: r.person, team: r.team, size: r.size, promo: r.promo,
+const orderOut = r => ({ waiver: r.waiver || '', role: r.team_role || null, note: r.note || '', id: r.id, pub: r.pub, event: r.event_id, div: r.div_id, who: r.who, person: r.person, team: r.team, size: r.size, promo: r.promo,
   price: r.price, due: r.due, paid: r.paid, status: r.status, date: new Date(r.created_at.getTime() + 8 * 3600e3).toISOString().slice(0, 10), publish: r.publish });
 
 route('POST', '/api/auth/code', async (req, res, u, body) => {
@@ -711,6 +712,7 @@ route('GET', '/api/admin/state', async (req, res, u) => {
     REGS: regs.map(r => ({ ...orderOut(r), email: r.email || '', captain: !!r.is_cap })),
     PENDING: pending,
     SCORES: (await db.query('select id, reg_id, workout_id, value, state from scores')).rows.map(scoreOut),
+    WAIVERS: [...new Set(['Рекорд Талант', ...(await db.query("select waiver, count(*) n from registrations where waiver is not null group by 1 order by n desc limit 20")).rows.map(r => r.waiver)])],
     CREW: (await db.query('select * from crew order by created_at')).rows.map(crewOut),
     CREW_CFG: Object.fromEntries((await db.query('select * from crew_rates')).rows.map(r => [r.event_id, { rates: r.rates, shift: Number(r.shift_hours) }])),
   };
@@ -794,6 +796,14 @@ route('PATCH', '/api/admin/regs/:id', async (req, res, u, body, p) => {
     paid = v;
   }
   if (body.note !== undefined) note = str(body.note, 1000) || null;
+  // free entry granted by the organizer: admitted with 0 paid, the reason is kept (e.g. «Рекорд Талант»)
+  let waiver = cur.waiver;
+  if (body.waiver !== undefined) {
+    waiver = str(body.waiver, 80) || null;
+    if (waiver) { st = 'paid'; paid = 0; }
+    else if (cur.waiver && body.status === undefined) st = 'new';
+  } else if (body.status !== undefined && body.status !== 'paid') waiver = null;
+  else if (body.status === 'paid' && body.paid !== undefined && Number(body.paid) > 0) waiver = null;
   let div = cur.div_id, warn = '';
   if (body.div !== undefined && body.div !== cur.div_id) {
     const ev = ((await rawContent()).EVENTS || []).find(e => e.id === cur.event_id);
@@ -804,7 +814,7 @@ route('PATCH', '/api/admin/regs/:id', async (req, res, u, body, p) => {
     if (to.limit && n >= to.limit) warn = `В категории «${to.name}» теперь ${n + 1} при лимите ${to.limit}`;
     div = to.id;
   }
-  const r = await db.query('update registrations set status=$1, paid=$2, note=$3, div_id=$4, updated_by=$5 where id=$6 returning *', [st, paid, note, div, u.email, id]);
+  const r = await db.query('update registrations set status=$1, paid=$2, note=$3, div_id=$4, updated_by=$5, waiver=$6 where id=$7 returning *', [st, paid, note, div, u.email, waiver, id]);
   await fixCaptain(cur.event_id, cur.div_id, cur.team);
   dirty();
   return { order: orderOut(r.rows[0]), warn };

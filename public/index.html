@@ -231,6 +231,7 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 .cropmask{position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 999px rgba(0,0,0,.5);border:2px solid rgba(255,255,255,.85);pointer-events:none}
 #cropZ{accent-color:var(--accent)}
 .teambox{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px}.teambox .arow{gap:8px}.inp.sm{height:34px;padding:0 8px;font-size:13px;width:auto}
+.waiver{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.waiver .inp{flex:1;min-width:200px}
 .big-av.xl{width:84px;height:84px;font-size:28px;border-radius:20px;flex:none}
 .big-av{width:60px;height:60px;border-radius:16px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--f-display);font-weight:800;font-size:22px}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}.stats.s4{grid-template-columns:repeat(4,1fr)}@media(max-width:600px){.stats.s4{grid-template-columns:repeat(2,1fr)}}
@@ -1211,7 +1212,7 @@ function orderCard(o){
   const scoring = scoreTargets().some(t=>t.o.id===o.id);
   return `<div class="order"><div class="hd"><span class="small">${ev.date?dateRange(ev):""} · ${ev.format==="online"?"Онлайн":"Очный"}</span>${stMap[o.status]||""}</div>
    <div class="bd"><div style="font-family:var(--f-display);font-weight:600;font-size:16px;text-transform:uppercase">${esc(ev.name)}</div>
-   <dl class="kv small" style="margin:10px 0 0"><dt>Участник</dt><dd>${esc(p.last||"")} ${esc(p.first||"")}</dd><dt>Категория</dt><dd>${esc(d.name)}${o.team?` · ${esc(o.team)}`:""}</dd><dt>Заказ</dt><dd class="mono">${o.id}</dd><dt>${o.status==="new"?"К оплате":"Взнос"}</dt><dd class="mono">${fmtRub(o.status==="new"?o.due:o.paid)}</dd><dt>Лидерборд</dt><dd>${o.publish?"с именем":"анонимно"} <button class="linkbtn" data-pubtoggle="${o.id}">${o.publish?"скрыть имя":"показывать имя"}</button></dd></dl></div>
+   <dl class="kv small" style="margin:10px 0 0"><dt>Участник</dt><dd>${esc(p.last||"")} ${esc(p.first||"")}</dd><dt>Категория</dt><dd>${esc(d.name)}${o.team?` · ${esc(o.team)}`:""}</dd><dt>Заказ</dt><dd class="mono">${o.id}</dd><dt>${o.status==="new"?"К оплате":"Взнос"}</dt><dd class="mono">${o.waiver?`бесплатно · ${esc(o.waiver)}`:fmtRub(o.status==="new"?o.due:o.paid)}</dd><dt>Лидерборд</dt><dd>${o.publish?"с именем":"анонимно"} <button class="linkbtn" data-pubtoggle="${o.id}">${o.publish?"скрыть имя":"показывать имя"}</button></dd></dl></div>
    ${["new","paid"].includes(o.status)?`<div class="acts">${scoring?`<button class="btn sm" data-go="score">Сдать результат</button>`:""}<button class="btn sm ghost" data-go="profile">Анкета</button>${ev.status!=="ended"?`<button class="btn sm ghost" data-refund="${o.id}">${o.status==="paid"&&o.paid>0?"Возврат":"Отменить"}</button>`:""}</div>`:""}
    ${o.team?teamBox(o):""}
    ${o.note && ["blocked","cancelled"].includes(o.status)?`<div class="rule" style="margin-top:10px"><b>Комментарий организатора:</b> ${esc(o.note)}</div>`:""}
@@ -1393,11 +1394,11 @@ function promoCheck(code, ev, price){
 const promoOff = r => r && r.f.promoOk ? (r.f.promoOff || 0) : 0;
 const promoWhat = p => `${p.kind==="pct"?`−${p.value}%`:`−${fmtRub(p.value)}`} от взноса · ${p.event==="all"?"все старты":esc((EVENTS.find(e=>e.id===p.event)||{name:"удалённый старт"}).name)}`;
 /* participants table: one row per registration, downloadable for Excel */
-const SHEET_COLS = ["Дата заявки","Заказ","Старт","Категория","Дни выступления","Команда","Фамилия","Имя","Пол","Дата рождения","Возраст","Зал","Телефон","Email","Экстренный контакт","Футболка","Промокод","Взнос, ₽","Оплачено, ₽","Статус","Имя в лидерборде","Комментарий"];
+const SHEET_COLS = ["Дата заявки","Заказ","Старт","Категория","Дни выступления","Команда","Фамилия","Имя","Пол","Дата рождения","Возраст","Зал","Телефон","Email","Экстренный контакт","Футболка","Промокод","Взнос, ₽","Оплачено, ₽","Статус","Бесплатно — основание","Имя в лидерборде","Комментарий"];
 const REG_ST = {pending:"Ждёт подтверждения капитана",reserve:"Запасной",new:"Ожидает оплаты",paid:"Оплачен",refund_requested:"Запрошен возврат",refunded:"Возврат",cancelled:"Отменена",blocked:"Отклонена"};
 function sheetRows(ev){
   return ADM.REGS.filter(o=>o.event===ev.id).map(o=>{ const p=o.person||{}, d=ev.divisions.find(x=>x.id===o.div)||{name:""};
-    return [dShort(o.date),o.id,ev.name,d.name,evDays(ev).length>1?divDays(ev,d):dShort(ev.date),o.team||"",p.last||"",p.first||"",p.gender==="F"?"Ж":"М",p.dob?dShort(p.dob):"",p.dob?athleteAge(ev,p):"",p.affiliate||"",p.phone||"",o.email||"",p.emName?`${p.emName}, ${p.emPhone||""}`:"",o.size||"",o.promo||"",o.due,o.paid,REG_ST[o.status]||o.status,o.publish?"да":"нет",o.note||""]; });
+    return [dShort(o.date),o.id,ev.name,d.name,evDays(ev).length>1?divDays(ev,d):dShort(ev.date),o.team||"",p.last||"",p.first||"",p.gender==="F"?"Ж":"М",p.dob?dShort(p.dob):"",p.dob?athleteAge(ev,p):"",p.affiliate||"",p.phone||"",o.email||"",p.emName?`${p.emName}, ${p.emPhone||""}`:"",o.size||"",o.promo||"",o.due,o.paid,REG_ST[o.status]||o.status,o.waiver||"",o.publish?"да":"нет",o.note||""]; });
 }
 function downloadCsv(name, rows){
   const q = v => `"${String(v??"").replace(/"/g,'""')}"`;
@@ -1702,6 +1703,11 @@ function adminClick(t, ds){
   if (ds.nfdel){ api("DELETE","/api/admin/notify/"+encodeURIComponent(ds.nfdel)).then(()=>{ adm.nf.emails=adm.nf.emails.filter(e=>e!==ds.nfdel); render(); toast("Адрес убран"); }).catch(err=>toast(err.message)); return true; }
   if (ds.tgdel){ api("DELETE","/api/admin/tg/"+encodeURIComponent(ds.tgdel)).then(()=>{ adm.tg.chats=adm.tg.chats.filter(c=>c.id!==ds.tgdel); render(); toast("Чат отключён"); }).catch(err=>toast(err.message)); return true; }
   if (ds.admcap){ const id=ds.admcap; api("POST","/api/admin/team/captain",{reg:id}).then(async()=>{ const o=ADM.REGS.find(x=>x.id===id); ADM.REGS.forEach(x=>{ if (x.team===o.team&&x.event===o.event&&x.div===o.div) x.captain=x.id===id; }); render(); toast("Капитан назначен, ему отправлено письмо"); }).catch(err=>toast(err.message)); return true; }
+  if (ds.waive){ adm.wvOpen=ds.waive; render(); setTimeout(()=>{ const i=document.getElementById("wv_"+ds.waive); if(i){ i.focus(); i.select(); } },30); return true; }
+  if (ds.waiveno){ adm.wvOpen=null; render(); return true; }
+  if (ds.waiveok || ds.waiveoff){ const id=ds.waiveok||ds.waiveoff, reason=ds.waiveok?document.getElementById("wv_"+id).value.trim():"";
+    if (ds.waiveok && !reason){ toast("Укажите основание"); return true; }
+    api("PATCH","/api/admin/regs/"+encodeURIComponent(id),{waiver:reason}).then(async r=>{ const i=ADM.REGS.findIndex(x=>x.id===id); if(i>=0) ADM.REGS[i]={...ADM.REGS[i],...r.order}; if (reason && !ADM.WAIVERS.includes(reason)) ADM.WAIVERS.push(reason); adm.wvOpen=null; await loadContent(); render(); toast(reason?`Допущен бесплатно: ${reason}`:"Бесплатное участие отменено — заявка снова ждёт оплаты"); }).catch(err=>toast(err.message)); return true; }
   if (ds.area){ adm.area=ds.area; render(); window.scrollTo(0,0); return true; }
   if (ds.regsave){
     const id=ds.regsave, g=k=>document.getElementById(k+"_"+id);
@@ -2220,7 +2226,7 @@ async function loadSession(){
 }
 async function loadAdmin(){
   const a = await api("GET","/api/admin/state");
-  ADM = {REGS:a.REGS||[], PENDING:a.PENDING||[], SCORES:a.SCORES||[], CREW:a.CREW||[], CREW_CFG:a.CREW_CFG||{}};
+  ADM = {REGS:a.REGS||[], PENDING:a.PENDING||[], SCORES:a.SCORES||[], CREW:a.CREW||[], CREW_CFG:a.CREW_CFG||{}, WAIVERS:a.WAIVERS||["Рекорд Талант"]};
   if (a.PROMOS) PROMOS = a.PROMOS;
   if (a.ACCESS) ACCESS = a.ACCESS;
   if (a.CLUB_LEADS) CLUB_LEADS = a.CLUB_LEADS;
@@ -2476,7 +2482,7 @@ function regTable(ev, regs){
       return `<tr class="${open?"open":""}${o.status==="new"?" unproc":""}"><td class="ck">${o.status==="new"?`<input type="checkbox" id="regSel_${o.id}" data-sel="${o.id}" ${F.sel[o.id]?"checked":""} aria-label="Выбрать">`:""}</td>
         <td><button class="linkbtn regname" data-regopen="${o.id}">${esc(p.last||"")} ${esc(p.first||"")}</button><div class="muted tiny">${esc(p.phone||"")}${o.team?` · ${esc(o.team)}`:""}</div>${o.note?`<div class="tiny regnote">Комментарий: ${esc(o.note.length>60?o.note.slice(0,60)+"…":o.note)}</div>`:""}</td>
         <td class="small c-hide">${esc(divName(o.div))}</td><td class="num mono">${fmtRub(o.status==="paid"?o.paid:o.due)}</td><td class="small mono c-hide">${dShort(o.date)}</td>
-        <td class="act">${o.status==="new"?`<button class="btn sm" data-regst="paid" data-reg="${o.id}">Оплачено</button>`:`<span class="chip ${REG_TAB[o.status][1]}">${REG_ST1[o.status]}</span>`}</td></tr>
+        <td class="act">${o.status==="new"?`<button class="btn sm" data-regst="paid" data-reg="${o.id}">Оплачено</button>`:(o.waiver?`<span class="chip ok" title="${esc(o.waiver)}">бесплатно</span>`:`<span class="chip ${REG_TAB[o.status][1]}">${REG_ST1[o.status]}</span>`)}</td></tr>
         ${open?`<tr class="detail"><td></td><td colspan="5">${regDetail(ev,o)}</td></tr>`:""}`; }).join("")}
     </tbody></table></div>`:'<div class="empty">Никого не нашли. Измените фильтр или поиск.</div>'}`;
 }
@@ -2490,6 +2496,9 @@ function regDetail(ev, o){
       <label class="f">Оплачено, ₽<input class="inp mono" id="rePaid_${o.id}" inputmode="numeric" value="${o.paid||0}"></label>
       <label class="f re-note">Комментарий<textarea class="inp" id="reNote_${o.id}" rows="2" placeholder="Например: нет справки от врача, оплата не пришла">${esc(o.note||"")}</textarea></label>
     </div>
+    <div class="waiver">${o.waiver?`<span class="chip ok">бесплатно · ${esc(o.waiver)}</span><button class="btn sm ghost" data-waiveoff="${o.id}">Отменить бесплатное участие</button>`
+      : adm.wvOpen===o.id?`<input class="inp" id="wv_${o.id}" list="wvList" placeholder="Основание, например: Рекорд Талант" maxlength="80" value="${esc(ADM.WAIVERS[0]||"")}"><datalist id="wvList">${ADM.WAIVERS.map(w=>`<option value="${esc(w)}"></option>`).join("")}</datalist><button class="btn sm" data-waiveok="${o.id}">Допустить</button><button class="btn sm ghost" data-waiveno="1">Отмена</button>`
+      : `<button class="btn sm ghost" data-waive="${o.id}">Допустить бесплатно</button>`}</div>
     <div class="muted tiny">Взнос ${fmtRub(o.due)}. Комментарий видят организаторы; если заявка отменена или отклонена — его увидит и участник в «Мои старты». Отменённые и отклонённые заявки освобождают место.</div>
     ${o.team?`<div class="small">Команда «${esc(o.team)}» · ${o.captain?'<span class="chip ok">капитан</span>':["new","paid","refund_requested"].includes(o.status)?`<button class="btn sm ghost" data-admcap="${o.id}">Сделать капитаном</button>`:esc(REG_ST1[o.status]||"")}</div>`:""}
     <div class="row wrap"><button class="btn sm" data-regsave="${o.id}">Сохранить</button>
