@@ -935,7 +935,7 @@ form(){
     <div class="grid2"><label class="f">Дата рождения<input class="inp" value="${p.dob.split("-").reverse().join(".")}" disabled></label><label class="f">Возраст${ev.ageMode==="year"?" по году":" на старте"}<input class="inp mono" value="${age}" disabled></label></div>
     <label class="f">Зал${gymInput("rAff", f.aff??(p.affiliate||ME.affiliate))}</label>
     <div class="grid2"><label class="f">${kid?"Телефон родителя":"Телефон"}<input class="inp" value="${esc(ME.phone)}" disabled></label><label class="f">Размер футболки<select class="inp" id="rSize">${["XS","S","M","L","XL","XXL"].map(s=>`<option ${s===f.size?"selected":""}>${s}</option>`).join("")}</select></label></div>
-    <div class="grid2"><label class="f">Экстренный контакт<input class="inp" value="${esc(ME.emName||"не указан")}" disabled></label><label class="f">Его телефон<input class="inp" value="${esc(ME.emPhone||"—")}" disabled></label></div>
+    <div class="grid2"><label class="f">Экстренный контакт<input class="inp" value="${esc(ME.emName||"не указан")}" disabled></label><label class="f">Телефон<input class="inp" value="${esc(ME.emPhone||"—")}" disabled></label></div>
     <div class="muted tiny">Данные берутся из анкеты. Исправить их можно в <button type="button" class="linkbtn" data-go="profile">анкете участника</button>.</div>
     <h2 class="sec" style="margin-top:8px">Промокод</h2>
     <div class="row"><input class="inp sp" id="rPromo" placeholder="Например, RECORD10" value="${esc(f.promo)}"><button class="btn ghost" type="button" data-act="promo">Применить</button></div>
@@ -1129,12 +1129,13 @@ profile(){
     <div class="grid2"><label class="f">Пол${sel("pGender",v.gender,[["M","Мужской"],["F","Женский"]])}</label><label class="f">Дата рождения<input class="inp ${e.dob?"err":""}" id="pDob" type="date" value="${esc(v.dob)}"></label></div>
     <label class="f">Зал${gymInput("pAff", v.affiliate)}</label>
     <div class="grid2"><label class="f">Телефон<input class="inp ${e.phone?"err":""}" id="pPhone" type="tel" value="${esc(v.phone)}" placeholder="+7" autocomplete="tel"></label><label class="f">Telegram<input class="inp" id="pTg" value="${esc(v.tg)}" placeholder="@name"></label></div>
-    <div class="grid2"><label class="f">Экстренный контакт<input class="inp" id="pEm" value="${esc(v.emName)}" placeholder="Имя"></label><label class="f">Его телефон<input class="inp" id="pEmP" type="tel" value="${esc(v.emPhone)}" placeholder="+7"></label></div>
+    <div class="grid2"><label class="f">Экстренный контакт<input class="inp" id="pEm" value="${esc(v.emName)}" placeholder="Имя"></label><label class="f">Телефон<input class="inp" id="pEmP" type="tel" value="${esc(v.emPhone)}" placeholder="+7"></label></div>
     ${Object.values(e).filter(Boolean).map(x=>`<div class="err-t">${esc(x)}</div>`).join("")}
     <h2 class="sec" style="margin-top:8px">Дети</h2>
     <div class="muted tiny">Добавьте детей, чтобы записывать их на детские старты от своего аккаунта.</div>
     ${v.kids.map((k,i)=>`<div class="card stack"><div class="grid2"><label class="f">Фамилия<input class="inp" id="kLast${i}" value="${esc(k.last)}"></label><label class="f">Имя<input class="inp" id="kFirst${i}" value="${esc(k.first)}"></label></div>
       <div class="grid2"><label class="f">Пол${sel("kGender"+i,k.gender,[["M","Мальчик"],["F","Девочка"]])}</label><label class="f">Дата рождения<input class="inp" id="kDob${i}" type="date" value="${esc(k.dob)}"></label></div>
+      <label class="f">Зал${gymInput("kAff"+i, k.affiliate)}</label>
       <button type="button" class="btn sm ghost" data-kiddel="${i}" style="align-self:flex-start">Убрать</button></div>`).join("")}
     <button type="button" class="btn ghost" data-act="kidadd" style="align-self:flex-start">+ Ребёнок</button>
     <button class="btn block" type="submit" ${S.p.busy?"disabled":""}>${S.p.busy?"Сохраняю…":"Сохранить анкету"}</button>
@@ -2121,7 +2122,7 @@ function myPlace(o){
 function syncProfile(){
   const g=id=>document.getElementById(id), v=S.p.v; if (!v || !g("pLast")) return;
   Object.assign(v,{last:g("pLast").value.trim(),first:g("pFirst").value.trim(),gender:g("pGender").value,dob:g("pDob").value,affiliate:g("pAff").value.trim(),phone:g("pPhone").value.trim(),tg:g("pTg").value.trim(),emName:g("pEm").value.trim(),emPhone:g("pEmP").value.trim()});
-  v.kids.forEach((k,i)=>{ if (g("kLast"+i)) Object.assign(k,{last:g("kLast"+i).value.trim(),first:g("kFirst"+i).value.trim(),gender:g("kGender"+i).value,dob:g("kDob"+i).value}); });
+  v.kids.forEach((k,i)=>{ if (g("kLast"+i)) Object.assign(k,{last:g("kLast"+i).value.trim(),first:g("kFirst"+i).value.trim(),gender:g("kGender"+i).value,dob:g("kDob"+i).value,affiliate:g("kAff"+i)?g("kAff"+i).value.trim():(k.affiliate||"")}); });
 }
 async function submitReg(){
   const r=S.reg, f=r.f;
