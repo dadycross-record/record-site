@@ -65,7 +65,13 @@ function limit(key, max, windowMs) {
   arr.push(now); hits.set(key, arr);
 }
 setInterval(() => { const now = Date.now(); for (const [k, v] of hits) if (!v.some(t => now - t < 3600e3)) hits.delete(k); }, 600e3).unref();
-const ipOf = req => (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '';
+const isPrivateIp = a => /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|::1$|f[cd][0-9a-f]{2}:|fe80:|::ffff:(10|127|192\.168|172\.(1[6-9]|2\d|3[01]))\.)/i.test(a);
+const ipOf = req => {
+  const chain = String(req.headers['x-forwarded-for'] || '').split(',').map(x => x.trim()).filter(Boolean);
+  for (let i = chain.length - 1; i >= 0; i--) if (!isPrivateIp(chain[i])) return chain[i];
+  return chain[0] || req.socket.remoteAddress || '';
+};
+let xffSeen = 0;
 
 /* ---------- database ---------- */
 const SCHEMA = `
@@ -193,14 +199,15 @@ async function logConsent(req, subject, kind, ref) {
 
 /* ---------- validation of stored person data ---------- */
 const GENDERS = ['M', 'F'];
+const nm = (v, max) => str(v, max).replace(/[<>"`\\]/g, '');
 function cleanPerson(p, kid) {
   p = p || {};
   const o = {
-    first: str(p.first, 60), last: str(p.last, 60), gender: GENDERS.includes(p.gender) ? p.gender : 'M',
-    dob: /^\d{4}-\d{2}-\d{2}$/.test(p.dob || '') ? p.dob : '', affiliate: str(p.affiliate, 80),
+    first: nm(p.first, 60), last: nm(p.last, 60), gender: GENDERS.includes(p.gender) ? p.gender : 'M',
+    dob: /^\d{4}-\d{2}-\d{2}$/.test(p.dob || '') ? p.dob : '', affiliate: nm(p.affiliate, 80),
   };
-  o.print = (str(p.print, 60) || `${o.first} ${o.last}`).toUpperCase();
-  if (!kid) Object.assign(o, { phone: str(p.phone, 30), tg: str(p.tg, 40), emName: str(p.emName, 80), emPhone: str(p.emPhone, 30) });
+  o.print = (nm(p.print, 60) || `${o.first} ${o.last}`).toUpperCase();
+  if (!kid) Object.assign(o, { phone: str(p.phone, 30), tg: str(p.tg, 40), emName: nm(p.emName, 80), emPhone: str(p.emPhone, 30) });
   else o.id = /^kid[a-z0-9]{1,16}$/.test(p.id || '') ? p.id : 'kid' + rnd(8, 'abcdefghijklmnopqrstuvwxyz0123456789');
   return o;
 }
@@ -260,6 +267,7 @@ route('POST', '/api/auth/code', async (req, res, u, body) => {
   limit('code-ip:' + ipOf(req), 60, 3600e3);
   limit('code-mail:' + email, 1, 55e3);
   limit('code-mail-h:' + email, 6, 3600e3);
+  limit('code-mail-d:' + email, 20, 86400e3);
   const code = String(crypto.randomInt(100000, 1000000));
   await db.query(`insert into login_codes(email, code_hash, expires_at, attempts, sent_at) values ($1,$2, now()+interval '10 minutes', 0, now())
     on conflict (email) do update set code_hash=excluded.code_hash, expires_at=excluded.expires_at, attempts=0, sent_at=now()`, [email, sha(email + ':' + code)]);
@@ -280,12 +288,17 @@ route('POST', '/api/auth/code', async (req, res, u, body) => {
 route('POST', '/api/auth/verify', async (req, res, u, body) => {
   const email = str(body.email, 254).toLowerCase(), code = digits(body.code).slice(0, 6);
   limit('verify-ip:' + ipOf(req), 300, 3600e3);
-  const { rows } = await db.query('select * from login_codes where email=$1 and expires_at>now()', [email]);
+  limit('verify-mail:' + email, 20, 3600e3);
+  limit('verify-mail-d:' + email, 60, 86400e3);
+  // count the attempt first, atomically: parallel guesses cannot slip past the 5-attempt limit
+  const { rows } = await db.query('update login_codes set attempts=attempts+1 where email=$1 and expires_at>now() and attempts<5 returning *', [email]);
   const lc = rows[0];
-  if (!lc) throw bad('Код устарел. Запросите новый');
-  if (lc.attempts >= 5) throw bad('Слишком много неверных попыток. Запросите новый код');
-  if (lc.code_hash !== sha(email + ':' + code)) { await db.query('update login_codes set attempts=attempts+1 where email=$1', [email]); throw bad('Неверный код'); }
-  await db.query('delete from login_codes where email=$1', [email]);
+  if (!lc) {
+    const any = (await db.query('select attempts from login_codes where email=$1 and expires_at>now()', [email])).rows[0];
+    throw bad(any ? 'Слишком много неверных попыток. Запросите новый код' : 'Код устарел. Запросите новый');
+  }
+  if (!crypto.timingSafeEqual(Buffer.from(lc.code_hash), Buffer.from(sha(email + ':' + code)))) throw bad('Неверный код');
+  if ((await db.query('delete from login_codes where email=$1 and code_hash=$2 returning 1', [email, lc.code_hash])).rows.length === 0) throw bad('Код уже использован. Запросите новый');
   const user = (await db.query('insert into users(email) values ($1) on conflict (email) do update set email=excluded.email returning id, (xmax = 0) as created', [email])).rows[0];
   if (user.created) await logConsent(req, 'user:' + user.id, 'pd', 'account');
   const token = crypto.randomBytes(32).toString('base64url');
@@ -322,7 +335,7 @@ route('POST', '/api/account/delete', async (req, res, u) => {
 
 route('POST', '/api/lead', async (req, res, u, body) => {
   limit('lead-ip:' + ipOf(req), 20, 3600e3);
-  const name = str(body.name, 80), phone = str(body.phone, 30);
+  const name = nm(body.name, 80), phone = str(body.phone, 30);
   if (!name) throw bad('Как к вам обращаться?');
   if (digits(phone).length < 10) throw bad('Нужен телефон, чтобы мы перезвонили');
   if (!body.consent) throw bad('Нужно согласие, иначе мы не сможем вам позвонить');
@@ -371,7 +384,7 @@ route('POST', '/api/register', async (req, res, u, body) => {
     let team = null;
     if (div.type === 'team') {
       const t = body.team || {};
-      const name = str(t.name, 20).toUpperCase(), code = digits(t.code);
+      const name = nm(t.name, 20).toUpperCase(), code = digits(t.code);
       if (!name) throw bad('Укажите команду');
       if (code.length < 4 || code.length > 6) throw bad('Код команды — от 4 до 6 цифр');
       const ex = (await q('select * from teams where event_id=$1 and div_id=$2 and name=$3', [ev.id, div.id, name])).rows[0];
@@ -705,7 +718,7 @@ function cleanWork(w) {
 }
 function crewFields(body, cur) {
   const f = { ...cur };
-  if (body.name !== undefined) { f.name = str(body.name, 120); if (!f.name) throw bad('Укажите имя'); }
+  if (body.name !== undefined) { f.name = nm(body.name, 120); if (!f.name) throw bad('Укажите имя'); }
   if (body.phone !== undefined) f.phone = str(body.phone, 40) || null;
   if (body.contact !== undefined) f.contact = str(body.contact, 200) || null;
   if (body.role !== undefined) { if (!CREW_ROLES.includes(body.role)) throw bad('Неверная должность'); f.role = body.role; }
@@ -830,8 +843,10 @@ function serveStatic(req, res, pathname) {
   return true;
 }
 
+let scriptHash = '';
+try { const m = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8').match(/<script>([\s\S]*?)<\/script>/); if (m) scriptHash = "'sha256-" + crypto.createHash('sha256').update(m[1], 'utf8').digest('base64') + "'"; } catch (_) {}
 const SECURITY = {
-  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' https://mc.yandex.ru https://yastatic.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://mc.yandex.ru https://mc.yandex.com; font-src 'self'; connect-src 'self' https://mc.yandex.ru https://mc.yandex.com; frame-src https://mc.yandex.ru https://mc.yandex.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' " + (scriptHash || "'unsafe-inline'") + " https://mc.yandex.ru https://yastatic.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://mc.yandex.ru https://mc.yandex.com; font-src 'self'; connect-src 'self' https://mc.yandex.ru https://mc.yandex.com; frame-src https://mc.yandex.ru https://mc.yandex.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
   'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin', 'X-Frame-Options': 'DENY',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()', 'Strict-Transport-Security': 'max-age=31536000',
 };
