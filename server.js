@@ -179,6 +179,14 @@ function evDaysSrv(ev) {
   const out = []; for (let d = new Date(ev.date + 'T00:00:00Z'); out.length < 14; d.setUTCDate(d.getUTCDate() + 1)) { const s = d.toISOString().slice(0, 10); if (s > ev.dateEnd) break; out.push(s); }
   return out;
 }
+/* team composition by sex: div.g M/F = everyone that sex; div.mix = {m, f} = exact numbers in the main roster */
+const sexOf = r => (r.person && r.person.gender) === 'F' ? 'f' : 'm';
+function mixRoom(div, mainRows, sex, minus) {
+  if (!div.mix) return true;
+  const n = mainRows.filter(r => r.id !== minus && sexOf(r) === sex).length;
+  return n < (+div.mix[sex] || 0);
+}
+const SEXW = { m: 'мужчин', f: 'женщин' };
 function divDaySet(ev, d) { const days = evDaysSrv(ev); const own = ((d && d.days) || []).filter(x => days.includes(x)); return own.length ? own : days; }
 async function publicContent() {
   if (cache) return cache;
@@ -432,6 +440,10 @@ route('POST', '/api/register', async (req, res, u, body) => {
   if (!person || !person.first || !person.last || !person.dob) throw bad('Заполните анкету участника: имя, фамилию и дату рождения');
   if (!u.profile.phone) throw bad('Укажите телефон в анкете');
   const age = ev.ageMode === 'year' ? (+String(ev.date).slice(0, 4) - +person.dob.slice(0, 4)) : ageOn(person.dob, ev.date || today());
+  if ((div.g === 'M' || div.g === 'F') && (person.gender || 'M') !== div.g) throw bad(div.g === 'M' ? 'Категория только для мужчин' : 'Категория только для женщин');
+  if (div.mix && !(+div.mix[(person.gender === 'F') ? 'f' : 'm'] > 0)) throw bad(person.gender === 'F' ? 'В этой категории в составе нет мест для женщин' : 'В этой категории в составе нет мест для мужчин');
+  if (div.min && age < div.min) throw bad(`Категория с ${div.min} лет`);
+  if (div.max && age > div.max) throw bad(`Категория до ${div.max} лет`);
   const cons = body.consents || {};
   if (!cons.rules) throw bad('Нужно принять условия участия');
   if (!cons.pd) throw bad('Нужно согласие на обработку персональных данных');
@@ -474,7 +486,9 @@ route('POST', '/api/register', async (req, res, u, body) => {
         const main = (await q(`select count(*)::int n from registrations where event_id=$1 and div_id=$2 and team=$3 and status in ${ACTIVE}`, [ev.id, div.id, teamRow.name])).rows[0].n;
         if (!main) throw bad('Такой команды нет');
         team = teamRow.name;
-        if (t.mode === 'invite') { if (main < size) role = 'main'; else { role = 'reserve'; initial = 'reserve'; } }
+        const mainRows = (await teamRoster(q, ev.id, div.id, teamRow.name)).filter(r => ['new', 'paid', 'refund_requested'].includes(r.status));
+        const sx = person.gender === 'F' ? 'f' : 'm';
+        if (t.mode === 'invite') { if (main < size && mixRoom(div, mainRows, sx)) role = 'main'; else { role = 'reserve'; initial = 'reserve'; } }
         else initial = 'pending';
       }
         } else {
@@ -527,7 +541,7 @@ async function myTeams(uid) {
     out.push({ event: m.event_id, div: m.div_id, name: m.team, captain: isCap, captainReg: t.captain_reg, invite: isCap ? t.invite : null,
       members: roster.filter(r => isCap || r.status !== 'pending' || Number(r.user_id) === Number(uid)).map(r => ({
         reg: r.id, name: isCap || Number(r.user_id) === Number(uid) ? `${r.person.last || ''} ${r.person.first || ''}`.trim() : shortName(r.person),
-        role: r.status === 'pending' ? 'pending' : r.status === 'reserve' ? 'reserve' : 'main', paid: r.status === 'paid', cap: r.id === t.captain_reg, me: Number(r.user_id) === Number(uid) })) });
+        role: r.status === 'pending' ? 'pending' : r.status === 'reserve' ? 'reserve' : 'main', paid: r.status === 'paid', g: sexOf(r), cap: r.id === t.captain_reg, me: Number(r.user_id) === Number(uid) })) });
   }
   return out;
 }
@@ -549,7 +563,7 @@ route('GET', '/api/teams', async (req, res, u, body, p, qs) => {
     const roster = await teamRoster(db.query.bind(db), ev, div, t.name);
     const main = roster.filter(r => ['new', 'paid', 'refund_requested'].includes(r.status));
     if (!main.length) continue;
-    out.push({ name: t.name, main: main.map(r => ({ n: shortName(r.person), cap: r.id === t.captain_reg })), reserve: roster.filter(r => r.status === 'reserve').map(r => shortName(r.person)), pending: roster.filter(r => r.status === 'pending').length });
+    out.push({ name: t.name, main: main.map(r => ({ n: shortName(r.person), cap: r.id === t.captain_reg, g: sexOf(r) })), reserve: roster.filter(r => r.status === 'reserve').map(r => shortName(r.person)), pending: roster.filter(r => r.status === 'pending').length });
   }
   return { teams: out };
 });
@@ -559,7 +573,7 @@ route('GET', '/api/invite/:token', async (req, res, u, body, p) => {
   const roster = await teamRoster(db.query.bind(db), t.event_id, t.div_id, t.name);
   const main = roster.filter(r => ['new', 'paid', 'refund_requested'].includes(r.status));
   if (!main.length) throw bad('Команда расформирована');
-  return { event: t.event_id, div: t.div_id, name: t.name, main: main.map(r => shortName(r.person)), reserve: roster.filter(r => r.status === 'reserve').length };
+  return { event: t.event_id, div: t.div_id, name: t.name, main: main.map(r => shortName(r.person)), mainG: main.map(sexOf), reserve: roster.filter(r => r.status === 'reserve').length };
 });
 route('POST', '/api/team/act', async (req, res, u, body) => {
   need(u);
@@ -586,7 +600,7 @@ route('POST', '/api/team/act', async (req, res, u, body) => {
     };
     if (act === 'approve' || act === 'reserve') {
       const r = get(str(body.target, 40)); if (!r || r.status !== 'pending') throw bad('Заявка не найдена');
-      if (act === 'approve') { if (mainCount() >= size) throw bad('Основной состав полный — возьмите в запас или сначала замените участника'); await toMain(r, 0); }
+      if (act === 'approve') { if (mainCount() >= size) throw bad('Основной состав полный — возьмите в запас или сначала замените участника'); if (!mixRoom(div, roster.filter(x => ['new', 'paid', 'refund_requested'].includes(x.status)), sexOf(r))) throw bad(`В основном составе уже все места для ${SEXW[sexOf(r)]} — возьмите в запас`); await toMain(r, 0); }
       else await q("update registrations set status='reserve', team_role='reserve', updated_by=$1 where id=$2", [u.email, r.id]);
       mailTo = r.id; mailText = act === 'approve' ? `Капитан принял вас в основной состав команды «${cap.team}». Оплатите взнос — организатор подтвердит участие.` : `Капитан взял вас в запас команды «${cap.team}». Взнос платить не нужно, пока вы не выйдете в основной состав.`;
     } else if (act === 'reject') {
@@ -596,6 +610,8 @@ route('POST', '/api/team/act', async (req, res, u, body) => {
     } else if (act === 'promote') {
       const r = get(str(body.target, 40)); if (!r || r.status !== 'reserve') throw bad('Запасной не найден');
       const out = body.replace ? get(str(body.replace, 40)) : null;
+      const mainNow = roster.filter(x => ['new', 'paid', 'refund_requested'].includes(x.status));
+      if (!mixRoom(div, mainNow, sexOf(r), out && out.id)) throw bad(`По составу категории в основном составе ${div.mix.m} муж. и ${div.mix.f} жен. — ${sexOf(r) === 'f' ? 'женщину' : 'мужчину'} можно поставить только вместо ${sexOf(r) === 'f' ? 'женщины' : 'мужчины'}`);
       if (body.replace) {
         if (!out || !['new', 'paid', 'refund_requested'].includes(out.status)) throw bad('Участник для замены не найден');
         if (out.id === cap.id) throw bad('Капитана заменить нельзя — напишите организатору');

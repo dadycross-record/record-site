@@ -924,7 +924,7 @@ teamJoin(){
     <div class="stack" style="margin-top:12px">${!all?'<div class="muted small">Загружаю команды…</div>':list.map(t=>{ const full=t.main.length>=div.size;
       return `<div class="team"><div class="sp"><b>${esc(t.name)}</b><div class="slots">${Array.from({length:div.size},(_,i)=>`<i class="${i<t.main.length?"on":""}"></i>`).join("")}</div>
         <div class="small" style="margin-top:6px">${t.main.map(m=>esc(m.n)+(m.cap?' <span class="chip neutral" style="height:18px;font-size:10px">капитан</span>':"")).join(", ")}</div>
-        <div class="muted tiny" style="margin-top:4px">Основной состав: ${t.main.length} из ${div.size}${full?"":` · свободно ${div.size-t.main.length}`}${t.reserve.length?` · запасные: ${t.reserve.map(esc).join(", ")}`:""}</div></div>
+        <div class="muted tiny" style="margin-top:4px">Основной состав: ${t.main.length} из ${div.size}${full?"":` · свободно ${div.size-t.main.length}`}${mixNeed(div,t.main)?` · ${mixNeed(div,t.main)}`:""}${t.reserve.length?` · запасные: ${t.reserve.map(esc).join(", ")}`:""}</div></div>
         <button class="btn sm${full?" ghost":""}" data-join="${esc(t.name)}">${full?"В запас":"Подать заявку"}</button></div>`; }).join("") || '<div class="empty">Команд пока нет — создайте свою</div>'}</div>
     <div class="muted tiny" style="margin-top:12px">Заявку подтверждает капитан. Платить взнос нужно после того, как он примет вас в основной состав.</div>`};
 },
@@ -938,7 +938,7 @@ invite(){
   const full = I.main.length >= div.size;
   return {title:"Приглашение в команду", html:`<div class="card stack"><div class="muted small">${esc(ev.name)} · ${esc(div.name)}</div><div style="font-family:var(--f-display);font-weight:800;font-size:22px">${esc(I.name)}</div>
     <div class="slots">${Array.from({length:div.size},(_,i)=>`<i class="${i<I.main.length?"on":""}"></i>`).join("")}</div>
-    <div class="small">В составе: ${I.main.map(esc).join(", ")}${I.reserve?` · запасных: ${I.reserve}`:""}</div>
+    <div class="small">В составе: ${I.main.map(esc).join(", ")}${I.reserve?` · запасных: ${I.reserve}`:""}${div.mix?` · состав ${div.mix.m} муж. + ${div.mix.f} жен.${mixNeed(div,(I.mainG||[]).map(g=>({g})))?", "+mixNeed(div,(I.mainG||[]).map(g=>({g}))):""}`:""}</div>
     <div class="muted small">${full?"Основной состав полный — вы вступите запасным. Платить взнос не нужно, пока капитан не переведёт вас в основной состав.":"Вы вступите в основной состав сразу, без подтверждения капитана. Взнос каждый платит за себя."}</div>
     <button class="btn block" data-act="invjoin">${full?"Вступить запасным":"Вступить в команду"}</button></div>`};
 },
@@ -1217,6 +1217,7 @@ function teamBox(o){
   const capBtn = m => !cap||m.cap ? "" : S.p.capAsk===m.reg ? `<span class="small">Передать капитанство?</span><button class="btn sm" data-tact="captain|${m.reg}" data-ti="${ti}">Да</button><button class="btn sm ghost" data-rmno="1">Нет</button>` : `<button class="btn sm ghost" data-tact="captain|${m.reg}" data-ti="${ti}" title="Сделать капитаном">Капитан</button>`;
   const rmBtn = m => !cap||m.cap ? "" : ask===m.reg ? `<span class="small">Убрать?</span><button class="btn sm danger" data-tact="remove|${m.reg}" data-ti="${ti}">Да</button><button class="btn sm ghost" data-rmno="1">Нет</button>` : `<button class="btn sm ghost" data-tact="remove|${m.reg}" data-ti="${ti}">Убрать</button>`;
   return `<div class="teambox"><div class="row"><b class="sp">Команда «${esc(T.name)}»</b><span class="muted tiny">${main.length} из ${size}${res.length?` · запас ${res.length}`:""}</span></div>
+    ${div&&div.mix?`<div class="muted tiny">Состав: ${div.mix.m} муж. + ${div.mix.f} жен.${mixNeed(div,main)?" · "+mixNeed(div,main):""}</div>`:""}
     <div class="slots" style="margin:6px 0">${Array.from({length:size},(_,i)=>`<i class="${i<main.length?"on":""}"></i>`).join("")}</div>
     ${main.map(m=>`<div class="arow"><div class="sp small">${who(m)}</div>${cap?`<span class="chip ${m.paid?"ok":"warn"}">${m.paid?"оплачен":"ждёт оплаты"}</span>`:""}${S.p.capAsk===m.reg?"":rmBtn(m)}${S.p.rmAsk===m.reg?"":capBtn(m)}</div>`).join("")}
     ${res.length?`<div class="muted tiny" style="margin-top:8px">ЗАПАСНЫЕ</div>${res.map(m=>`<div class="arow"><div class="sp small">${who(m)}</div>${cap?`<div class="row wrap" style="gap:6px;justify-content:flex-end">
@@ -1242,6 +1243,9 @@ const curEv = () => EVENTS.find(e=>e.id===adm.evId);
 const dShort = d => d ? d.split("-").reverse().join(".") : "—";
 const nextDay = d => new Date(Date.parse(d)+864e5).toISOString().slice(0,10);
 const G_SHORT = {M:"муж.",F:"жен.",any:"любой пол"};
+const gLabel = d => d.mix ? `${d.mix.m} муж. + ${d.mix.f} жен.` : d.type==="team" && d.g!=="any" ? (d.g==="M"?"только мужчины":"только женщины") : G_SHORT[d.g];
+/* what a team still needs by sex: members = [{g:"m"|"f"}] of the main roster */
+const mixNeed = (d, members) => { if (!d.mix) return ""; const m=members.filter(x=>x.g==="m").length, f=members.filter(x=>x.g==="f").length; const nm=Math.max(0,d.mix.m-m), nf=Math.max(0,d.mix.f-f); return nm||nf ? `нужны: ${[nm?nm+" муж.":"",nf?nf+" жен.":""].filter(Boolean).join(", ")}` : ""; };
 const TYPE_L = {time:"На время",reps:"Повторения",load:"Вес"};
 const IC = {
   edit:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
@@ -1314,6 +1318,7 @@ function syncDiv(){
   const g=id=>document.getElementById(id), v=adm.dv; if(!v || !g("dName")) return;
   v.name=g("dName").value; v.min=g("dMin").value.trim(); v.max=g("dMax").value.trim(); v.price=g("dPrice").value.trim(); v.limit=g("dLimit").value.trim(); v.note=g("dNote").value;
   if (g("dSize")) v.size=g("dSize").value;
+  if (g("dMixM")){ v.mixM=g("dMixM").value.trim(); v.mixF=g("dMixF").value.trim(); }
 }
 function syncWod(){
   const g=id=>document.getElementById(id), w=adm.wd; if(!w || !g("wName")) return;
@@ -1354,7 +1359,7 @@ function fitDays(ev){
   return moved;
 }
 function whoText(){
-  const dv=adm.dv, ev=curEv(), g={M:"мужской пол",F:"женский пол",any:"любой пол"}[dv.g];
+  const dv=adm.dv, ev=curEv(), g=dv.g==="mix"?`смешанный состав: ${dv.mixM||"?"} муж. + ${dv.mixF||"?"} жен.`:{M:dv.type==="team"?"только мужчины":"мужской пол",F:dv.type==="team"?"только женщины":"женский пол",any:"любой пол"}[dv.g];
   const mn = dv.min==="" ? 0 : +dv.min, mx = dv.max==="" ? 0 : +dv.max;
   let a;
   if (!mn && !mx) a = "без ограничения по возрасту";
@@ -1525,7 +1530,7 @@ function adminClick(t, ds){
   if (ds.apreset!==undefined){ const p=PRESETS[+ds.apreset]; ev.divisions.push({...p,id:"d"+Date.now().toString(36),taken:0}); adm.err.divs=null; render(); toast(`Добавлена категория «${p.name}»`); return true; }
   if (ds.adiv!==undefined){
     adm.divIdx = ds.adiv==="new" ? null : +ds.adiv; const d = adm.divIdx===null ? null : ev.divisions[adm.divIdx];
-    adm.dv = d ? {...d,min:d.min?String(d.min):"",max:d.max?String(d.max):"",price:String(d.price),limit:String(d.limit),note:d.note||"",size:d.size||2,days:[...(d.days||[])]} : {name:"",type:"ind",size:2,g:"any",min:"",max:"",price:"1500",limit:"20",note:"",days:[]};
+    adm.dv = d ? {...d,g:d.mix?"mix":d.g,mixM:d.mix?String(d.mix.m):"",mixF:d.mix?String(d.mix.f):"",min:d.min?String(d.min):"",max:d.max?String(d.max):"",price:String(d.price),limit:String(d.limit),note:d.note||"",size:d.size||2,days:[...(d.days||[])]} : {name:"",type:"ind",size:2,g:"any",min:"",max:"",price:"1500",limit:"20",note:"",days:[]};
     adm.derr={}; go("adminDiv",{}); return true;
   }
   if (ds.adel!==undefined){ ev.divisions.splice(+ds.adel,1); render(); return true; }
@@ -1584,8 +1589,8 @@ function adminClick(t, ds){
   }
   if (ds.act==="adoc"){ document.getElementById("docIn").click(); return true; }
   if (ds.adocdel!==undefined){ ev.docs.splice(+ds.adocdel,1); render(); toast("Файл откреплён"); return true; }
-  if (ds.dtp){ adm.dv.type=ds.dtp; render(); return true; }
-  if (ds.dg){ adm.dv.g=ds.dg; render(); return true; }
+  if (ds.dtp){ adm.dv.type=ds.dtp; if (ds.dtp!=="team" && adm.dv.g==="mix") adm.dv.g="any"; render(); return true; }
+  if (ds.dg){ adm.dv.g=ds.dg; if (ds.dg==="mix" && !adm.dv.mixM){ const n=+adm.dv.size||2; adm.dv.mixM=String(Math.ceil(n/2)); adm.dv.mixF=String(Math.floor(n/2)); } render(); return true; }
   if (ds.wtp){ adm.wd.type=ds.wtp; render(); return true; }
   if (ds.act==="asave"){
     if (ev.date) fitDays(ev);
@@ -1613,11 +1618,12 @@ function adminClick(t, ds){
     else if (v.min!=="" && v.max!=="" && +v.min>+v.max) e.age="«От» не может быть больше «до»";
     if (!int(v.price)) e.price="Взнос — целое число рублей, 0 если бесплатно";
     if (!int(v.limit) || +v.limit<1) e.limit="Нужно хотя бы одно место";
+    if (v.type==="team" && v.g==="mix"){ if (!int(v.mixM) || !int(v.mixF) || +v.mixM<1 || +v.mixF<1) e.mix="Укажите, сколько мужчин и сколько женщин — хотя бы по одному"; else if (+v.mixM + +v.mixF !== +v.size) e.mix=`Мужчин и женщин вместе должно быть ${v.size} — столько, сколько человек в команде`; }
     const old = adm.divIdx===null ? null : ev.divisions[adm.divIdx];
     if (!e.limit && old && +v.limit<old.taken) e.limit=`Уже записано ${old.taken}, лимит не может быть меньше`;
     adm.derr=e; if (Object.keys(e).length){ render(); return true; }
-    const d = {id:old?old.id:"d"+Date.now().toString(36), name:v.name.trim(), type:v.type, g:v.g, min:v.min===""?0:+v.min, price:+v.price, limit:+v.limit, taken:old?old.taken:0};
-    if (v.max!=="") d.max=+v.max; if (v.type==="team") d.size=+v.size; if (v.note.trim()) d.note=v.note.trim();
+    const d = {id:old?old.id:"d"+Date.now().toString(36), name:v.name.trim(), type:v.type, g:v.g==="mix"?"any":v.g, min:v.min===""?0:+v.min, price:+v.price, limit:+v.limit, taken:old?old.taken:0};
+    if (v.max!=="") d.max=+v.max; if (v.type==="team") d.size=+v.size; if (v.type==="team" && v.g==="mix") d.mix={m:+v.mixM, f:+v.mixF}; if (v.note.trim()) d.note=v.note.trim();
     if (v.days.length && v.days.length<evDays(ev).length) d.days=[...v.days].sort();
     if (old) ev.divisions[adm.divIdx]=d; else ev.divisions.push(d);
     adm.err.divs=null; back(); toast(old?"Категория сохранена":"Категория добавлена"); return true;
@@ -1790,7 +1796,7 @@ admin(){
 },
 adminEvent(){
   const ev=curEv(), E=adm.err||{}, on=ev.format==="online", days=evDays(ev), multi=days.length>1;
-  const divRows = ev.divisions.map((d,i)=>`<div class="arow"><div class="sp"><b>${esc(d.name)}</b><div class="muted tiny">${d.type==="team"?`Команда ${d.size} чел. · `:""}${G_SHORT[d.g]} · ${ageLabel(d,ev)}${multi?` · ${divDays(ev,d)}`:""} · ${fmtRub(d.price)} · <span class="mono">${d.taken}/${d.limit}</span></div></div><button class="iconbtn sm" data-adiv="${i}" aria-label="Изменить категорию">${IC.edit}</button><button class="iconbtn sm" data-adel="${i}" aria-label="Удалить категорию" ${d.taken?'disabled title="Есть записавшиеся"':""}>${IC.del}</button></div>`).join("");
+  const divRows = ev.divisions.map((d,i)=>`<div class="arow"><div class="sp"><b>${esc(d.name)}</b><div class="muted tiny">${d.type==="team"?`Команда ${d.size} чел. · `:""}${gLabel(d)} · ${ageLabel(d,ev)}${multi?` · ${divDays(ev,d)}`:""} · ${fmtRub(d.price)} · <span class="mono">${d.taken}/${d.limit}</span></div></div><button class="iconbtn sm" data-adiv="${i}" aria-label="Изменить категорию">${IC.edit}</button><button class="iconbtn sm" data-adel="${i}" aria-label="Удалить категорию" ${d.taken?'disabled title="Есть записавшиеся"':""}>${IC.del}</button></div>`).join("");
   const wodRows = ev.workouts.map((w,i)=>`<div class="arow"><div class="sp"><b>${esc(w.name)}</b><div class="muted tiny">${ev.permanent&&w.month?`${monthTitle(w.month)} · `:""}${multi?`${dayShort(days.includes(w.day)?w.day:days[0])} · `:""}${TYPE_L[w.type]}${w.cap?` · лимит ${w.cap/60}:00`:""}</div></div><button class="iconbtn sm" data-awod="${i}" aria-label="Изменить задание">${IC.edit}</button><button class="iconbtn sm" data-awdel="${i}" aria-label="Удалить задание">${IC.del}</button></div>`).join("");
   const regs = ev.divisions.reduce((a,d)=>a+d.taken,0);
   ev.docs = ev.docs || [];
@@ -1866,7 +1872,10 @@ adminDiv(){
     <label class="f">Название<input class="inp ${E.name?"err":""}" id="dName" value="${esc(v.name)}" placeholder="Мальчики 8–9"></label>${fErr(E.name)}
     <div class="f">Формат${seg("dtp",v.type,[["ind","Индивидуальная"],["team","Командная"]])}</div>
     ${team?`<label class="f">Человек в команде<select class="inp" id="dSize">${[2,3,4,5,6].map(n=>`<option ${+v.size===n?"selected":""}>${n}</option>`).join("")}</select></label>`:""}
-    <div class="f">Пол${seg("dg",v.g,[["M","Мужской"],["F","Женский"],["any","Любой"]])}</div>
+    ${team?`<div class="f">Состав по полу${seg("dg",v.g,[["M","ММ — мужчины"],["F","ЖЖ — женщины"],["mix","МЖ — микс"],["any","Любой"]])}</div>
+    ${v.g==="mix"?`<div class="grid2"><label class="f">Мужчин в составе<input class="inp mono ${E.mix?"err":""}" id="dMixM" inputmode="numeric" value="${esc(v.mixM)}"></label><label class="f">Женщин в составе<input class="inp mono ${E.mix?"err":""}" id="dMixF" inputmode="numeric" value="${esc(v.mixF)}"></label></div>${E.mix?fErr(E.mix):`<div class="muted tiny">Вместе — ${v.size} человек. Капитан не сможет поставить в основной состав лишнего мужчину или лишнюю женщину; запасные — любые.</div>`}`
+      : `<div class="muted tiny">${v.g==="M"?"В команде только мужчины.":v.g==="F"?"В команде только женщины.":"Любой состав: мужчины и женщины в любом сочетании."}</div>`}`
+    : `<div class="f">Пол${seg("dg",v.g,[["M","Мужской"],["F","Женский"],["any","Любой"]])}</div>`}
     ${days.length>1?`<div class="f">Дни выступления<div class="pills wrap">${days.map(d=>`<button type="button" role="checkbox" aria-checked="${!v.days.length||v.days.includes(d)}" aria-selected="${!v.days.length||v.days.includes(d)}" data-dday="${d}">${dayShort(d)}</button>`).join("")}</div></div><div class="muted tiny">Например: дети выступают в воскресенье, взрослые оба дня. По умолчанию все дни.</div>`:""}
     <div class="grid2"><label class="f">Возраст от<input class="inp mono ${E.age?"err":""}" id="dMin" inputmode="numeric" value="${esc(v.min)}" placeholder="—"></label><label class="f">Возраст до<input class="inp mono ${E.age?"err":""}" id="dMax" inputmode="numeric" value="${esc(v.max)}" placeholder="—"></label></div>${fErr(E.age)}
     <div class="rule" id="whoTxt">${whoText()}</div>
