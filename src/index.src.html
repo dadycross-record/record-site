@@ -461,7 +461,8 @@ const divDaysNote = (ev,d) => { const t=divDays(ev,d); return t && t!=="все �
 
 /* ---------- demo data ---------- */
 const ME = {first:"",last:"",print:"",gender:"M",dob:"",affiliate:"",phone:"",email:"",tg:"",emName:"",emPhone:"",kids:[]};
-const AFFILIATES = ["Record Пивовариха","CF BAZA","Iron Lab","Атлант","Другой зал"];
+let GYMS = ["Record Пивовариха","CF BAZA"];
+const gymInput = (id, val) => `<input class="inp" id="${id}" list="gymList_${id}" value="${esc(val||"")}" placeholder="Начните вводить или выберите" autocomplete="off" maxlength="80"><datalist id="gymList_${id}">${GYMS.map(g=>`<option value="${esc(g)}"></option>`).join("")}</datalist><span class="muted tiny" style="margin-top:4px">Нет в списке — впишите свой. Без зала — оставьте пустым.</span>`;
 
 const EVENTS = [
  { id:"race", name:"Гонка Рекорда", en:"RECORD RACE", format:"onsite", status:"open", city:"Иркутск",
@@ -893,7 +894,7 @@ teamCreate(){
    <form class="stack" id="fTeam" novalidate>
     <label class="f">Название команды<input class="inp ${e.name?"err":""}" id="tName" value="${esc(v.name)}" placeholder="BAIKAL POWER" autocomplete="off"></label>
     <div class="${e.name?"err-t":"muted tiny"}">${e.name||"Только латиница, до 5 слов и 20 символов. Сохраняется заглавными."}</div>
-    <label class="f">Зал<select class="inp" id="tAff">${AFFILIATES.map(a=>`<option ${a===v.aff?"selected":""}>${a}</option>`).join("")}</select></label>
+    <label class="f">Зал${gymInput("tAff", v.aff)}</label>
     <div class="grid2"><label class="f">Код команды<input class="inp ${e.code?"err":""}" id="tCode" inputmode="numeric" value="${esc(v.code)}" placeholder="4–6 цифр"></label>
     <label class="f">Повторите код<input class="inp ${e.code?"err":""}" id="tCode2" inputmode="numeric" value="${esc(v.code2)}"></label></div>
     ${e.code?`<div class="err-t">${e.code}</div>`:'<div class="muted tiny">Код передайте партнёрам: без него вступить в команду нельзя.</div>'}
@@ -922,7 +923,7 @@ form(){
    <form class="stack" id="fReg" novalidate>
     <div class="grid2"><label class="f">Фамилия<input class="inp" id="rLast" value="${esc(p.last)}"></label><label class="f">Имя<input class="inp" id="rFirst" value="${esc(p.first)}"></label></div>
     <div class="grid2"><label class="f">Дата рождения<input class="inp" value="${p.dob.split("-").reverse().join(".")}" disabled></label><label class="f">Возраст${ev.ageMode==="year"?" по году":" на старте"}<input class="inp mono" value="${age}" disabled></label></div>
-    <label class="f">Зал<select class="inp" id="rAff">${AFFILIATES.map(a=>`<option ${a===(f.aff||p.affiliate||ME.affiliate)?"selected":""}>${a}</option>`).join("")}</select></label>
+    <label class="f">Зал${gymInput("rAff", f.aff??(p.affiliate||ME.affiliate))}</label>
     <div class="grid2"><label class="f">${kid?"Телефон родителя":"Телефон"}<input class="inp" value="${esc(ME.phone)}" disabled></label><label class="f">Размер футболки<select class="inp" id="rSize">${["XS","S","M","L","XL","XXL"].map(s=>`<option ${s===f.size?"selected":""}>${s}</option>`).join("")}</select></label></div>
     <div class="grid2"><label class="f">Экстренный контакт<input class="inp" value="${esc(ME.emName||"не указан")}" disabled></label><label class="f">Его телефон<input class="inp" value="${esc(ME.emPhone||"—")}" disabled></label></div>
     <div class="muted tiny">Данные берутся из анкеты. Исправить их можно в <button type="button" class="linkbtn" data-go="profile">анкете участника</button>.</div>
@@ -1061,7 +1062,7 @@ crewApply(){
   const days = crewDays(ev), multi = days.length>1;
   return {title:"Команда старта", html:`<form class="stack" id="fCrew" novalidate>
     <div class="muted small">${esc(ev.name)} · ${ev.date?dateRange(ev):""}</div>
-    <div class="card stack"><b>${esc(`${ME.last||""} ${ME.first||""}`.trim())}</b><div class="muted small">${esc(ME.phone||"")} · ${esc(ME.email||"")}</div><div class="muted tiny">Данные из анкеты. Поменять — в профиле.</div></div>
+    <div class="card stack"><b>${esc(`${ME.last||""} ${ME.first||""}`.trim())}</b><div class="muted small">${[ME.dob?dShort(ME.dob)+" г.р.":"", ME.affiliate, ME.phone, ME.email, ME.tg?"tg "+ME.tg:""].filter(Boolean).map(esc).join(" · ")}</div><div class="row"><span class="muted tiny sp">Всё подставлено из вашей анкеты — заполнять заново не нужно.</span><button type="button" class="linkbtn tiny" data-go="profile" data-edit="1">Изменить анкету</button></div></div>
     <h2 class="sec">Кем хотите работать</h2>
     <div class="stack" style="gap:8px">${CREW_SELF.map(([k,t,d])=>`<label class="card check" style="align-items:flex-start"><input type="radio" name="cRole" value="${k}" ${f.role===k?"checked":""}><span><b>${t}</b><div class="muted small">${d}</div></span></label>`).join("")}</div>
     ${multi?`<h2 class="sec">В какие дни можете</h2><div class="card stack" style="gap:6px">${days.map(d=>`<label class="check"><input type="checkbox" name="cDay" value="${d}" ${f.days[d]?"checked":""}><span>${dayLabel(ev,d)}</span></label>`).join("")}</div>`:""}
@@ -1116,7 +1117,7 @@ profile(){
    <form class="stack" id="fProfile" novalidate>
     <div class="grid2"><label class="f">Фамилия<input class="inp ${e.last?"err":""}" id="pLast" value="${esc(v.last)}" autocomplete="family-name"></label><label class="f">Имя<input class="inp ${e.first?"err":""}" id="pFirst" value="${esc(v.first)}" autocomplete="given-name"></label></div>
     <div class="grid2"><label class="f">Пол${sel("pGender",v.gender,[["M","Мужской"],["F","Женский"]])}</label><label class="f">Дата рождения<input class="inp ${e.dob?"err":""}" id="pDob" type="date" value="${esc(v.dob)}"></label></div>
-    <label class="f">Зал<select class="inp" id="pAff">${["",...AFFILIATES].map(a=>`<option ${a===v.affiliate?"selected":""} value="${esc(a)}">${a||"Выберите"}</option>`).join("")}</select></label>
+    <label class="f">Зал${gymInput("pAff", v.affiliate)}</label>
     <div class="grid2"><label class="f">Телефон<input class="inp ${e.phone?"err":""}" id="pPhone" type="tel" value="${esc(v.phone)}" placeholder="+7" autocomplete="tel"></label><label class="f">Telegram<input class="inp" id="pTg" value="${esc(v.tg)}" placeholder="@name"></label></div>
     <div class="grid2"><label class="f">Экстренный контакт<input class="inp" id="pEm" value="${esc(v.emName)}" placeholder="Имя"></label><label class="f">Его телефон<input class="inp" id="pEmP" type="tel" value="${esc(v.emPhone)}" placeholder="+7"></label></div>
     ${Object.values(e).filter(Boolean).map(x=>`<div class="err-t">${esc(x)}</div>`).join("")}
@@ -2064,6 +2065,7 @@ async function loadContent(){
   EVENTS.splice(0, EVENTS.length, ...(c.EVENTS||[]));
   Object.keys(TEAMS).forEach(k=>delete TEAMS[k]); Object.assign(TEAMS, c.TEAMS||{});
   Object.keys(RESULTS).forEach(k=>delete RESULTS[k]); Object.assign(RESULTS, c.RESULTS||{});
+  if (Array.isArray(c.GYMS) && c.GYMS.length) GYMS = c.GYMS;
   SITE = c.SITE || {}; if (!SITE.contacts) SITE.contacts = {...CONTACT_DEF}; if (!SITE.gallery) SITE.gallery = [];
   if (c.today) TODAY = c.today;
   markMe();
@@ -2108,7 +2110,7 @@ function myPlace(o){
 }
 function syncProfile(){
   const g=id=>document.getElementById(id), v=S.p.v; if (!v || !g("pLast")) return;
-  Object.assign(v,{last:g("pLast").value.trim(),first:g("pFirst").value.trim(),gender:g("pGender").value,dob:g("pDob").value,affiliate:g("pAff").value,phone:g("pPhone").value.trim(),tg:g("pTg").value.trim(),emName:g("pEm").value.trim(),emPhone:g("pEmP").value.trim()});
+  Object.assign(v,{last:g("pLast").value.trim(),first:g("pFirst").value.trim(),gender:g("pGender").value,dob:g("pDob").value,affiliate:g("pAff").value.trim(),phone:g("pPhone").value.trim(),tg:g("pTg").value.trim(),emName:g("pEm").value.trim(),emPhone:g("pEmP").value.trim()});
   v.kids.forEach((k,i)=>{ if (g("kLast"+i)) Object.assign(k,{last:g("kLast"+i).value.trim(),first:g("kFirst"+i).value.trim(),gender:g("kGender"+i).value,dob:g("kDob"+i).value}); });
 }
 async function submitReg(){
@@ -2281,7 +2283,7 @@ function crewTab(ev, crew){
     ${list.length?`<div class="card tbl-wrap" style="padding:0 4px"><table class="tbl crew"><thead><tr><th>Человек</th>${days.map(d=>`<th class="dcol">${dayShort(d)}</th>`).join("")}<th class="num">Смен</th><th class="num">К выплате</th></tr></thead><tbody>
       ${CREW_ORDER.map(role=>{ const rs=list.filter(c=>c.role===role).sort((a,b)=>(a.status==="declined")-(b.status==="declined")||a.name.localeCompare(b.name,"ru")); if(!rs.length) return "";
         return `<tr class="grp"><td colspan="${days.length+3}">${CREW_ROLE[role][rs.length>1?1:0]}${CREW_ROLE[role][2]?' <span class="chip neutral" style="margin-left:6px">высшее звено</span>':""}</td></tr>`+rs.map(c=>{ const open=adm.crewOpen===c.id;
-          return `<tr class="${open?"open":""}${c.status==="declined"?" off":""}"><td><button class="linkbtn regname" data-crewopen="${c.id}">${esc(c.name)}</button> <span class="chip ${CREW_STL[c.status][1]}">${CREW_STL[c.status][0]}</span>${c.source==="site"?' <span class="chip neutral">с сайта</span>':""}<div class="muted tiny">${esc(c.phone)}${c.rate!=null?` · своя ставка ${fmtRub(c.rate)}`:""}${c.avail&&c.avail.length&&days.length>1?` · может: ${c.avail.filter(d=>days.includes(d)).map(dayShort).join(", ")}`:""}</div>${c.note?`<div class="tiny regnote">${esc(c.note.length>60?c.note.slice(0,60)+"…":c.note)}</div>`:""}</td>
+          return `<tr class="${open?"open":""}${c.status==="declined"?" off":""}"><td><button class="linkbtn regname" data-crewopen="${c.id}">${esc(c.name)}</button> <span class="chip ${CREW_STL[c.status][1]}">${CREW_STL[c.status][0]}</span>${c.source==="site"?' <span class="chip neutral">с сайта</span>':""}<div class="muted tiny">${esc(c.phone)}${c.info&&c.info.dob?` · ${esc(c.info.dob.slice(0,4))} г.р.`:""}${c.info&&c.info.gym?` · ${esc(c.info.gym)}`:""}${c.rate!=null?` · своя ставка ${fmtRub(c.rate)}`:""}${c.avail&&c.avail.length&&days.length>1?` · может: ${c.avail.filter(d=>days.includes(d)).map(dayShort).join(", ")}`:""}</div>${c.note?`<div class="tiny regnote">${esc(c.note.length>60?c.note.slice(0,60)+"…":c.note)}</div>`:""}</td>
             ${days.map(d=>{ const w=c.work[d]; return `<td class="dcol">${!w||w.k==="full"?`<input type="checkbox" data-cwd="${c.id}|${d}" ${w?"checked":""} aria-label="${esc(c.name)}: ${dayShort(d)}, полная смена">`:`<button class="linkbtn wk" data-crewopen="${c.id}">${workLbl(w)}</button>`}</td>`; }).join("")}
             <td class="num mono">${fmtShift(crewShifts(ev,c))}</td><td class="num mono">${fmtRub(crewPay(ev,c))}</td></tr>
             ${open?`<tr class="detail"><td colspan="${days.length+3}">${crewDetail(ev,c)}</td></tr>`:""}`; }).join(""); }).join("")}
@@ -2468,7 +2470,7 @@ document.addEventListener("click", e=>{
   if (ds.act==="accdelyes"){ api("POST","/api/account/delete",{}).then(()=>{ location.hash=""; location.reload(); }).catch(err=>toast(err.message)); return; }
   if (ds.sw!==undefined){ S.p={o:S.p.o,w:+ds.sw}; return render(); }
 });
-function keepForm(){ const f=S.reg.f; const g=id=>document.getElementById(id); if(g("rSize")) f.size=g("rSize").value; if(g("rAff")) f.aff=g("rAff").value; ["c1","c2","c3","c4","c5"].forEach(k=>{ if(g(k)) f[k]=g(k).checked; }); }
+function keepForm(){ const f=S.reg.f; const g=id=>document.getElementById(id); if(g("rSize")) f.size=g("rSize").value; if(g("rAff")) f.aff=g("rAff").value.trim(); ["c1","c2","c3","c4","c5"].forEach(k=>{ if(g(k)) f[k]=g(k).checked; }); }
 document.addEventListener("change", e=>{
   const id = e.target.id;
   if (id==="regDiv"){ adm.rf.div=e.target.value; adm.rf.sel={}; return render(); }
@@ -2539,7 +2541,7 @@ document.addEventListener("submit", e=>{
     return;
   }
   if (e.target.id==="fTeam"){
-    const v={name:g("tName").value.trim(),aff:g("tAff").value,code:g("tCode").value.trim(),code2:g("tCode2").value.trim()}, er={};
+    const v={name:g("tName").value.trim(),aff:g("tAff").value.trim(),code:g("tCode").value.trim(),code2:g("tCode2").value.trim()}, er={};
     const words=v.name.split(/\s+/).filter(Boolean);
     if (!/^[A-Za-z ]+$/.test(v.name) || v.name.length>20 || words.length>5) er.name="Название: только латинские буквы и пробелы, до 5 слов и 20 символов";
     else if ((TEAMS[`${S.reg.ev.id}:${S.reg.div.id}`]||[]).some(t=>t.name===v.name.toUpperCase())) er.name="Команда с таким названием уже есть в этой категории";

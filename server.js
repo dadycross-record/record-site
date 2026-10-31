@@ -107,6 +107,7 @@ create index if not exists crew_ev on crew(event_id);
 alter table crew add column if not exists user_id bigint references users(id) on delete set null;
 alter table crew add column if not exists avail jsonb not null default '[]';
 alter table crew add column if not exists source text not null default 'manual';
+alter table crew add column if not exists info jsonb not null default '{}';
 create unique index if not exists crew_user_ev on crew(event_id, user_id) where user_id is not null;
 create table if not exists notify_emails (email text primary key, added_by text, created_at timestamptz not null default now());
 create table if not exists tg_chats (chat_id text primary key, email text, name text, created_at timestamptz not null default now());
@@ -143,6 +144,25 @@ async function rawContent() { return (await db.query('select data from content w
 
 const displayName = r => r.publish ? `${r.person.first || ''} ${r.person.last || ''}`.trim() : `Участник ${r.pub.slice(0, 4)}`;
 
+/* gyms: free text, suggestions = the most common spellings among athletes; typed variants are folded into them */
+const BASE_GYMS = ['Record Пивовариха', 'CF BAZA'];
+const gymKey = g => String(g || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]/g, '');
+let GYMS = BASE_GYMS.slice();
+async function loadGyms() {
+  const rows = (await db.query(`select trim(profile->>'affiliate') a from users where coalesce(trim(profile->>'affiliate'),'') <> ''
+    union all select trim(person->>'affiliate') from registrations where who <> 'me' and coalesce(trim(person->>'affiliate'),'') <> ''`)).rows;
+  const groups = new Map();
+  for (const { a } of rows) {
+    const k = gymKey(a); if (!k || k === 'другойзал') continue;
+    const g = groups.get(k) || { n: 0, spell: new Map() }; g.n++; g.spell.set(a, (g.spell.get(a) || 0) + 1); groups.set(k, g);
+  }
+  const base = new Map(BASE_GYMS.map(b => [gymKey(b), b]));
+  const list = [...groups.entries()].filter(([k, g]) => g.n >= 2 && !base.has(k)).sort((x, y) => y[1].n - x[1].n).slice(0, 12)
+    .map(([, g]) => [...g.spell.entries()].sort((x, y) => y[1] - x[1])[0][0]);
+  GYMS = [...BASE_GYMS, ...list];
+  return GYMS;
+}
+const canonGym = a => { const k = gymKey(a); if (!k) return ''; return GYMS.find(g => gymKey(g) === k) || a; };
 async function publicContent() {
   if (cache) return cache;
   const c = await rawContent();
@@ -156,7 +176,8 @@ async function publicContent() {
     d.taken = !k ? 0 : d.type === 'team' ? (TEAMS[`${ev.id}:${d.id}`] || []).length : k.n;
   }));
   const RESULTS = await liveResults(EVENTS);
-  const json = JSON.stringify({ EVENTS, SITE: c.SITE || {}, TEAMS, RESULTS, today: today() });
+  await loadGyms();
+  const json = JSON.stringify({ EVENTS, SITE: c.SITE || {}, TEAMS, RESULTS, GYMS, today: today() });
   cache = { json, gz: zlib.gzipSync(json), etag: '"' + sha(json).slice(0, 20) + '"' };
   return cache;
 }
@@ -217,7 +238,7 @@ function cleanPerson(p, kid) {
   p = p || {};
   const o = {
     first: nm(p.first, 60), last: nm(p.last, 60), gender: GENDERS.includes(p.gender) ? p.gender : 'M',
-    dob: /^\d{4}-\d{2}-\d{2}$/.test(p.dob || '') ? p.dob : '', affiliate: nm(p.affiliate, 80),
+    dob: /^\d{4}-\d{2}-\d{2}$/.test(p.dob || '') ? p.dob : '', affiliate: canonGym(nm(p.affiliate, 80)),
   };
   o.print = (nm(p.print, 60) || `${o.first} ${o.last}`).toUpperCase();
   if (!kid) Object.assign(o, { phone: str(p.phone, 30), tg: str(p.tg, 40), emName: nm(p.emName, 80), emPhone: str(p.emPhone, 30) });
@@ -389,7 +410,7 @@ route('POST', '/api/register', async (req, res, u, body) => {
   if (!cons.pd) throw bad('Нужно согласие на обработку персональных данных');
   if (age < 18 && !cons.parent) throw bad('Нужно согласие законного представителя');
   const size = ['XS', 'S', 'M', 'L', 'XL', 'XXL'].includes(body.size) ? body.size : null;
-  const snap = { ...cleanPerson(person, who !== 'me'), phone: u.profile.phone, emName: u.profile.emName || '', emPhone: u.profile.emPhone || '', affiliate: str(body.affiliate, 80) || person.affiliate || '' };
+  const snap = { ...cleanPerson(person, who !== 'me'), phone: u.profile.phone, emName: u.profile.emName || '', emPhone: u.profile.emPhone || '', affiliate: canonGym(nm(body.affiliate, 80)) || person.affiliate || '' };
   if (who !== 'me') snap.parent = `${u.profile.first || ''} ${u.profile.last || ''}`.trim();
   const out = await db.tx(async q => {
     await q('select pg_advisory_xact_lock(hashtext($1))', [`${ev.id}:${div.id}`]);
@@ -710,8 +731,9 @@ route('POST', '/api/crew/apply', async (req, res, u, body) => {
   const name = `${p.last} ${p.first}`.trim(), note = str(body.note, 1000) || null;
   let r;
   try {
-    r = await db.query(`insert into crew(event_id, user_id, name, phone, contact, role, status, avail, note, source) values ($1,$2,$3,$4,$5,$6,'request',$7,$8,'site') returning *`,
-      [ev.id, u.id, name, p.phone, u.email, body.role, avail, note]);
+    const info = { dob: p.dob || '', gym: p.affiliate || '', tg: p.tg || '', gender: p.gender || '' };
+    r = await db.query(`insert into crew(event_id, user_id, name, phone, contact, role, status, avail, note, source, info) values ($1,$2,$3,$4,$5,$6,'request',$7,$8,'site',$9) returning *`,
+      [ev.id, u.id, name, p.phone, [u.email, p.tg ? 'tg ' + p.tg : ''].filter(Boolean).join(' · '), body.role, avail, note, info]);
   } catch (e) { if (e.code === '23505') throw bad('Вы уже подали заявку в команду этого старта'); throw e; }
   await logConsent(req, 'user:' + u.id, 'pd', 'crew:' + r.rows[0].id);
   const ROLE = { judge: 'судья', volunteer: 'волонтёр', assistant: 'ассистент организатора' };
@@ -729,7 +751,7 @@ route('DELETE', '/api/crew/apply/:id', async (req, res, u, body, p) => {
 /* ---------- event crew: judges, volunteers, venue staff; pay per shift ---------- */
 const CREW_ROLES = ['head_judge', 'judge', 'venue_admin', 'assistant', 'volunteer'];
 const CREW_ST = ['request', 'confirmed', 'declined'];
-const crewOut = c => ({ id: Number(c.id), event: c.event_id, user: c.user_id ? Number(c.user_id) : null, avail: c.avail || [], source: c.source || 'manual', name: c.name, phone: c.phone || '', contact: c.contact || '', role: c.role, status: c.status, rate: c.rate, work: c.work || {}, note: c.note || '' });
+const crewOut = c => ({ id: Number(c.id), event: c.event_id, user: c.user_id ? Number(c.user_id) : null, avail: c.avail || [], source: c.source || 'manual', info: c.info || {}, name: c.name, phone: c.phone || '', contact: c.contact || '', role: c.role, status: c.status, rate: c.rate, work: c.work || {}, note: c.note || '' });
 const money = (v, label) => { if (v === '' || v == null) return null; const n = Math.round(Number(v)); if (!Number.isFinite(n) || n < 0 || n > 1e6) throw bad(label + ': целое число рублей'); return n; };
 function cleanWork(w) {
   const out = {};
