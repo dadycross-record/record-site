@@ -72,6 +72,13 @@ const ipOf = req => {
   return chain[0] || req.socket.remoteAddress || '';
 };
 let xffSeen = 0;
+/* per-visitor limit when the real address is known; the hosting proxy currently hides it,
+   so without a public address only a site-wide ceiling applies (per-email limits still hold) */
+function ipLimit(req, name, perIp, siteWide, windowMs = 3600e3) {
+  const ip = ipOf(req);
+  if (ip && !isPrivateIp(ip)) limit(name + ':' + ip, perIp, windowMs);
+  limit(name + ':all', siteWide, windowMs);
+}
 function logClientIpShape(req) {
   if (xffSeen >= 3) return; xffSeen++;
   const chain = String(req.headers['x-forwarded-for'] || '').split(',').map(x => x.trim()).filter(Boolean);
@@ -253,7 +260,6 @@ route('GET', '/api/content', async (req, res) => {
 });
 
 route('GET', '/api/session', async (req, res, u) => {
-  logClientIpShape(req);
   if (!u) return { user: null, mailReady: mail.configured() || DEV_LOG_CODES };
   const regs = (await db.query('select * from registrations where user_id=$1 order by created_at', [u.id])).rows;
   const scores = (await db.query('select s.reg_id, s.workout_id, s.value, s.video, s.state from scores s join registrations r on r.id=s.reg_id where r.user_id=$1', [u.id])).rows;
@@ -271,7 +277,7 @@ route('POST', '/api/auth/code', async (req, res, u, body) => {
   const email = str(body.email, 254).toLowerCase();
   if (!isEmail(email)) throw bad('Проверьте email');
   if (!body.consent) throw bad('Нужно согласие на обработку персональных данных');
-  limit('code-ip:' + ipOf(req), 60, 3600e3);
+  ipLimit(req, 'code-ip', 60, 1500);
   limit('code-mail:' + email, 1, 55e3);
   limit('code-mail-h:' + email, 6, 3600e3);
   limit('code-mail-d:' + email, 20, 86400e3);
@@ -294,7 +300,7 @@ route('POST', '/api/auth/code', async (req, res, u, body) => {
 
 route('POST', '/api/auth/verify', async (req, res, u, body) => {
   const email = str(body.email, 254).toLowerCase(), code = digits(body.code).slice(0, 6);
-  limit('verify-ip:' + ipOf(req), 300, 3600e3);
+  ipLimit(req, 'verify-ip', 300, 6000);
   limit('verify-mail:' + email, 20, 3600e3);
   limit('verify-mail-d:' + email, 60, 86400e3);
   // count the attempt first, atomically: parallel guesses cannot slip past the 5-attempt limit
@@ -341,7 +347,8 @@ route('POST', '/api/account/delete', async (req, res, u) => {
 });
 
 route('POST', '/api/lead', async (req, res, u, body) => {
-  limit('lead-ip:' + ipOf(req), 20, 3600e3);
+  ipLimit(req, 'lead-ip', 20, 300);
+  limit('lead-phone:' + digits(str(body.phone, 30)), 3, 3600e3);
   const name = nm(body.name, 80), phone = str(body.phone, 30);
   if (!name) throw bad('Как к вам обращаться?');
   if (digits(phone).length < 10) throw bad('Нужен телефон, чтобы мы перезвонили');
@@ -355,7 +362,7 @@ route('POST', '/api/lead', async (req, res, u, body) => {
 });
 
 route('POST', '/api/promo', async (req, res, u, body) => {
-  limit('promo-ip:' + ipOf(req), 30, 3600e3);
+  ipLimit(req, 'promo-ip', 30, 3000);
   const c = await rawContent();
   const ev = (c.EVENTS || []).find(e => e.id === body.event); if (!ev) throw bad('Старт не найден');
   const div = ev.divisions.find(d => d.id === body.div); if (!div) throw bad('Категория не найдена');
@@ -593,9 +600,19 @@ route('PATCH', '/api/admin/regs/:id', async (req, res, u, body, p) => {
     paid = v;
   }
   if (body.note !== undefined) note = str(body.note, 1000) || null;
-  const r = await db.query('update registrations set status=$1, paid=$2, note=$3, updated_by=$4 where id=$5 returning *', [st, paid, note, u.email, id]);
+  let div = cur.div_id, warn = '';
+  if (body.div !== undefined && body.div !== cur.div_id) {
+    const ev = ((await rawContent()).EVENTS || []).find(e => e.id === cur.event_id);
+    const from = ev && ev.divisions.find(d => d.id === cur.div_id), to = ev && ev.divisions.find(d => d.id === body.div);
+    if (!to) throw bad('Категория не найдена');
+    if ((from && from.type === 'team') || to.type === 'team') throw bad('Командные заявки между категориями не переносятся — переносится вся команда, это пока делается вручную');
+    const n = (await db.query(`select count(*)::int n from registrations where event_id=$1 and div_id=$2 and status in ${ACTIVE}`, [cur.event_id, to.id])).rows[0].n;
+    if (to.limit && n >= to.limit) warn = `В категории «${to.name}» теперь ${n + 1} при лимите ${to.limit}`;
+    div = to.id;
+  }
+  const r = await db.query('update registrations set status=$1, paid=$2, note=$3, div_id=$4, updated_by=$5 where id=$6 returning *', [st, paid, note, div, u.email, id]);
   dirty();
-  return { order: orderOut(r.rows[0]) };
+  return { order: orderOut(r.rows[0]), warn };
 });
 /* ---------- Telegram notifications for organizers ---------- */
 /* email: events are collected for 30 s and sent as one letter, so a rush of registrations does not flood the mailbox */

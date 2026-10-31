@@ -1570,7 +1570,9 @@ function adminClick(t, ds){
   if (ds.regsave){
     const id=ds.regsave, g=k=>document.getElementById(k+"_"+id);
     const paid=g("rePaid").value.replace(/\s/g,""); if (!/^\d+$/.test(paid)){ toast("Оплачено — целое число рублей"); g("rePaid").focus(); return true; }
-    api("PATCH","/api/admin/regs/"+encodeURIComponent(id),{status:g("reSt").value, paid:+paid, note:g("reNote").value}).then(async r=>{ const i=ADM.REGS.findIndex(x=>x.id===id); if(i>=0) ADM.REGS[i]={...ADM.REGS[i],...r.order}; await loadContent(); render(); toast("Заявка сохранена"); }).catch(err=>toast(err.message));
+    const dv=g("reDiv"), cur=ADM.REGS.find(x=>x.id===id), body={status:g("reSt").value, paid:+paid, note:g("reNote").value};
+    if (dv && cur && dv.value!==cur.div) body.div=dv.value;
+    api("PATCH","/api/admin/regs/"+encodeURIComponent(id),body).then(async r=>{ if (body.div) setTimeout(()=>toast(`Перенесён в «${(curEv().divisions.find(d=>d.id===body.div)||{}).name}». Взнос не пересчитан — поправьте сумму, если нужно`),1500); if (r.warn) setTimeout(()=>toast(r.warn),4500); const i=ADM.REGS.findIndex(x=>x.id===id); if(i>=0) ADM.REGS[i]={...ADM.REGS[i],...r.order}; await loadContent(); render(); toast("Заявка сохранена"); }).catch(err=>toast(err.message));
     return true;
   }
   if (ds.regdel){ adm.regDel=ds.regdel; render(); return true; }
@@ -2344,6 +2346,7 @@ function regDetail(ev, o){
   return `<div class="stack" style="gap:8px">
     <div class="small">${esc(divName(o.div))} · ${dShort(o.date)} · ${o.id} · ${esc(o.email||"")}${p.parent?` · родитель: ${esc(p.parent)}`:""}${p.dob?` · ${dShort(p.dob)} г.р.`:""}${p.affiliate?` · ${esc(p.affiliate)}`:""}${o.size?` · футболка ${o.size}`:""}${o.promo?` · промокод ${esc(o.promo)}`:""}</div>
     <div class="regedit">
+      ${(ev.divisions.find(d=>d.id===o.div)||{}).type==="team"?"":`<label class="f">Категория<select class="inp" id="reDiv_${o.id}">${ev.divisions.filter(d=>d.type!=="team").map(d=>`<option value="${d.id}" ${d.id===o.div?"selected":""}>${esc(d.name)}${d.id!==o.div&&d.limit&&d.taken>=d.limit?" (мест нет)":""}</option>`).join("")}</select></label>`}
       <label class="f">Статус<select class="inp" id="reSt_${o.id}">${[["new","Ждёт оплаты"],["paid","Оплачен"],["refund_requested","Просит возврат"],["refunded","Возврат сделан"],["cancelled","Отменена"],["blocked","Отклонена (не допущен)"]].map(([k,l])=>`<option value="${k}" ${o.status===k?"selected":""}>${l}</option>`).join("")}</select></label>
       <label class="f">Оплачено, ₽<input class="inp mono" id="rePaid_${o.id}" inputmode="numeric" value="${o.paid||0}"></label>
       <label class="f re-note">Комментарий<textarea class="inp" id="reNote_${o.id}" rows="2" placeholder="Например: нет справки от врача, оплата не пришла">${esc(o.note||"")}</textarea></label>
