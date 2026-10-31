@@ -598,6 +598,11 @@ route('POST', '/api/team/act', async (req, res, u, body) => {
       if (r.id === cap.id) throw bad('Капитана убрать нельзя — напишите организатору');
       await drop(r, 'refund', 'Капитан убрал из команды');
       mailTo = r.id; mailText = `Капитан убрал вас из команды «${cap.team}».${r.paid > 0 ? ' Взнос вернётся по правилам старта — организатор свяжется с вами.' : ''}`;
+    } else if (act === 'captain') {
+      const r = get(str(body.target, 40)); if (!r || !['new', 'paid', 'refund_requested'].includes(r.status)) throw bad('Капитаном может стать только участник основного состава');
+      if (r.id === cap.id) throw bad('Вы уже капитан');
+      await q('update teams set captain_reg=$1 where id=$2', [r.id, cap.tid]);
+      mailTo = r.id; mailText = `Вы стали капитаном команды «${cap.team}». Принимать заявки, менять состав и отправлять ссылку-приглашение теперь можно в «Моих стартах», в карточке старта.`;
     } else if (act === 'invite') {
       await q('update teams set invite=$1 where id=$2', [rnd(16), cap.tid]);
     } else throw bad('Неизвестное действие');
@@ -613,6 +618,7 @@ route('POST', '/api/refund', async (req, res, u, body) => {
     if (w.rows.length) { dirty(); return { order: orderOut(w.rows[0]) }; } }
   const r = await db.query(`update registrations set status='refund_requested' where id=$1 and user_id=$2 and status in ('new','paid') returning *`, [str(body.id, 40), u.id]);
   if (!r.rows.length) throw bad('Заказ не найден');
+  await fixCaptain(r.rows[0].event_id, r.rows[0].div_id, r.rows[0].team);
   dirty();
   { const o = r.rows[0]; notify(`↩️ <b>Запрос на возврат</b>\n${tg.esc(await evName(o.event_id))} · ${tg.esc(await divName(o.event_id, o.div_id))}\nОплачено ${rub(o.paid)} · ${o.id}\n${SITE_URL()}/#admin`,
     { title: 'запрос на возврат взноса', lines: [`Старт: ${await evName(o.event_id)} · ${await divName(o.event_id, o.div_id)}`, `Участник: ${`${o.person.last || ''} ${o.person.first || ''}`.trim()}`, `Телефон: ${o.person.phone || ''}`, `Заказ: ${o.id}`, `Оплачено: ${rub(o.paid)}`] }); }
@@ -669,13 +675,13 @@ route('GET', '/api/admin/state', async (req, res, u) => {
   const used = await promoUsed();
   const staff = (await db.query('select email, name, role from staff order by created_at')).rows;
   const leads = (await db.query('select * from leads order by created_at desc')).rows;
-  const regs = (await db.query('select r.*, u.email from registrations r left join users u on u.id=r.user_id order by r.created_at')).rows;
+  const regs = (await db.query('select r.*, u.email, (t.id is not null) is_cap from registrations r left join users u on u.id=r.user_id left join teams t on t.captain_reg=r.id order by r.created_at')).rows;
   return {
     role: u.role,
     PROMOS: (c.PROMOS || []).map(p => ({ ...p, used: used[p.code] || 0 })),
     ACCESS: [{ email: u.role === 'owner' ? u.email : '', name: 'Владелец', role: 'owner' }, ...staff],
     CLUB_LEADS: leads.map(l => ({ id: l.id, date: new Date(l.created_at.getTime() + 8 * 3600e3).toISOString().slice(0, 10), name: l.name, phone: l.phone, dir: l.dir, who: l.who, age: l.age, time: l.pref_time, status: l.status })),
-    REGS: regs.map(r => ({ ...orderOut(r), email: r.email || '' })),
+    REGS: regs.map(r => ({ ...orderOut(r), email: r.email || '', captain: !!r.is_cap })),
     PENDING: pending,
     SCORES: (await db.query('select id, reg_id, workout_id, value, state from scores')).rows.map(scoreOut),
     CREW: (await db.query('select * from crew order by created_at')).rows.map(crewOut),
@@ -772,6 +778,7 @@ route('PATCH', '/api/admin/regs/:id', async (req, res, u, body, p) => {
     div = to.id;
   }
   const r = await db.query('update registrations set status=$1, paid=$2, note=$3, div_id=$4, updated_by=$5 where id=$6 returning *', [st, paid, note, div, u.email, id]);
+  await fixCaptain(cur.event_id, cur.div_id, cur.team);
   dirty();
   return { order: orderOut(r.rows[0]), warn };
 });
@@ -946,10 +953,31 @@ route('PUT', '/api/admin/crew-rates/:event', async (req, res, u, body, p) => {
   return { cfg: { rates, shift } };
 });
 
+/* captain left the main roster (refund, cancel, block, delete) -> the earliest main member becomes captain */
+async function fixCaptain(eventId, divId, team) {
+  if (!team) return;
+  const t = (await db.query('select * from teams where event_id=$1 and div_id=$2 and name=$3', [eventId, divId, team])).rows[0]; if (!t) return;
+  const roster = await teamRoster(db.query.bind(db), eventId, divId, team);
+  const main = roster.filter(r => ['new', 'paid'].includes(r.status));
+  if (main.some(r => r.id === t.captain_reg)) return;
+  const next = main[0]; if (!next) return;
+  await db.query('update teams set captain_reg=$1 where id=$2', [next.id, t.id]);
+  mailMember(next.id, `вы капитан команды «${team}»`, [`Прежний капитан вышел из основного состава, и капитаном команды «${team}» теперь стали вы.`, 'Принимать заявки, менять состав и отправлять ссылку-приглашение можно в «Моих стартах», в карточке старта.', '', `${SITE_URL()}/#orders`]);
+}
+route('POST', '/api/admin/team/captain', async (req, res, u, body) => {
+  need(u, 'owner', 'admin');
+  const r = (await db.query('select * from registrations where id=$1', [str(body.reg, 40)])).rows[0];
+  if (!r || !r.team) throw bad('Это не командная заявка');
+  if (!['new', 'paid', 'refund_requested'].includes(r.status)) throw bad('Капитаном может стать только участник основного состава');
+  await db.query('update teams set captain_reg=$1 where event_id=$2 and div_id=$3 and name=$4', [r.id, r.event_id, r.div_id, r.team]);
+  mailMember(r.id, `вы капитан команды «${r.team}»`, [`Организатор назначил вас капитаном команды «${r.team}».`, 'Принимать заявки, менять состав и отправлять ссылку-приглашение можно в «Моих стартах», в карточке старта.', '', `${SITE_URL()}/#orders`]);
+  return { ok: true };
+});
 route('DELETE', '/api/admin/regs/:id', async (req, res, u, body, p) => {
   need(u, 'owner', 'admin');
-  const r = await db.query('delete from registrations where id=$1 returning id', [decodeURIComponent(p.id)]);
+  const r = await db.query('delete from registrations where id=$1 returning id, event_id, div_id, team', [decodeURIComponent(p.id)]);
   if (!r.rows.length) throw bad('Регистрация не найдена');
+  await fixCaptain(r.rows[0].event_id, r.rows[0].div_id, r.rows[0].team);
   dirty();
   return { ok: true };
 });

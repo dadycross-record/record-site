@@ -1211,10 +1211,11 @@ function teamBox(o){
   const main = T.members.filter(m=>m.role==="main"), res = T.members.filter(m=>m.role==="reserve"), pend = T.members.filter(m=>m.role==="pending");
   const who = m => `${esc(m.name)}${m.cap?' <span class="chip neutral" style="height:18px;font-size:10px">капитан</span>':""}${m.me?' <span class="muted tiny">(вы)</span>':""}`;
   const cap = T.captain, ask = S.p.rmAsk;
+  const capBtn = m => !cap||m.cap ? "" : S.p.capAsk===m.reg ? `<span class="small">Передать капитанство?</span><button class="btn sm" data-tact="captain|${m.reg}" data-ti="${ti}">Да</button><button class="btn sm ghost" data-rmno="1">Нет</button>` : `<button class="btn sm ghost" data-tact="captain|${m.reg}" data-ti="${ti}" title="Сделать капитаном">Капитан</button>`;
   const rmBtn = m => !cap||m.cap ? "" : ask===m.reg ? `<span class="small">Убрать?</span><button class="btn sm danger" data-tact="remove|${m.reg}" data-ti="${ti}">Да</button><button class="btn sm ghost" data-rmno="1">Нет</button>` : `<button class="btn sm ghost" data-tact="remove|${m.reg}" data-ti="${ti}">Убрать</button>`;
   return `<div class="teambox"><div class="row"><b class="sp">Команда «${esc(T.name)}»</b><span class="muted tiny">${main.length} из ${size}${res.length?` · запас ${res.length}`:""}</span></div>
     <div class="slots" style="margin:6px 0">${Array.from({length:size},(_,i)=>`<i class="${i<main.length?"on":""}"></i>`).join("")}</div>
-    ${main.map(m=>`<div class="arow"><div class="sp small">${who(m)}</div>${cap?`<span class="chip ${m.paid?"ok":"warn"}">${m.paid?"оплачен":"ждёт оплаты"}</span>`:""}${rmBtn(m)}</div>`).join("")}
+    ${main.map(m=>`<div class="arow"><div class="sp small">${who(m)}</div>${cap?`<span class="chip ${m.paid?"ok":"warn"}">${m.paid?"оплачен":"ждёт оплаты"}</span>`:""}${S.p.capAsk===m.reg?"":rmBtn(m)}${S.p.rmAsk===m.reg?"":capBtn(m)}</div>`).join("")}
     ${res.length?`<div class="muted tiny" style="margin-top:8px">ЗАПАСНЫЕ</div>${res.map(m=>`<div class="arow"><div class="sp small">${who(m)}</div>${cap?`<div class="row wrap" style="gap:6px;justify-content:flex-end">
         <select class="inp sm" id="trep_${m.reg}" aria-label="Кого заменить"><option value="">${main.length<size?"на свободное место":"выберите, кого заменить"}</option>${main.filter(x=>!x.cap).map(x=>`<option value="${x.reg}">вместо: ${esc(x.name)}</option>`).join("")}</select>
         <select class="inp sm" id="tfee_${m.reg}" aria-label="Взнос выбывшего"><option value="refund">взнос выбывшему — вернуть</option><option value="transfer">взнос выбывшего — передать</option></select>
@@ -1681,6 +1682,7 @@ function adminClick(t, ds){
   if (ds.act==="nfadd"){ const v=document.getElementById("nfEmail").value.trim(); api("POST","/api/admin/notify",{email:v}).then(()=>{ adm.nf=undefined; render(); toast("Адрес добавлен"); }).catch(err=>toast(err.message)); return true; }
   if (ds.nfdel){ api("DELETE","/api/admin/notify/"+encodeURIComponent(ds.nfdel)).then(()=>{ adm.nf.emails=adm.nf.emails.filter(e=>e!==ds.nfdel); render(); toast("Адрес убран"); }).catch(err=>toast(err.message)); return true; }
   if (ds.tgdel){ api("DELETE","/api/admin/tg/"+encodeURIComponent(ds.tgdel)).then(()=>{ adm.tg.chats=adm.tg.chats.filter(c=>c.id!==ds.tgdel); render(); toast("Чат отключён"); }).catch(err=>toast(err.message)); return true; }
+  if (ds.admcap){ const id=ds.admcap; api("POST","/api/admin/team/captain",{reg:id}).then(async()=>{ const o=ADM.REGS.find(x=>x.id===id); ADM.REGS.forEach(x=>{ if (x.team===o.team&&x.event===o.event&&x.div===o.div) x.captain=x.id===id; }); render(); toast("Капитан назначен, ему отправлено письмо"); }).catch(err=>toast(err.message)); return true; }
   if (ds.area){ adm.area=ds.area; render(); window.scrollTo(0,0); return true; }
   if (ds.regsave){
     const id=ds.regsave, g=k=>document.getElementById(k+"_"+id);
@@ -2467,6 +2469,7 @@ function regDetail(ev, o){
       <label class="f re-note">Комментарий<textarea class="inp" id="reNote_${o.id}" rows="2" placeholder="Например: нет справки от врача, оплата не пришла">${esc(o.note||"")}</textarea></label>
     </div>
     <div class="muted tiny">Взнос ${fmtRub(o.due)}. Комментарий видят организаторы; если заявка отменена или отклонена — его увидит и участник в «Мои старты». Отменённые и отклонённые заявки освобождают место.</div>
+    ${o.team?`<div class="small">Команда «${esc(o.team)}» · ${o.captain?'<span class="chip ok">капитан</span>':["new","paid","refund_requested"].includes(o.status)?`<button class="btn sm ghost" data-admcap="${o.id}">Сделать капитаном</button>`:esc(REG_ST1[o.status]||"")}</div>`:""}
     <div class="row wrap"><button class="btn sm" data-regsave="${o.id}">Сохранить</button>
       ${o.status==="paid" && openWorkouts(ev).length ? `<button class="btn sm ghost" data-resopen="${o.id}">${adm.resReg===o.id?"Скрыть результаты":"Внести результаты"}</button>`:""}
       <span class="sp"></span>${adm.regDel===o.id?`<span class="small">Удалить заявку навсегда?</span><button class="btn sm danger" data-regdelyes="${o.id}">Удалить</button><button class="btn sm ghost" data-regdelno="1">Нет</button>`:`<button class="btn sm ghost" data-regdel="${o.id}">Удалить заявку</button>`}</div>
@@ -2566,11 +2569,12 @@ document.addEventListener("click", e=>{
     S.reg={ev,div,team:I.name,newTeam:false,teamReq:{mode:"invite",invite:I.token},who:"me",f:{size:"L",promo:"",promoOk:false,promoMsg:"",c1:false,c2:false,c3:false}}; return go("form",{}); }
   if (ds.tact){ const [act,target]=ds.tact.split("|"), T=MYTEAMS[+ds.ti]; const body={reg:T.captainReg, action:act, target};
     if (act==="promote"){ const rep=document.getElementById("trep_"+target), fee=document.getElementById("tfee_"+target); if (rep&&rep.value){ body.replace=rep.value; body.fee=fee?fee.value:"refund"; } }
-    if (act==="remove" && !S.p.rmAsk){ S.p={...S.p,rmAsk:target}; return render(); }
-    S.p={...S.p,rmAsk:null};
-    api("POST","/api/team/act",body).then(r=>{ MYTEAMS=r.teams; ORDERS=r.orders; render(); toast({approve:"Принят в основной состав",reserve:"Взят в запас",reject:"Заявка отклонена",promote:"Переведён в основной состав",remove:"Убран из команды",invite:"Старая ссылка больше не работает — вот новая"}[act]||"Готово"); }).catch(err=>toast(err.message)); return; }
+    if (act==="remove" && S.p.rmAsk!==target){ S.p={...S.p,rmAsk:target,capAsk:null}; return render(); }
+    if (act==="captain" && S.p.capAsk!==target){ S.p={...S.p,capAsk:target,rmAsk:null}; return render(); }
+    S.p={...S.p,rmAsk:null,capAsk:null};
+    api("POST","/api/team/act",body).then(r=>{ MYTEAMS=r.teams; ORDERS=r.orders; render(); toast({approve:"Принят в основной состав",reserve:"Взят в запас",reject:"Заявка отклонена",promote:"Переведён в основной состав",remove:"Убран из команды",invite:"Старая ссылка больше не работает — вот новая",captain:"Капитанство передано"}[act]||"Готово"); }).catch(err=>toast(err.message)); return; }
   if (ds.teamwd){ api("POST","/api/refund",{id:ds.teamwd}).then(async()=>{ await loadSession(); render(); toast("Готово"); }).catch(err=>toast(err.message)); return; }
-  if (ds.rmno){ S.p={...S.p,rmAsk:null}; return render(); }
+  if (ds.rmno){ S.p={...S.p,rmAsk:null,capAsk:null}; return render(); }
   if (ds.copyinv){ const url=location.origin+"/#join="+ds.copyinv; (navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject()).then(()=>toast("Ссылка скопирована — отправьте её команде")).catch(()=>toast("Скопируйте ссылку из карточки команды")); return; }
   if (ds.act==="promo"){ const v=document.getElementById("rPromo").value.trim().toUpperCase(); S.reg.f.promo=v; keepForm();
     api("POST","/api/promo",{code:v,event:S.reg.ev.id,div:S.reg.div.id}).then(res=>{ S.reg.f.promoOk=true; S.reg.f.promoOff=res.off; S.reg.f.promoMsg=`Скидка ${res.label} применена: −${fmtRub(res.off)}`; render(); })
