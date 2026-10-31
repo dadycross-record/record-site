@@ -108,6 +108,7 @@ alter table crew add column if not exists user_id bigint references users(id) on
 alter table crew add column if not exists avail jsonb not null default '[]';
 alter table crew add column if not exists source text not null default 'manual';
 alter table crew add column if not exists info jsonb not null default '{}';
+alter table users add column if not exists avatar text;
 update users set profile = jsonb_set(profile, '{affiliate}', '"RECORD"') where profile->>'affiliate' ilike 'record пивовариха';
 update registrations set person = jsonb_set(person, '{affiliate}', '"RECORD"') where person->>'affiliate' ilike 'record пивовариха';
 create unique index if not exists crew_user_ev on crew(event_id, user_id) where user_id is not null;
@@ -288,7 +289,7 @@ route('GET', '/api/session', async (req, res, u) => {
   const regs = (await db.query('select * from registrations where user_id=$1 order by created_at', [u.id])).rows;
   const scores = (await db.query('select s.reg_id, s.workout_id, s.value, s.video, s.state from scores s join registrations r on r.id=s.reg_id where r.user_id=$1', [u.id])).rows;
   return {
-    user: { email: u.email, role: u.role, profile: u.profile, kids: u.kids },
+    user: { email: u.email, role: u.role, profile: u.profile, kids: u.kids, avatar: u.avatar || '' },
     orders: regs.map(orderOut).map(o => ['blocked', 'cancelled'].includes(o.status) ? o : { ...o, note: '' }), scores,
     crew: (await db.query('select id, event_id, role, status, avail from crew where user_id=$1 order by created_at', [u.id])).rows
       .map(c => ({ id: Number(c.id), event: c.event_id, role: c.role, status: c.status, avail: c.avail || [] })),
@@ -357,6 +358,15 @@ route('PUT', '/api/profile', async (req, res, u, body) => {
   const kids = (Array.isArray(body.kids) ? body.kids : []).slice(0, 8).map(k => cleanPerson(k, true)).filter(k => k.first && k.last);
   await db.query('update users set profile=$1, kids=$2 where id=$3', [profile, kids, u.id]);
   return { profile, kids };
+});
+
+route('PUT', '/api/profile/avatar', async (req, res, u, body) => {
+  need(u);
+  limit('avatar:' + u.id, 30, 3600e3);
+  let data = body.data == null || body.data === '' ? null : String(body.data);
+  if (data && (!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(data) || data.length > 250 * 1024)) throw bad('Нужна картинка JPG до 200 КБ');
+  await db.query('update users set avatar=$1 where id=$2', [data, u.id]);
+  return { avatar: data || '' };
 });
 
 route('POST', '/api/account/delete', async (req, res, u) => {
@@ -913,7 +923,7 @@ const server = http.createServer(async (req, res) => {
         if (origin && new URL(origin).host !== req.headers.host) throw new HttpError(403, 'Запрос с чужого сайта');
         if (!/^application\/json/.test(req.headers['content-type'] || '') && req.method !== 'DELETE') throw bad('Нужен JSON');
       }
-      const body = ['POST', 'PUT', 'PATCH'].includes(req.method) ? await readBody(req, pathname === '/api/admin/content' ? 40 * 1048576 : 64 * 1024) : {};
+      const body = ['POST', 'PUT', 'PATCH'].includes(req.method) ? await readBody(req, pathname === '/api/admin/content' ? 40 * 1048576 : pathname === '/api/profile/avatar' ? 300 * 1024 : 64 * 1024) : {};
       const u = await sessionOf(req);
       const out = await r.fn(req, res, u, body, pathname.match(r.re).groups || {});
       if (out !== undefined) send(res, 200, out);

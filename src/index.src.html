@@ -216,6 +216,7 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 
 /* profile */
 .pcard{background:linear-gradient(135deg,var(--surface-2),var(--surface));border:1px solid var(--line);border-radius:16px;padding:16px}
+.big-av.xl{width:84px;height:84px;font-size:28px;border-radius:20px;flex:none}
 .big-av{width:60px;height:60px;border-radius:16px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--f-display);font-weight:800;font-size:22px}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}.stats.s4{grid-template-columns:repeat(4,1fr)}@media(max-width:600px){.stats.s4{grid-template-columns:repeat(2,1fr)}}
 .stats div{background:var(--bg);border-radius:10px;padding:10px;text-align:center}
@@ -421,6 +422,7 @@ h2.ch{font-family:var(--f-display);font-weight:800;font-size:clamp(24px,7vw,40px
   <main id="view" aria-live="polite"></main>
   <input type="file" id="docIn" hidden>
   <input type="file" id="imgIn" accept="image/*" hidden>
+  <input type="file" id="avIn" accept="image/*" hidden>
   <nav class="tabbar" id="tabbar" aria-label="Разделы">
     <button data-tab="home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Главная</button>
     <button data-tab="events"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg>Старты</button>
@@ -463,7 +465,7 @@ const divDays = (ev,d) => { const days=evDays(ev); if (days.length<2) return "";
 const divDaysNote = (ev,d) => { const t=divDays(ev,d); return t && t!=="все дни" ? ` · выступает: ${t}` : ""; };
 
 /* ---------- demo data ---------- */
-const ME = {first:"",last:"",print:"",gender:"M",dob:"",affiliate:"",phone:"",email:"",tg:"",emName:"",emPhone:"",kids:[]};
+const ME = {first:"",last:"",print:"",gender:"M",dob:"",affiliate:"",phone:"",email:"",tg:"",emName:"",emPhone:"",avatar:"",kids:[]};
 let GYMS = ["RECORD","CF BAZA"];
 const gymInput = (id, val) => `<input class="inp" id="${id}" list="gymList_${id}" value="${esc(val||"")}" placeholder="Начните вводить или выберите" autocomplete="off" maxlength="80"><datalist id="gymList_${id}">${GYMS.map(g=>`<option value="${esc(g)}"></option>`).join("")}</datalist><span class="muted tiny" style="margin-top:4px">Нет в списке — впишите свой. Без зала — оставьте пустым.</span>`;
 
@@ -1025,7 +1027,7 @@ me(){
   const nm = ME.first ? `${ME.first} ${ME.last}` : USER.email;
   const ini = ME.first ? (ME.first[0]+(ME.last[0]||"")) : USER.email[0].toUpperCase();
   return {title:null, html:`
-   <div class="pcard"><div class="row"><div class="big-av">${esc(ini)}</div><div class="sp"><div style="font-weight:700;font-size:18px">${esc(nm)}</div><div class="muted small">${esc(ME.affiliate||USER.email)}</div></div></div>
+   <div class="pcard"><div class="row">${avatarBox(ini)}<div class="sp"><div style="font-weight:700;font-size:18px">${esc(nm)}</div><div class="muted small">${esc(ME.affiliate||USER.email)}</div></div></div>
    <div class="stats"><div><b>${act.length}</b><span>Стартов</span></div><div><b>${act.filter(o=>{const e=EVENTS.find(x=>x.id===o.event); return e&&e.status!=="ended";}).length}</b><span>Впереди</span></div><div><b class="acc">${best?"#"+best:"—"}</b><span>Лучшее место</span></div></div></div>
    ${profileReady()?"":`<div class="rule" style="margin-top:12px">Заполните анкету участника — без неё нельзя записаться на старт. <button class="linkbtn" data-go="profile" data-edit="1">Заполнить</button></div>`}
    <h2 class="sec">Сервис</h2>
@@ -1116,7 +1118,8 @@ profile(){
   }
   const v = S.p.v || {...ME, kids:ME.kids.map(k=>({...k}))}; S.p.v = v; const e = S.p.e || {};
   const sel = (id,cur,arr) => `<select class="inp" id="${id}">${arr.map(([k,l])=>`<option value="${k}" ${k===cur?"selected":""}>${l}</option>`).join("")}</select>`;
-  return {title:"Анкета участника", html:`
+  return {title:"Анкета участника", html:`<div class="card row" style="gap:14px;margin-bottom:14px">${avatarBox(((v.first||"")[0]||"")+((v.last||"")[0]||"")||"?", true)}<div class="stack sp" style="gap:6px"><b>Фото профиля</b><div class="muted tiny">По желанию. Квадратное, лицо по центру — обрежу и уменьшу сам. Видно только вам.</div><div class="row wrap"><button type="button" class="btn sm" data-act="avup">${ME.avatar?"Заменить":"Загрузить фото"}</button>${ME.avatar?'<button type="button" class="btn sm ghost" data-act="avdel">Убрать</button>':""}</div></div></div>
+
    <form class="stack" id="fProfile" novalidate>
     <div class="grid2"><label class="f">Фамилия<input class="inp ${e.last?"err":""}" id="pLast" value="${esc(v.last)}" autocomplete="family-name"></label><label class="f">Имя<input class="inp ${e.first?"err":""}" id="pFirst" value="${esc(v.first)}" autocomplete="given-name"></label></div>
     <div class="grid2"><label class="f">Пол${sel("pGender",v.gender,[["M","Мужской"],["F","Женский"]])}</label><label class="f">Дата рождения<input class="inp ${e.dob?"err":""}" id="pDob" type="date" value="${esc(v.dob)}"></label></div>
@@ -1363,6 +1366,15 @@ function allowed(route){
 const canEdit = () => S.viewAs==="owner" || S.viewAs==="admin";
 function syncAcc(){ const g=id=>document.getElementById(id); if (g("accName")){ adm.accName=g("accName").value; adm.accEmail=g("accEmail").value; } }
 /* images: shrink in the browser so they fit storage; returns {data,w,h} */
+const avatarBox = (ini, big) => ME.avatar ? `<div class="big-av${big?" xl":""}" style="background:center/cover url(${ME.avatar})" role="img" aria-label="Фото профиля"></div>` : `<div class="big-av${big?" xl":""}">${esc(ini)}</div>`;
+async function squareImage(file, size){
+  const bm = await createImageBitmap(file), s = Math.min(bm.width, bm.height);
+  const c = document.createElement("canvas"); c.width = c.height = size;
+  c.getContext("2d").drawImage(bm, (bm.width-s)/2, (bm.height-s)/2, s, s, 0, 0, size, size);
+  let q = 0.85, data = c.toDataURL("image/jpeg", q);
+  while (data.length > 190*1024 && q > 0.4){ q -= 0.1; data = c.toDataURL("image/jpeg", q); }
+  return data;
+}
 async function readImage(file, maxW, quality){
   const bm = await createImageBitmap(file);
   const k = Math.min(1, maxW/bm.width), w = Math.round(bm.width*k), h = Math.round(bm.height*k);
@@ -1374,6 +1386,14 @@ const IMG_HINT = {
   gallery: "Горизонтальные фото зала, тренировок и стартов, от 1600×1200 px, JPG или PNG до 15 МБ — уменьшу сам. Без надписей и логотипов поверх фото.",
   cover: "Горизонтальная картинка от 1600×900 px (16:9), JPG или PNG до 15 МБ — уменьшу сам. Главное в центре: в списке стартов видна только средняя полоса. Без мелкого текста — название старта выводится отдельно."
 };
+document.getElementById("avIn").addEventListener("change", async e=>{
+  const f = e.target.files[0]; e.target.value=""; if (!f) return;
+  if (!/^image\//.test(f.type)) return toast("Нужна картинка: JPG или PNG");
+  if (f.size > 20*1048576) return toast("Файл больше 20 МБ");
+  if (S.route==="profile" && document.getElementById("pLast")) syncProfile();
+  try { const data = await squareImage(f, 320); const r = await api("PUT","/api/profile/avatar",{data}); ME.avatar = r.avatar; USER.avatar = r.avatar; render(); toast("Фото обновлено"); }
+  catch(err){ toast(err.message || "Не получилось прочитать картинку"); }
+});
 document.getElementById("imgIn").addEventListener("change", async e=>{
   const f = e.target.files[0]; e.target.value=""; if (!f) return;
   if (!/^image\//.test(f.type)) return toast("Нужна картинка: JPG или PNG");
@@ -2079,7 +2099,7 @@ async function loadSession(){
   const s = await api("GET","/api/session");
   USER = s.user; if (s.mailReady!==undefined) MAIL_READY = s.mailReady;
   Object.keys(ME).forEach(k=>{ if (k!=="kids") ME[k]=""; }); ME.gender="M"; ME.kids=[];
-  if (USER){ Object.assign(ME, USER.profile||{}); ME.kids = USER.kids||[]; ME.email = USER.email; ORDERS = s.orders||[]; MYSCORES = s.scores||[]; MYCREW = s.crew||[]; }
+  if (USER){ Object.assign(ME, USER.profile||{}); ME.kids = USER.kids||[]; ME.email = USER.email; ME.avatar = USER.avatar||""; ORDERS = s.orders||[]; MYSCORES = s.scores||[]; MYCREW = s.crew||[]; }
   else { ORDERS = []; MYSCORES = []; MYCREW = []; }
   S.viewAs = USER ? USER.role : "guest";
   markMe();
@@ -2467,6 +2487,8 @@ document.addEventListener("click", e=>{
   if (ds.so!==undefined){ S.p={o:+ds.so,w:0}; return render(); }
   if (ds.act==="logout"){ api("POST","/api/auth/logout",{}).finally(()=>{ location.hash=""; location.reload(); }); return; }
   if (ds.act==="lagain"){ S.login={...S.login,step:"email",err:""}; return render(); }
+  if (ds.act==="avup"){ syncProfile(); document.getElementById("avIn").click(); return; }
+  if (ds.act==="avdel"){ syncProfile(); api("PUT","/api/profile/avatar",{data:null}).then(()=>{ ME.avatar=""; USER.avatar=""; render(); toast("Фото убрано"); }).catch(err=>toast(err.message)); return; }
   if (ds.act==="kidadd"){ syncProfile(); S.p.v.kids.push({id:"",first:"",last:"",gender:"M",dob:""}); return render(); }
   if (ds.kiddel!==undefined){ syncProfile(); S.p.v.kids.splice(+ds.kiddel,1); return render(); }
   if (ds.act==="accdelask"){ S.p={...S.p,delAsk:true}; return render(); }
