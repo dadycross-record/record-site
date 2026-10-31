@@ -108,6 +108,8 @@ alter table crew add column if not exists user_id bigint references users(id) on
 alter table crew add column if not exists avail jsonb not null default '[]';
 alter table crew add column if not exists source text not null default 'manual';
 alter table crew add column if not exists info jsonb not null default '{}';
+update users set profile = jsonb_set(profile, '{affiliate}', '"RECORD"') where profile->>'affiliate' ilike 'record пивовариха';
+update registrations set person = jsonb_set(person, '{affiliate}', '"RECORD"') where person->>'affiliate' ilike 'record пивовариха';
 create unique index if not exists crew_user_ev on crew(event_id, user_id) where user_id is not null;
 create table if not exists notify_emails (email text primary key, added_by text, created_at timestamptz not null default now());
 create table if not exists tg_chats (chat_id text primary key, email text, name text, created_at timestamptz not null default now());
@@ -145,7 +147,8 @@ async function rawContent() { return (await db.query('select data from content w
 const displayName = r => r.publish ? `${r.person.first || ''} ${r.person.last || ''}`.trim() : `Участник ${r.pub.slice(0, 4)}`;
 
 /* gyms: free text, suggestions = the most common spellings among athletes; typed variants are folded into them */
-const BASE_GYMS = ['Record Пивовариха', 'CF BAZA'];
+const BASE_GYMS = ['RECORD', 'CF BAZA'];
+const GYM_ALIASES = { recordпивовариха: 'RECORD', рекорд: 'RECORD', рекордпивовариха: 'RECORD', центрспортарекорд: 'RECORD' };
 const gymKey = g => String(g || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]/g, '');
 let GYMS = BASE_GYMS.slice();
 async function loadGyms() {
@@ -162,7 +165,7 @@ async function loadGyms() {
   GYMS = [...BASE_GYMS, ...list];
   return GYMS;
 }
-const canonGym = a => { const k = gymKey(a); if (!k) return ''; return GYMS.find(g => gymKey(g) === k) || a; };
+const canonGym = a => { const k = gymKey(a); if (!k) return ''; if (GYM_ALIASES[k]) return GYM_ALIASES[k]; return GYMS.find(g => gymKey(g) === k) || a; };
 async function publicContent() {
   if (cache) return cache;
   const c = await rawContent();
