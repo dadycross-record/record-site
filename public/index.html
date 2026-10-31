@@ -225,7 +225,7 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 /* profile */
 .pcard{background:linear-gradient(135deg,var(--surface-2),var(--surface));border:1px solid var(--line);border-radius:16px;padding:16px}
 .big-av{width:60px;height:60px;border-radius:16px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--f-display);font-weight:800;font-size:22px}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}.stats.s4{grid-template-columns:repeat(4,1fr)}@media(max-width:600px){.stats.s4{grid-template-columns:repeat(2,1fr)}}
 .stats div{background:var(--bg);border-radius:10px;padding:10px;text-align:center}
 .stats b{font-family:var(--f-mono);font-size:20px;display:block}
 .stats b.acc{color:var(--accent)}
@@ -788,13 +788,6 @@ home(){
   </button>
   ${(()=>{ const lg=EVENTS.find(e=>e.permanent&&isPub(e)); if(!lg) return ""; const m=curMonth(lg), dl=Math.max(0,daysBetween(TODAY,monthEnd(m.id)));
     return `<h2 class="sec">Постоянный старт</h2><button class="card next" data-go="event" data-ev="${lg.id}" style="text-align:left;width:100%"><div class="datebox"><b>${dl}</b><span>дн.</span></div><div><div class="row wrap" style="gap:6px"><span class="chip live">Идёт ${MON_NOM[+m.id.slice(5,7)-1]}</span></div><div style="font-family:var(--f-display);font-weight:600;font-size:16px;text-transform:uppercase;margin:6px 0 2px">${esc(lg.name)}</div><div class="muted small">Итоги ${MON_GEN[+m.id.slice(5,7)-1]} через ${dl} ${plDays(dl)} · ${takenOf(lg)} участников</div></div></button>`; })()}
-  <h2 class="sec">Быстро</h2>
-  <div class="quick">
-    <button data-tab-go="me" data-sub="orders"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Мои старты</button>
-    <button data-tab-go="leaderboard"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16M6 20V10h4v10M10 20V5h4v15M14 20v-7h4v7"/></svg>Результаты</button>
-    <button data-go="event" data-ev="${ev.id}" data-t="schedule"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Расписание</button>
-    <button data-go="event" data-ev="${ev.id}" data-t="wods"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 7v10M18 7v10M3 9v6M21 9v6M6 12h12"/></svg>Задания</button>
-  </div>
   <h2 class="sec">Все старты</h2>
   <div class="stack cards">${EVENTS.filter(isPub).map(evCard).join("")}</div>
 `};
@@ -827,6 +820,7 @@ event(){
         ${ev.submitTo?`<dt>Сдача результатов</dt><dd>до ${dHuman(ev.submitTo)}, 23:59</dd>`:""}
       </dl>
     </div>
+    ${evQuick(ev, secs)}
     ${evCount(ev)}
     ${crewInvite(ev)}
     ${ev.refund.length && !ev.hideRefund?`<h2 class="sec">Возврат взноса</h2><div class="card refund">${ev.refund.map(([p,t,k])=>`<div><span class="chip ${k}">${p}</span><span>${t}</span></div>`).join("")}<div class="muted tiny">Время иркутское (UTC+8). Возврат оформляется в «Моих стартах».</div></div>`:""}
@@ -2224,6 +2218,16 @@ function tgCard(){
       <div class="row wrap"><button class="btn sm" data-act="tglink">Подключить мой Telegram</button>${T.chats.length?'<button class="btn sm ghost" data-act="nftest">Прислать проверку</button>':""}<button class="btn sm ghost" data-act="tgrefresh">Обновить</button></div>`}
   </div>`;
 }
+function evQuick(ev, secs){
+  const on = k => secs.some(x=>x.k===k);
+  const I = {sch:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', wod:'<path d="M6 7v10M18 7v10M3 9v6M21 9v6M6 12h12"/>', res:'<path d="M4 20h16M6 20V10h4v10M10 20V5h4v15M14 20v-7h4v7"/>', my:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'};
+  const ic = k => `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${I[k]}</svg>`;
+  const mine = ORDERS.some(o=>o.event===ev.id);
+  const btns = [on("schedule")&&!ev.permanent?`<button data-evt="schedule">${ic("sch")}Расписание</button>`:"", on("wods")?`<button data-evt="wods">${ic("wod")}Задания</button>`:"",
+    ev.status!=="draft"&&ev.status!=="open"||Object.keys(RESULTS||{}).some(k=>k.startsWith(ev.id))?`<button data-lbev="${ev.id}">${ic("res")}Результаты</button>`:"",
+    mine?`<button data-tab-go="me" data-sub="orders">${ic("my")}Моя заявка</button>`:""].filter(Boolean);
+  return btns.length ? `<div class="quick" style="grid-template-columns:repeat(${btns.length},1fr);margin-top:12px">${btns.join("")}</div>` : "";
+}
 function crewInvite(ev){
   if (ev.status==="draft" || ev.status==="ended") return "";
   const mine = MYCREW.find(c=>c.event===ev.id);
@@ -2240,8 +2244,7 @@ function peopleStats(ev, regs){
   const SZ = ["XS","S","M","L","XL","XXL","3XL"], szKeys = Object.keys(sizes).sort((a,b)=>(SZ.indexOf(a)+1||99)-(SZ.indexOf(b)+1||99));
   const other = regs.filter(o=>!ACTIVE_ST.includes(o.status));
   const oc = k => other.filter(o=>o.status===k).length;
-  return `<div class="stats flat" style="margin-top:0"><div><b>${act.length}</b><span>Участников</span></div><div><b>${paidL.length}</b><span>Оплатили</span></div><div><b class="${newL.length?"acc":""}">${newL.length}</b><span>Ждут оплаты</span></div></div>
-    <div class="stats flat"><div><b style="font-size:17px">${fmtRub(sum)}</b><span>Получено</span></div><div><b style="font-size:17px">${fmtRub(due)}</b><span>Ждём</span></div><div><b style="font-size:17px">${fmtRub(sum+due)}</b><span>Всего взносов</span></div></div>
+  return `<div class="stats flat s4" style="margin-top:0"><div><b>${act.length}</b><span>Участников</span></div><div><b>${paidL.length}</b><span>Оплатили</span></div><div><b class="${newL.length?"acc":""}">${newL.length}</b><span>Ждут оплаты${due?` · ${fmtRub(due)}`:""}</span></div><div><b style="font-size:17px">${fmtRub(sum)}</b><span>Получено</span></div></div>
     <h2 class="sec">По категориям</h2>
     <div class="card tbl-wrap"><table class="tbl"><thead><tr><th>Категория</th><th class="num">Записано</th><th class="num">Оплатили</th><th class="num c-hide">Мест</th></tr></thead><tbody>
     ${ev.divisions.map(d=>`<tr><td>${esc(d.name)}<div class="muted tiny">${ageLabel(d,ev)}</div><div class="minibar"><i style="width:${Math.min(100,Math.round(d.taken/(d.limit||1)*100))}%"></i></div></td><td class="num">${byDiv(d).length}${d.type==="team"?`<div class="muted tiny">${d.taken} ком.</div>`:""}</td><td class="num">${paidDiv(d)}</td><td class="num c-hide">${d.limit||"—"}</td></tr>`).join("")}
@@ -2436,6 +2439,7 @@ document.addEventListener("click", e=>{
   if (ds.go) return go(ds.go,{});
   if (ds.evf){ S.p={f:ds.evf}; return render(); }
   if (ds.evt){ S.p={...S.p,t:ds.evt}; return render(); }
+  if (ds.lbev){ S.lb.ev=ds.lbev; S.lb.w=-1; S.lb.open=null; S.lb.div=(EVENTS.find(e=>e.id===ds.lbev)||{divisions:[{}]}).divisions[0].id||"m"; return tab("leaderboard"); }
   if (ds.dtype){ S.p={...S.p,type:ds.dtype}; return render(); }
   if (ds.act==="divlogin") return needLogin("Войдите, чтобы записаться на старт");
   if (ds.act==="divprofile") return go("profile",{edit:true,then:"divisions"});
