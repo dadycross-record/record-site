@@ -229,6 +229,7 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 .tabbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(100%,480px);display:grid;grid-template-columns:repeat(4,1fr);background:rgba(14,14,13,.96);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px));z-index:30}
 .tabbar button{border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
 .tabbar button[aria-current="page"]{color:var(--accent)}
+.ckbar{position:fixed;left:12px;right:12px;bottom:84px;z-index:70;max-width:560px;margin:0 auto;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:0 10px 40px rgba(0,0,0,.5);font-size:13px;line-height:1.45}.ckbar p{margin:0 0 10px}.ckbar a{color:var(--accent)}@media(min-width:900px){.ckbar{bottom:20px}}
 .toast{position:fixed;left:50%;bottom:88px;transform:translateX(-50%);background:var(--fg);color:var(--accent-ink);font-weight:600;font-size:14px;padding:10px 16px;border-radius:10px;z-index:60;max-width:90vw}
 .empty{text-align:center;color:var(--muted);padding:36px 12px;border:1px dashed var(--line);border-radius:12px}
 .foot{margin-top:28px;font-size:12px;color:var(--dim);text-align:center}
@@ -668,6 +669,24 @@ function back(){ const prev=S.stack.pop(); if(prev){ S.route=prev.route; S.p=pre
 let lastDrawn = null;
 function tab(t){ S.stack=[]; go(t,{},false); }
 function toast(msg){ document.querySelectorAll(".toast").forEach(x=>x.remove()); const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2400); }
+const MK_KEY="rcrd-cookies"; let MK_ON=false, mkLast="";
+function mkChoice(){ try{ const v=JSON.parse(localStorage.getItem(MK_KEY)||"null"); return v && Date.now()-v.t<365*864e5 ? v.c : null; }catch(_){ return null; } }
+function mkId(){ const id=String((SITE&&SITE.metrika)||"").replace(/\D/g,""); return id.length>=5 ? +id : 0; }
+function mkStart(){
+  const id=mkId(); if (MK_ON || !id || mkChoice()!=="all") return; MK_ON=true;
+  window.ym = window.ym || function(){ (window.ym.a=window.ym.a||[]).push(arguments); }; window.ym.l = +new Date;
+  const sc=document.createElement("script"); sc.async=true; sc.src="https://mc.yandex.ru/metrika/tag.js"; document.head.appendChild(sc);
+  ym(id,"init",{defer:true,clickmap:true,trackLinks:true,accurateTrackBounce:true}); mkLast=""; mkHit();
+}
+function mkHit(){ if (!MK_ON) return; const u=location.origin+"/#"+S.route; if (u===mkLast) return; const ref=mkLast||document.referrer; mkLast=u; try{ ym(mkId(),"hit",u,{title:document.title,referer:ref}); }catch(_){} }
+function goal(name){ if (MK_ON) try{ ym(mkId(),"reachGoal",name); }catch(_){} }
+function cookieBar(force){
+  document.querySelectorAll(".ckbar").forEach(x=>x.remove());
+  if (!mkId() || (!force && mkChoice())) return;
+  const b=document.createElement("div"); b.className="ckbar"; b.setAttribute("role","dialog"); b.setAttribute("aria-label","Cookies");
+  b.innerHTML=`<p>Мы используем cookies: необходимые — чтобы работали формы и вход, и аналитические Яндекс Метрики — чтобы понимать, что на сайте удобно, а что нет. Аналитические включим только с вашего согласия. <a href="/docs/privacy" target="_blank">Подробнее</a></p><div class="row"><button class="btn sm" data-ck="all">Принять</button><button class="btn sm ghost" data-ck="need">Только необходимые</button></div>`;
+  document.body.appendChild(b);
+}
 const ROOT_TAB = {login:"me",home:"home",events:"events",event:"events",divisions:"events",team:"events",teamCreate:"events",teamJoin:"events",form:"events",pay:"events",done:"events",fail:"events",leaderboard:"leaderboard",me:"me",orders:"me",score:"me",qr:"me",profile:"me",admin:"me",adminEvent:"me",adminDiv:"me",adminWod:"me",adminPeople:"me",adminSch:"me",adminPromo:"me",adminClub:"me"};
 
 function header(title){
@@ -1486,6 +1505,7 @@ function adminClick(t, ds){
     api("POST","/api/admin/score",{reg:ds.reg, workout:w.id, value:r.v}).then(async res=>{ const i=ADM.SCORES.findIndex(x=>x.reg===ds.reg && x.workout===w.id); if(i>=0) ADM.SCORES[i]=res.score; else ADM.SCORES.push(res.score); await loadContent(); render(); toast("Результат сохранён, лидерборд обновлён"); }).catch(err=>toast(err.message));
     return true;
   }
+  if (ds.act==="msave"){ const v=document.getElementById("mId").value.replace(/\D/g,""); if (v && (v.length<5||v.length>12)) { toast("Номер счётчика — 5–12 цифр"); return true; } SITE.metrika=v; render(); toast(v?"Метрика подключена":"Метрика отключена"); cookieBar(); mkStart(); return true; }
   if (ds.area){ adm.area=ds.area; render(); window.scrollTo(0,0); return true; }
   if (ds.regsave){
     const id=ds.regsave, g=k=>document.getElementById(k+"_"+id);
@@ -1549,6 +1569,12 @@ admin(){
      <button class="btn sm" data-act="csave" style="align-self:flex-start">Сохранить контакты</button>
    </div>
 
+   <h2 class="sec">Яндекс Метрика</h2>
+   <div class="card stack">
+     <label class="f">Номер счётчика<input class="inp" id="mId" inputmode="numeric" value="${esc(SITE.metrika||"")}" placeholder="например, 98765432"></label>
+     <div class="muted small">${mkId()?"Метрика подключена. ":""}Статистика собирается у посетителей, которые нажали «Принять» на плашке про cookies. Цели для отчётов (тип «JavaScript-событие»): <b>trial_lead</b> — заявка на пробную, <b>reg_submit</b> — заявка на старт, <b>login</b> — вход на сайт. Чтобы отключить Метрику, очистите поле и сохраните.</div>
+     <button class="btn sm" data-act="msave" style="align-self:flex-start">Сохранить</button>
+   </div>
    <h2 class="sec">Фото клуба · ${(SITE.gallery||[]).length}</h2>
    <div class="card stack">
      ${(SITE.gallery||[]).length ? `<div class="galadm">${SITE.gallery.map((u,i)=>`<div style="background-image:url(${u})"><button class="iconbtn sm" data-galdel="${i}" aria-label="Убрать фото">${IC.del}</button></div>`).join("")}</div>` : '<div class="muted small">Пока на сайте стандартные фото. Загрузите свои — до 7 штук, первое будет крупным.</div>'}
@@ -1900,7 +1926,7 @@ SCREENS.club = function(){
       <a class="btn ghost" style="margin-top:14px" href="https://yandex.ru/maps/?text=${encodeURIComponent(c.address)}" target="_blank" rel="noopener">Открыть на карте</a></div>
   </section>
 
-  <footer class="cfoot">${LOGO}<div>© ООО «Центр спорта «Рекорд» · ИНН 3808303298 · ОГРН 1263800012607</div><nav class="docs" aria-label="Документы">${DOC_LINKS}</nav><button class="linkbtn" data-tab-go="me" data-sub="admin">Вход для организаторов</button></footer>
+  <footer class="cfoot">${LOGO}<div>© ООО «Центр спорта «Рекорд» · ИНН 3808303298 · ОГРН 1263800012607</div><nav class="docs" aria-label="Документы">${DOC_LINKS}${mkId()?`<button class="linkbtn" data-act="cookies">Cookies</button>`:""}</nav><button class="linkbtn" data-tab-go="me" data-sub="admin">Вход для организаторов</button></footer>
   <div class="clubcta"><button class="btn block" data-anchor="trial">Записаться на пробную</button></div>`};
 };
 SCREENS.adminClub = function(){
@@ -1949,7 +1975,7 @@ document.addEventListener("submit", e=>{
   if (Object.keys(er).length){ const y=window.scrollY; render(); window.scrollTo(0,y); return; }
   S.trial.busy=true; { const y=window.scrollY; render(); window.scrollTo(0,y); }
   api("POST","/api/lead",{name:f.name.trim(),phone:f.phone.trim(),dir:f.dir||TRIAL_DIRS[0],who:f.who||TRIAL_WHO[0],age:(f.age||"").trim(),time:f.time||TRIAL_TIME[0],consent:true})
-    .then(()=>{ S.trial={f:{},err:{},sent:f.name.trim()}; render(); document.getElementById("trial").scrollIntoView({block:"start"}); })
+    .then(()=>{ goal("trial_lead"); S.trial={f:{},err:{},sent:f.name.trim()}; render(); document.getElementById("trial").scrollIntoView({block:"start"}); })
     .catch(err=>{ S.trial.busy=false; S.trial.err={send:err.message}; const y=window.scrollY; render(); window.scrollTo(0,y); });
 });
 
@@ -2025,7 +2051,7 @@ async function submitReg(){
   try {
     const res = await api("POST","/api/register",{event:r.ev.id,div:r.div.id,who:r.who,team:r.teamReq||null,size:f.size,affiliate:f.aff||"",promo:f.promoOk?f.promo:"",
       consents:{rules:!!f.c1,pd:!!f.c2,parent:!!f.c3,publish:!!f.c4,photo:!!f.c5}});
-    ORDERS.push(res.order); markMe();
+    ORDERS.push(res.order); markMe(); goal("reg_submit");
     await loadContent();
     S.stack=[]; go("done",{},false);
   } catch(err){ f.busy=false; f.err=err.message; render(); }
@@ -2177,11 +2203,14 @@ function render(){
   if (sameScreen) window.scrollTo(0, keepY);
   lastDrawn = S.route;
   if (out.after) out.after();
+  mkHit();
   scheduleSave();
 }
 document.addEventListener("click", e=>{
   const t = e.target.closest("button,[data-go]"); if(!t) return;
   const ds = t.dataset;
+  if (ds.ck){ const was=MK_ON; try{ localStorage.setItem(MK_KEY, JSON.stringify({c:ds.ck,t:Date.now()})); }catch(_){} document.querySelectorAll(".ckbar").forEach(x=>x.remove()); if (ds.ck==="all") mkStart(); else if (was) location.reload(); return; }
+  if (ds.act==="cookies"){ cookieBar(true); return; }
   if (S.route==="adminEvent") syncEv(); else if (S.route==="adminDiv") syncDiv(); else if (S.route==="adminWod") syncWod(); else if (S.route==="adminSch") syncSch(); else if (S.route==="adminPromo") syncPromo(); else if (S.route==="admin") syncAcc();
   if (S.route==="club") syncTrial();
   if (clubClick(t, ds)) return;
@@ -2275,7 +2304,7 @@ document.addEventListener("submit", e=>{
     const L=S.login, code=g("lCode").value.replace(/\D/g,"");
     if (code.length!==6){ L.err="Код — 6 цифр из письма"; return render(); }
     L.busy=true; L.err=""; render();
-    api("POST","/api/auth/verify",{email:L.email,code}).then(async()=>{ await loadSession(); await loadContent(); S.login=null; const a=S.after; S.after=null; S.stack=[];
+    api("POST","/api/auth/verify",{email:L.email,code}).then(async()=>{ goal("login"); await loadSession(); await loadContent(); S.login=null; const a=S.after; S.after=null; S.stack=[];
       if (a && a.route && !["login","me"].includes(a.route)){ S.route=a.route; S.p=a.p||{}; render(); } else go(profileReady()?"me":"profile",{edit:!profileReady()},false);
       toast("Вы вошли"); }).catch(err=>{ L.busy=false; L.err=err.message; render(); });
     return;
@@ -2322,6 +2351,6 @@ render();
   try { await loadContent(); }
   catch(e){ LOAD_ERR = "Не получилось загрузить сайт. Обновите страницу через минуту"; render(); return; }
   try { await loadSession(); } catch(_){ USER=null; }
-  LOADED = true; render();
+  LOADED = true; render(); cookieBar(); mkStart();
 })();
 </script>
