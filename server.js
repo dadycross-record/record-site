@@ -72,6 +72,12 @@ const ipOf = req => {
   return chain[0] || req.socket.remoteAddress || '';
 };
 let xffSeen = 0;
+function logClientIpShape(req) {
+  if (xffSeen >= 3) return; xffSeen++;
+  const chain = String(req.headers['x-forwarded-for'] || '').split(',').map(x => x.trim()).filter(Boolean);
+  const kind = a => isPrivateIp(a) ? 'private' : 'public';
+  console.log(`client ip check: xff=${chain.length} [${chain.map(kind).join(', ')}] x-real-ip=${req.headers['x-real-ip'] ? kind(req.headers['x-real-ip']) : 'none'} socket=${kind(req.socket.remoteAddress || '')} -> using ${kind(ipOf(req))}`);
+}
 
 /* ---------- database ---------- */
 const SCHEMA = `
@@ -247,6 +253,7 @@ route('GET', '/api/content', async (req, res) => {
 });
 
 route('GET', '/api/session', async (req, res, u) => {
+  logClientIpShape(req);
   if (!u) return { user: null, mailReady: mail.configured() || DEV_LOG_CODES };
   const regs = (await db.query('select * from registrations where user_id=$1 order by created_at', [u.id])).rows;
   const scores = (await db.query('select s.reg_id, s.workout_id, s.value, s.video, s.state from scores s join registrations r on r.id=s.reg_id where r.user_id=$1', [u.id])).rows;
