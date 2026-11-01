@@ -64,6 +64,7 @@ function limit(key, max, windowMs) {
   if (arr.length >= max) throw new HttpError(429, 'Слишком много попыток. Попробуйте чуть позже');
   arr.push(now); hits.set(key, arr);
 }
+const unlimit = (...keys) => { for (const k of keys) { const a = hits.get(k); if (a && a.length) a.pop(); } };
 setInterval(() => { const now = Date.now(); for (const [k, v] of hits) if (!v.some(t => now - t < 3600e3)) hits.delete(k); }, 600e3).unref();
 const isPrivateIp = a => /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|::1$|f[cd][0-9a-f]{2}:|fe80:|::ffff:(10|127|192\.168|172\.(1[6-9]|2\d|3[01]))\.)/i.test(a);
 const ipOf = req => {
@@ -372,10 +373,13 @@ route('POST', '/api/auth/code', async (req, res, u, body) => {
     on conflict (email) do update set code_hash=excluded.code_hash, expires_at=excluded.expires_at, attempts=0, sent_at=now()`, [email, sha(email + ':' + code)]);
   if (mail.configured()) {
     try {
-      await mail.send({ to: email, subject: `Код для входа: ${code}`,
-        text: `Ваш код для входа на сайт центра спорта «Рекорд»: ${code}\n\nКод действует 10 минут. Если вы не запрашивали вход, просто удалите это письмо.\n\nrecordirk.ru`,
-        html: `<div style="font-family:Arial,sans-serif;font-size:15px;color:#111"><p>Ваш код для входа на сайт центра спорта «Рекорд»:</p><p style="font-size:30px;font-weight:700;letter-spacing:4px">${code}</p><p style="color:#666">Код действует 10 минут. Если вы не запрашивали вход, просто удалите это письмо.</p><p><a href="https://recordirk.ru">recordirk.ru</a></p></div>` });
-    } catch (e) { console.error('mail error:', e.message, '|', mail.describe()); throw new HttpError(502, 'Не получилось отправить письмо. Попробуйте ещё раз через минуту'); }
+      await mail.send({ to: email, subject: 'Вход на сайт центра спорта «Рекорд»',
+        text: `Здравствуйте!\n\nВаш код для входа на сайт центра спорта «Рекорд»: ${code}\n\nКод действует 10 минут. Если вы не запрашивали вход, просто не отвечайте на это письмо.\n\nЦентр спорта «Рекорд», Иркутск` });
+    } catch (e) {
+      console.error('mail error:', e.message, '|', mail.describe());
+      unlimit('code-mail:' + email, 'code-mail-h:' + email, 'code-mail-d:' + email);
+      throw new HttpError(502, /554|spam/i.test(e.message) ? 'Почтовый сервис не пропустил письмо с кодом. Мы уже знаем и чиним — попробуйте позже или напишите нам' : 'Не получилось отправить письмо. Попробуйте ещё раз через минуту');
+    }
   } else if (DEV_LOG_CODES) {
     console.log(`[dev] login code for ${email.replace(/^(.).*(@.*)$/, '$1***$2')}: ${code}`);
   } else {
