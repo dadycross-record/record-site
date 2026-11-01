@@ -1300,6 +1300,24 @@ function serveStatic(req, res, pathname) {
   return true;
 }
 
+const PRIMARY = 'https://recordirk.ru';
+const MIRRORS = new Set(['www.recordirk.ru', 'xn--d1abpqbfcddho.xn--p1ai', 'www.xn--d1abpqbfcddho.xn--p1ai', 'рекордспорт.рф', 'www.рекордспорт.рф']);
+/* the main page with search-engine verification tags that the organizer pastes in the panel */
+let indexCache = { key: null };
+async function serveIndex(req, res, status = 200) {
+  const v = ((await db.query(`select data->'SITE'->'verify' v from content where id=1`)).rows[0] || {}).v || {};
+  const ok = x => typeof x === 'string' && /^[A-Za-z0-9_-]{6,120}$/.test(x) ? x : '';
+  const tags = (ok(v.yandex) ? `<meta name="yandex-verification" content="${ok(v.yandex)}">\n` : '') + (ok(v.google) ? `<meta name="google-site-verification" content="${ok(v.google)}">\n` : '');
+  const file = path.join(PUBLIC, 'index.html'), st = fs.statSync(file), key = tags + st.mtimeMs;
+  if (indexCache.key !== key) {
+    const data = Buffer.from(fs.readFileSync(file, 'utf8').replace('</head>', tags + '</head>'));
+    indexCache = { key, data, gz: zlib.gzipSync(data, { level: 9 }), etag: '"i' + crypto.createHash('sha1').update(data).digest('hex').slice(0, 16) + '"' };
+  }
+  const headers = { 'Content-Type': 'text/html; charset=utf-8', ETag: indexCache.etag, 'Cache-Control': 'no-cache', Vary: 'Accept-Encoding' };
+  if (status === 200 && req.headers['if-none-match'] === indexCache.etag) { res.writeHead(304, headers); res.end(); return; }
+  const gz = wantsGzip(req); if (gz) headers['Content-Encoding'] = 'gzip';
+  res.writeHead(status, headers); res.end(req.method === 'HEAD' ? undefined : gz ? indexCache.gz : indexCache.data);
+}
 let scriptHash = '';
 try { const m = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8').match(/<script>([\s\S]*?)<\/script>/); if (m) scriptHash = "'sha256-" + crypto.createHash('sha256').update(m[1], 'utf8').digest('base64') + "'"; } catch (_) {}
 const SECURITY = {
@@ -1328,8 +1346,12 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'Метод не поддерживается');
+    // one address for search engines: other domains of the site send visitors to the main one
+    const host = String(req.headers.host || '').toLowerCase().replace(/:\d+$/, '');
+    if (MIRRORS.has(host) && !pathname.startsWith('/.well-known/')) { res.writeHead(301, { Location: PRIMARY + req.url }); res.end(); return; }
+    if (pathname === '/' || pathname === '/index.html') { await serveIndex(req, res); return; }
     if (serveStatic(req, res, pathname)) return;
-    if (!path.extname(pathname)) { serveStatic(req, res, '/index.html'); return; }
+    if (!path.extname(pathname)) { await serveIndex(req, res, 404); return; }
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Не найдено');
   } catch (e) {
     if (!(e instanceof HttpError)) console.error(req.method, pathname, e.stack || e.message);
