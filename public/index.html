@@ -205,6 +205,7 @@ label.f{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--
 .selbtn{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;background:none;border:0;padding:0;text-align:left}
 .selbtn b{font-family:var(--f-display);font-weight:600;font-size:16px;text-transform:uppercase}
 .rulesbody{margin-top:10px;font-size:14px;line-height:1.5}.rulesbody h4{margin:14px 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:.04em}.rulesbody p{margin:0 0 8px;color:var(--muted)}.rulesbody p b{color:var(--fg)}.ptgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px;margin:6px 0 4px}.ptgrid span{display:flex;justify-content:space-between;gap:6px;padding:5px 8px;border-radius:8px;background:rgba(255,255,255,.05);font-variant-numeric:tabular-nums;font-size:13px}.ptgrid i{font-style:normal;opacity:.55}
+.dob{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 46px;gap:8px}.dobbtn{display:grid;place-items:center}.dobcal{position:absolute;right:0;top:0;width:46px;height:100%;opacity:0;cursor:pointer;border:0;padding:0}.dobcal::-webkit-calendar-picker-indicator{position:absolute;inset:0;width:100%;height:100%;cursor:pointer}
 .filters{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
 select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 18px) 20px,calc(100% - 13px) 20px;background-size:5px 5px;background-repeat:no-repeat;padding-right:32px}
 .iconbtn{height:46px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);display:grid;place-items:center}
@@ -492,7 +493,14 @@ const divDaysNote = (ev,d) => { const t=divDays(ev,d); return t && t!=="все �
 /* ---------- demo data ---------- */
 const ME = {first:"",last:"",print:"",gender:"M",dob:"",affiliate:"",phone:"",email:"",tg:"",emName:"",emPhone:"",avatar:"",kids:[]};
 let GYMS = ["RECORD","CF BAZA"];
-const gymInput = (id, val) => `<input class="inp" id="${id}" list="gymList_${id}" value="${esc(val||"")}" placeholder="Начните вводить или выберите" autocomplete="off" maxlength="80"><datalist id="gymList_${id}">${GYMS.map(g=>`<option value="${esc(g)}"></option>`).join("")}</datalist><span class="muted tiny" style="margin-top:4px">Нет в списке — впишите свой. Без зала — оставьте пустым.</span>`;
+/* date of birth: type it by hand (ДД.ММ.ГГГГ) or pick it in the calendar; the hidden date input keeps the ISO value */
+const dobInput = (id, val, err) => `<div class="dob"><input class="inp ${err?"err":""}" id="${id}_t" data-dob="${id}" inputmode="numeric" placeholder="ДД.ММ.ГГГГ" maxlength="10" autocomplete="off" value="${val?dShort(val):""}"><span class="iconbtn dobbtn" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span><input type="date" class="dobcal" id="${id}" value="${esc(val||"")}" min="1920-01-01" max="${TODAY}" aria-label="Выбрать дату в календаре"></div>`;
+const dobParse = t => { const m=String(t).match(/^(\d{2})\.(\d{2})\.(\d{4})$/); if (!m) return ""; const iso=`${m[3]}-${m[2]}-${m[1]}`, d=new Date(iso+"T00:00:00Z"); return !isNaN(d) && d.toISOString().slice(0,10)===iso && iso>="1920-01-01" && iso<=TODAY ? iso : ""; };
+document.addEventListener("input", e=>{ const t=e.target;
+  if (t.dataset && t.dataset.dob){ let d=t.value.replace(/\D/g,"").slice(0,8); t.value = d.length>4 ? `${d.slice(0,2)}.${d.slice(2,4)}.${d.slice(4)}` : d.length>2 ? `${d.slice(0,2)}.${d.slice(2)}` : d;
+    const iso=dobParse(t.value), h=document.getElementById(t.dataset.dob); if (h) h.value=iso; t.classList.toggle("err", t.value.length===10 && !iso); }
+  if (t.classList && t.classList.contains("dobcal")){ const tx=document.getElementById(t.id+"_t"); if (tx){ tx.value=t.value?dShort(t.value):""; tx.classList.remove("err"); } } });
+const gymInput = (id, val) => `<input class="inp" id="${id}" list="gymList_${id}" value="${esc(val||"")}" placeholder="Начните вводить или выберите" autocomplete="off" maxlength="80"><datalist id="gymList_${id}">${GYMS.map(g=>`<option value="${esc(g)}"></option>`).join("")}</datalist><span class="muted tiny" style="margin-top:4px">Нет в списке — впишите свой. Без клуба — оставьте пустым.</span>`;
 
 const EVENTS = [
  { id:"race", name:"Гонка Рекорда", en:"RECORD RACE", format:"onsite", status:"open", city:"Иркутск",
@@ -948,7 +956,7 @@ teamCreate(){
    <form class="stack" id="fTeam" novalidate>
     <label class="f">Название команды<input class="inp ${e.name?"err":""}" id="tName" value="${esc(v.name)}" placeholder="BAIKAL POWER" autocomplete="off"></label>
     <div class="${e.name?"err-t":"muted tiny"}">${e.name||"Только латиница, до 5 слов и 20 символов. Сохраняется заглавными."}</div>
-    <label class="f">Зал${gymInput("tAff", v.aff)}</label>
+    <label class="f">Клуб${gymInput("tAff", v.aff)}</label>
     <div class="muted tiny">После регистрации в «Моих стартах» появится ссылка-приглашение для команды и заявки от желающих вступить.</div>
     <button class="btn block" type="submit">Создать и продолжить</button>
    </form>`};
@@ -992,7 +1000,7 @@ form(){
    <form class="stack" id="fReg" novalidate>
     <div class="grid2"><label class="f">Фамилия<input class="inp" id="rLast" value="${esc(p.last)}"></label><label class="f">Имя<input class="inp" id="rFirst" value="${esc(p.first)}"></label></div>
     <div class="grid2"><label class="f">Дата рождения<input class="inp" value="${p.dob.split("-").reverse().join(".")}" disabled></label><label class="f">Возраст${ev.ageMode==="year"?" по году":" на старте"}<input class="inp mono" value="${age}" disabled></label></div>
-    <label class="f">Зал${gymInput("rAff", f.aff??(p.affiliate||ME.affiliate))}</label>
+    <label class="f">Клуб${gymInput("rAff", f.aff??(p.affiliate||ME.affiliate))}</label>
     <div class="grid2"><label class="f">${kid?"Телефон родителя":"Телефон"}<input class="inp" value="${esc(ME.phone)}" disabled></label><label class="f">Размер футболки<select class="inp" id="rSize">${["XS","S","M","L","XL","XXL"].map(s=>`<option ${s===f.size?"selected":""}>${s}</option>`).join("")}</select></label></div>
     <div class="grid2"><label class="f">Экстренный контакт<input class="inp" value="${esc(ME.emName||"не указан")}" disabled></label><label class="f">Телефон<input class="inp" value="${esc(ME.emPhone||"—")}" disabled></label></div>
     <div class="muted tiny">Данные берутся из анкеты. Исправить их можно в <button type="button" class="linkbtn" data-go="profile">анкете участника</button>.</div>
@@ -1003,7 +1011,7 @@ form(){
     <label class="check"><input type="checkbox" id="c1" ${f.c1?"checked":""}><span>Принимаю <a href="/docs/rules" target="_blank">условия участия</a>, правила старта и стандарты движений</span></label>
     <label class="check"><input type="checkbox" id="c2" ${f.c2?"checked":""}><span>Даю <a href="/docs/consent" target="_blank">согласие на обработку персональных данных</a> и ознакомлен с <a href="/docs/privacy" target="_blank">политикой</a></span></label>
     ${age<18?`<label class="check"><input type="checkbox" id="c3" ${f.c3?"checked":""}><span>${kid?`Я, ${esc(ME.first)} ${esc(ME.last)}, законный представитель, согласен на участие ребёнка и обработку его данных`:"Законный представитель согласен на участие"}</span></label>`:""}
-    <label class="check"><input type="checkbox" id="c4" ${f.c4?"checked":""}><span>Можно показывать ${kid?"имя ребёнка":"моё имя"}, зал и результаты в открытом лидерборде — <a href="/docs/publish" target="_blank">согласие на распространение</a>. Без галочки в таблице будет «Участник №…»</span></label>
+    <label class="check"><input type="checkbox" id="c4" ${f.c4?"checked":""}><span>Можно показывать ${kid?"имя ребёнка":"моё имя"}, клуб и результаты в открытом лидерборде — <a href="/docs/publish" target="_blank">согласие на распространение</a>. Без галочки в таблице будет «Участник №…»</span></label>
     <label class="check"><input type="checkbox" id="c5" ${f.c5?"checked":""}><span>Можно публиковать фото и видео со старта в соцсетях клуба</span></label>
     <div class="card stack" style="margin-top:6px">
       <div class="sum"><span class="muted">Взнос</span><span class="mono">${fmtRub(base)}</span></div>
@@ -1061,7 +1069,7 @@ leaderboard(){
   let ev = month==="year" ? leagueYear(ev0, L.div).ev : lbEv(ev0, month);
   const mpills = ev0.permanent ? `<div class="pills" role="tablist" style="margin-top:10px">${(ev0.months||[]).map(m=>`<button role="tab" aria-selected="${month===m.id}" data-lbm="${m.id}">${monthTitle(m.id)}${m.done?"":" · идёт"}</button>`).join("")}<button role="tab" aria-selected="${month==="year"}" data-lbm="year">Таблица года</button></div>` : "";
   const head = `<div class="card" style="padding:12px 14px"><button class="selbtn" data-act="evsheet"><div><div class="row" style="gap:6px;margin-bottom:6px">${statusChip(ev.status)}${ev.status==="draft"?'<span class="chip neutral">видите только вы</span>':""}</div><b>${esc(ev.name)}</b></div><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button></div>
-   <div class="utabs" role="tablist" style="margin-top:10px">${[["ind","Атлеты"],["team","Команды"],["aff","Залы"]].map(([k,t])=>`<button role="tab" aria-selected="${L.tab===k}" data-lbt="${k}">${t}</button>`).join("")}</div>${L.tab==="aff"?"":mpills}`;
+   <div class="utabs" role="tablist" style="margin-top:10px">${[["ind","Атлеты"],["team","Команды"],["aff","Клубы"]].map(([k,t])=>`<button role="tab" aria-selected="${L.tab===k}" data-lbt="${k}">${t}</button>`).join("")}</div>${L.tab==="aff"?"":mpills}`;
   if (ev.status==="open") return {title:null, html: head + `<div class="empty" style="margin-top:16px">Старт ${dHuman(ev.date)}. Лидерборд заполнится, когда судьи внесут первые результаты.</div>`};
   if (L.tab==="aff") return {title:null, html: head + affBoard(ev)};
   const RS = allResults(), hasRes = d => month==="year" ? (ev0.months||[]).some(m=>RS[resKey(ev0,d.id,m.id)]) : RS[resKey(ev0,d.id,month)];
@@ -1188,7 +1196,7 @@ score(){
 profile(){
   const edit = S.p.edit || !profileReady();
   if (!edit){
-    const kv = [["Фамилия и имя",`${ME.last} ${ME.first}`],["Пол",ME.gender==="F"?"Женский":"Мужской"],["Дата рождения",ME.dob?dShort(ME.dob):"—"],["Зал",ME.affiliate||"—"],["Телефон",ME.phone||"—"],["Email",USER.email],["Telegram",ME.tg||"—"],["Экстренный контакт",ME.emName?`${ME.emName}, ${ME.emPhone}`:"—"],["Дети",ME.kids.length?ME.kids.map(k=>`${k.first} ${k.last}, ${k.dob.slice(0,4)} г.р.`).join("; "):"—"]];
+    const kv = [["Фамилия и имя",`${ME.last} ${ME.first}`],["Пол",ME.gender==="F"?"Женский":"Мужской"],["Дата рождения",ME.dob?dShort(ME.dob):"—"],["Клуб",ME.affiliate||"—"],["Телефон",ME.phone||"—"],["Email",USER.email],["Telegram",ME.tg||"—"],["Экстренный контакт",ME.emName?`${ME.emName}, ${ME.emPhone}`:"—"],["Дети",ME.kids.length?ME.kids.map(k=>`${k.first} ${k.last}, ${k.dob.slice(0,4)} г.р.`).join("; "):"—"]];
     return {title:"Анкета участника", html:`<div class="card kv">${kv.map(([k,v])=>`<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</div>
      <div class="stack" style="margin-top:14px"><button class="btn block" data-go="profile" data-edit="1">Изменить анкету</button></div>
      <div class="rule" style="margin-top:12px">Анкета заполняется один раз и подставляется в каждую регистрацию.</div>
@@ -1202,16 +1210,16 @@ profile(){
 
    <form class="stack" id="fProfile" novalidate>
     <div class="grid2"><label class="f">Фамилия<input class="inp ${e.last?"err":""}" id="pLast" value="${esc(v.last)}" autocomplete="family-name"></label><label class="f">Имя<input class="inp ${e.first?"err":""}" id="pFirst" value="${esc(v.first)}" autocomplete="given-name"></label></div>
-    <div class="grid2"><label class="f">Пол${sel("pGender",v.gender,[["M","Мужской"],["F","Женский"]])}</label><label class="f">Дата рождения<input class="inp ${e.dob?"err":""}" id="pDob" type="date" value="${esc(v.dob)}"></label></div>
-    <label class="f">Зал${gymInput("pAff", v.affiliate)}</label>
+    <div class="grid2"><label class="f">Пол${sel("pGender",v.gender,[["M","Мужской"],["F","Женский"]])}</label><label class="f">Дата рождения${dobInput("pDob", v.dob, e.dob)}</label></div>
+    <label class="f">Клуб${gymInput("pAff", v.affiliate)}</label>
     <div class="grid2"><label class="f">Телефон<input class="inp ${e.phone?"err":""}" id="pPhone" type="tel" value="${esc(v.phone)}" placeholder="+7" autocomplete="tel"></label><label class="f">Telegram<input class="inp" id="pTg" value="${esc(v.tg)}" placeholder="@name"></label></div>
     <div class="grid2"><label class="f">Экстренный контакт<input class="inp" id="pEm" value="${esc(v.emName)}" placeholder="Имя"></label><label class="f">Телефон<input class="inp" id="pEmP" type="tel" value="${esc(v.emPhone)}" placeholder="+7"></label></div>
     ${Object.values(e).filter(Boolean).map(x=>`<div class="err-t">${esc(x)}</div>`).join("")}
     <h2 class="sec" style="margin-top:8px">Дети</h2>
     <div class="muted tiny">Добавьте детей, чтобы записывать их на детские старты от своего аккаунта.</div>
     ${v.kids.map((k,i)=>`<div class="card stack"><div class="grid2"><label class="f">Фамилия<input class="inp" id="kLast${i}" value="${esc(k.last)}"></label><label class="f">Имя<input class="inp" id="kFirst${i}" value="${esc(k.first)}"></label></div>
-      <div class="grid2"><label class="f">Пол${sel("kGender"+i,k.gender,[["M","Мальчик"],["F","Девочка"]])}</label><label class="f">Дата рождения<input class="inp" id="kDob${i}" type="date" value="${esc(k.dob)}"></label></div>
-      <label class="f">Зал${gymInput("kAff"+i, k.affiliate)}</label>
+      <div class="grid2"><label class="f">Пол${sel("kGender"+i,k.gender,[["M","Мальчик"],["F","Девочка"]])}</label><label class="f">Дата рождения${dobInput("kDob"+i, k.dob)}</label></div>
+      <label class="f">Клуб${gymInput("kAff"+i, k.affiliate)}</label>
       <button type="button" class="btn sm ghost" data-kiddel="${i}" style="align-self:flex-start">Убрать</button></div>`).join("")}
     <button type="button" class="btn ghost" data-act="kidadd" style="align-self:flex-start">+ Ребёнок</button>
     <button class="btn block" type="submit" ${S.p.busy?"disabled":""}>${S.p.busy?"Сохраняю…":"Сохранить анкету"}</button>
@@ -1269,8 +1277,8 @@ function affBoard(ev){
   Object.keys(RESULTS).filter(k=>k.startsWith(ev.id+":")||k.startsWith(ev.id+"@")).forEach(k=>RESULTS[k].forEach(r=>{ cnt[r.a]=(cnt[r.a]||0)+(r.team?r.team.length:1); }));
   const arr = Object.entries(cnt).sort((a,b)=>b[1]-a[1]);
   arr.forEach((x,i)=>{ x.place = (i>0 && arr[i-1][1]===x[1]) ? arr[i-1].place : i+1; });
-  return `<div class="lb-head" style="margin-top:12px"><span>#</span><span></span><span>Зал</span><span class="wcols"></span><span class="hpts">Участников</span><span></span></div><div class="lb">${arr.map(x=>`<div class="lr ${x.place<=3?"r"+x.place:""}"><button tabindex="-1" style="cursor:default"><span class="rk">${x.place}</span><span class="av">${esc(x[0][0])}</span><span class="nm"><b>${esc(x[0])}</b><span>Иркутская область</span></span><span class="wcols"></span><span class="pts">${x[1]}</span><span></span></button></div>`).join("")}</div>
-  <div class="rule" style="margin-top:12px">Рейтинг залов показывает активность: сколько атлетов зал выставил на старт.</div>`;
+  return `<div class="lb-head" style="margin-top:12px"><span>#</span><span></span><span>Клуб</span><span class="wcols"></span><span class="hpts">Участников</span><span></span></div><div class="lb">${arr.map(x=>`<div class="lr ${x.place<=3?"r"+x.place:""}"><button tabindex="-1" style="cursor:default"><span class="rk">${x.place}</span><span class="av">${esc(x[0][0])}</span><span class="nm"><b>${esc(x[0])}</b><span>Иркутская область</span></span><span class="wcols"></span><span class="pts">${x[1]}</span><span></span></button></div>`).join("")}</div>
+  <div class="rule" style="margin-top:12px">Рейтинг клубов показывает активность: сколько атлетов клуб выставил на старт.</div>`;
 }
 function orderCard(o){
   const ev = EVENTS.find(e=>e.id===o.event) || {name:"Старт удалён",divisions:[],format:"onsite",status:"ended",date:o.date}, d = ev.divisions.find(x=>x.id===o.div) || {name:""};
@@ -1462,7 +1470,7 @@ function promoCheck(code, ev, price){
 const promoOff = r => r && r.f.promoOk ? (r.f.promoOff || 0) : 0;
 const promoWhat = p => `${p.kind==="pct"?`−${p.value}%`:`−${fmtRub(p.value)}`} от взноса · ${p.event==="all"?"все старты":esc((EVENTS.find(e=>e.id===p.event)||{name:"удалённый старт"}).name)}`;
 /* participants table: one row per registration, downloadable for Excel */
-const SHEET_COLS = ["Дата заявки","Заказ","Старт","Категория","Дни выступления","Команда","Фамилия","Имя","Пол","Дата рождения","Возраст","Зал","Телефон","Email","Экстренный контакт","Футболка","Промокод","Взнос, ₽","Оплачено, ₽","Статус","Бесплатно — основание","Имя в лидерборде","Комментарий"];
+const SHEET_COLS = ["Дата заявки","Заказ","Старт","Категория","Дни выступления","Команда","Фамилия","Имя","Пол","Дата рождения","Возраст","Клуб","Телефон","Email","Экстренный контакт","Футболка","Промокод","Взнос, ₽","Оплачено, ₽","Статус","Бесплатно — основание","Имя в лидерборде","Комментарий"];
 const REG_ST = {pending:"Ждёт подтверждения капитана",reserve:"Запасной",new:"Ожидает оплаты",paid:"Оплачен",refund_requested:"Запрошен возврат",refunded:"Возврат",cancelled:"Отменена",blocked:"Отклонена"};
 function sheetRows(ev){
   return ADM.REGS.filter(o=>o.event===ev.id).map(o=>{ const p=o.person||{}, d=ev.divisions.find(x=>x.id===o.div)||{name:""};
@@ -1503,7 +1511,7 @@ function lbSheets(ev0, month){
   const RS=allResults(), pts=usesPoints(ev0);
   return ev0.divisions.filter(d=>RS[resKey(ev0,d.id,month)]).map(d=>{
     const {ev, rows} = leaderboard(ev0.id, d.id, month), ws=ev.workouts;
-    const head=["Место", d.type==="team"?"Команда":"Атлет", "Зал", ...ws.flatMap(w=>[w.name, "Место", ...(pts?["Баллы"]:[])]), pts?"Итого баллов":"Сумма мест"];
+    const head=["Место", d.type==="team"?"Команда":"Атлет", "Клуб", ...ws.flatMap(w=>[w.name, "Место", ...(pts?["Баллы"]:[])]), pts?"Итого баллов":"Сумма мест"];
     const body=rows.map(r=>[r.place, r.n, r.a||"", ...ws.flatMap((w,i)=>{ const v=r.r[i], has=v!==null&&v!==undefined; return [has?(w.type==="time"&&typeof v==="number"?`${Math.floor(v/60)}:${String(Math.floor(v%60)).padStart(2,"0")},${String(Math.round(v*100)%100).padStart(2,"0")}`:typeof v==="object"?`лимит · ${v.cap} повт.`:v):"—", has?r.wr[i]:"", ...(pts?[has?r.wp[i]:0]:[])]; }), r.pts]);
     return {name:d.name, cols:[7,26,16,...ws.flatMap(()=>[14,7,...(pts?[7]:[])]),12], rows:[[{v:`${ev0.name}${month?" · "+monthTitle(month)+" "+month.slice(0,4):""} · ${d.name}`,b:true}],[],head.map(v=>({v,b:true})),...body]};
   });
