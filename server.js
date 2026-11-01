@@ -124,6 +124,20 @@ create table if not exists tg_chats (chat_id text primary key, email text, name 
 create table if not exists tg_links (code text primary key, email text not null, expires_at timestamptz not null);
 create table if not exists crew_rates (event_id text primary key, rates jsonb not null default '{}', shift_hours numeric not null default 8, updated_by text);
 create index if not exists registrations_user on registrations(user_id);
+create table if not exists kids (id text primary key, first text not null, last text not null, gender text not null default 'M', dob text not null default '', affiliate text not null default '', print text,
+  match_key text, created_by bigint, owner_user bigint references users(id) on delete set null, created_at timestamptz not null default now());
+create index if not exists kids_key on kids(match_key);
+create table if not exists kid_guardians (kid_id text not null references kids(id) on delete cascade, user_id bigint not null references users(id) on delete cascade, created_at timestamptz not null default now(), primary key(kid_id, user_id));
+create index if not exists kid_guardians_user on kid_guardians(user_id);
+create table if not exists kid_invites (token_hash text primary key, kid_id text not null references kids(id) on delete cascade, from_user bigint, kind text not null, email text, expires_at timestamptz not null, created_at timestamptz not null default now());
+alter table registrations add column if not exists athlete_user bigint references users(id) on delete set null;
+insert into kids (id, first, last, gender, dob, affiliate, print, created_by, created_at)
+  select k->>'id', coalesce(k->>'first',''), coalesce(k->>'last',''), coalesce(k->>'gender','M'), coalesce(k->>'dob',''), coalesce(k->>'affiliate',''), k->>'print', u.id, u.created_at
+  from users u, jsonb_array_elements(u.kids) k where jsonb_typeof(u.kids)='array' and coalesce(k->>'id','') <> '' on conflict (id) do nothing;
+insert into kid_guardians (kid_id, user_id) select k->>'id', u.id from users u, jsonb_array_elements(u.kids) k
+  where jsonb_typeof(u.kids)='array' and k->>'id' in (select id from kids) on conflict do nothing;
+update users set kids='[]'::jsonb where kids <> '[]'::jsonb;
+update kids set match_key = regexp_replace(translate(lower(trim(last)),'ё','е'),'\\s+',' ','g') || '|' || regexp_replace(translate(lower(trim(first)),'ё','е'),'\\s+',' ','g') || '|' || dob where match_key is null;
 create table if not exists scores (id bigserial primary key, reg_id text not null references registrations(id) on delete cascade, workout_id text not null, value jsonb not null, video text,
   state text not null default 'pending', created_at timestamptz not null default now(), reviewed_by text, unique(reg_id, workout_id));
 create table if not exists backups (id bigserial primary key, created_at timestamptz not null default now(), kind text not null, size int not null, rows int not null, data bytea not null);
@@ -249,6 +263,7 @@ async function sessionOf(req) {
   const { rows } = await db.query('select u.* from sessions s join users u on u.id=s.user_id where s.token_hash=$1 and s.expires_at>now()', [sha(sid)]);
   if (!rows.length) return null;
   const u = rows[0];
+  u.kids = await kidsOf(u.id);
   u.role = isOwner(u.email) ? 'owner' : ((await db.query('select role from staff where email=$1', [u.email])).rows[0] || {}).role || 'athlete';
   return u;
 }
@@ -276,6 +291,22 @@ function cleanPerson(p, kid) {
   else o.id = /^kid[a-z0-9]{1,16}$/.test(p.id || '') ? p.id : 'kid' + rnd(8, 'abcdefghijklmnopqrstuvwxyz0123456789');
   return o;
 }
+/* ---------- children: one card per child, shared by up to 3 adults ---------- */
+const normName = s => String(s || '').toLowerCase().replace(/ё/g, 'е').trim().replace(/\s+/g, ' ');
+const kidKey = k => `${normName(k.last)}|${normName(k.first)}|${k.dob || ''}`;
+const KID_GUARDIANS_MAX = 3;
+async function kidsOf(uid, q = (...a) => db.query(...a)) {
+  return (await q(`select k.*, (select count(*)::int from kid_guardians g2 where g2.kid_id=k.id) n from kids k join kid_guardians g on g.kid_id=k.id
+    where g.user_id=$1 and k.owner_user is null order by g.created_at, k.created_at`, [uid])).rows
+    .map(k => ({ id: k.id, first: k.first, last: k.last, gender: k.gender, dob: k.dob, affiliate: k.affiliate, print: k.print || `${k.first} ${k.last}`.toUpperCase(), shared: k.n - 1 }));
+}
+async function mergeKids(q, keep, drop) {
+  if (keep === drop) return;
+  await q('insert into kid_guardians (kid_id, user_id, created_at) select $1, user_id, created_at from kid_guardians where kid_id=$2 on conflict do nothing', [keep, drop]);
+  await q('update registrations set who=$1 where who=$2', [keep, drop]);
+  await q('delete from kids where id=$1', [drop]);
+}
+const kidDupMsg = k => `${k.first} ${k.last} (${k.dob.split('-').reverse().join('.')}) уже есть на сайте — ребёнка добавил другой взрослый. Попросите его прислать вам приглашение: Профиль → ребёнок → «Пригласить второго взрослого». Тогда ребёнок появится и у вас, без дубля.`;
 function ageOn(dob, date) {
   const [y, m, d] = dob.split('-').map(Number); const [Y, M, D] = date.split('-').map(Number);
   return Y - y - ((M < m || (M === m && D < d)) ? 1 : 0);
@@ -313,16 +344,18 @@ route('GET', '/api/content', async (req, res) => {
 
 route('GET', '/api/session', async (req, res, u) => {
   if (!u) return { user: null, mailReady: mail.configured() || DEV_LOG_CODES };
-  const regs = (await db.query('select * from registrations where user_id=$1 order by created_at', [u.id])).rows;
-  const scores = (await db.query('select s.reg_id, s.workout_id, s.value, s.video, s.state from scores s join registrations r on r.id=s.reg_id where r.user_id=$1', [u.id])).rows;
+  const orders = await myOrders(u.id);
+  const scores = (await db.query('select reg_id, workout_id, value, video, state from scores where reg_id in (select jsonb_array_elements_text($1::jsonb))', [JSON.stringify(orders.map(o => o.id))])).rows;
   return {
     user: { email: u.email, role: u.role, profile: u.profile, kids: u.kids, avatar: u.avatar || '' },
-    orders: regs.map(orderOut).map(o => ['blocked', 'cancelled'].includes(o.status) ? o : { ...o, note: '' }), scores,
+    orders: orders.map(o => ['blocked', 'cancelled'].includes(o.status) ? o : { ...o, note: '' }), scores,
     teams: await myTeams(u.id),
     crew: (await db.query('select id, event_id, role, status, avail from crew where user_id=$1 order by created_at', [u.id])).rows
       .map(c => ({ id: Number(c.id), event: c.event_id, role: c.role, status: c.status, avail: c.avail || [] })),
   };
 });
+const myOrders = async uid => (await db.query(`select * from registrations where user_id=$1 or athlete_user=$1 or (who <> 'me' and who in (select kid_id from kid_guardians where user_id=$1)) order by created_at`, [uid])).rows
+  .map(r => ({ ...orderOut(r), mine: Number(r.user_id) === Number(uid) }));
 const orderOut = r => ({ waiver: r.waiver || '', role: r.team_role || null, note: r.note || '', id: r.id, pub: r.pub, event: r.event_id, div: r.div_id, who: r.who, person: r.person, team: r.team, size: r.size, promo: r.promo,
   price: r.price, due: r.due, paid: r.paid, status: r.status, date: new Date(r.created_at.getTime() + 8 * 3600e3).toISOString().slice(0, 10), publish: r.publish });
 
@@ -383,9 +416,34 @@ route('POST', '/api/auth/logout', async (req, res) => {
 route('PUT', '/api/profile', async (req, res, u, body) => {
   need(u);
   const profile = cleanPerson(body.profile, false);
-  const kids = (Array.isArray(body.kids) ? body.kids : []).slice(0, 8).map(k => cleanPerson(k, true)).filter(k => k.first && k.last);
-  await db.query('update users set profile=$1, kids=$2 where id=$3', [profile, kids, u.id]);
-  return { profile, kids };
+  const inc = (Array.isArray(body.kids) ? body.kids : []).slice(0, 8).map(k => ({ ...cleanPerson(k, true), id: String((k || {}).id || '') })).filter(k => k.first && k.last);
+  const keys = inc.map(kidKey);
+  if (new Set(keys).size !== keys.length) throw bad('Один и тот же ребёнок указан дважды');
+  await db.tx(async q => {
+    await q('select pg_advisory_xact_lock(hashtext($1))', ['kids']);
+    const cur = await kidsOf(u.id, q), curIds = new Set(cur.map(k => k.id)), keep = new Set();
+    for (const k of inc) {
+      const key = kidKey(k);
+      let own = curIds.has(k.id) && !keep.has(k.id);
+      const clash = (await q('select id from kids where match_key=$1 and owner_user is null and id <> $2', [key, own ? k.id : ''])).rows[0];
+      if (clash && !curIds.has(clash.id)) throw bad(kidDupMsg(k));
+      if (clash && !own) { k.id = clash.id; own = !keep.has(k.id); if (!own) throw bad('Один и тот же ребёнок указан дважды'); }
+      if (own) {
+        await q('update kids set first=$2, last=$3, gender=$4, dob=$5, affiliate=$6, print=$7, match_key=$8 where id=$1', [k.id, k.first, k.last, k.gender, k.dob, k.affiliate, k.print, key]);
+        keep.add(k.id);
+      } else {
+        const id = 'kid' + rnd(8, 'abcdefghijklmnopqrstuvwxyz0123456789');
+        await q('insert into kids (id, first, last, gender, dob, affiliate, print, match_key, created_by) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [id, k.first, k.last, k.gender, k.dob, k.affiliate, k.print, key, u.id]);
+        await q('insert into kid_guardians (kid_id, user_id) values ($1,$2)', [id, u.id]);
+      }
+    }
+    for (const k of cur) if (!keep.has(k.id)) {
+      await q('delete from kid_guardians where kid_id=$1 and user_id=$2', [k.id, u.id]);
+      await q(`delete from kids where id=$1 and not exists (select 1 from kid_guardians where kid_id=$1) and not exists (select 1 from registrations where who=$1)`, [k.id]);
+    }
+    await q('update users set profile=$1 where id=$2', [profile, u.id]);
+  });
+  return { profile, kids: await kidsOf(u.id) };
 });
 
 route('PUT', '/api/profile/avatar', async (req, res, u, body) => {
@@ -397,11 +455,115 @@ route('PUT', '/api/profile/avatar', async (req, res, u, body) => {
   return { avatar: data || '' };
 });
 
+/* invite a second adult to a child's card, or hand the card over to the grown-up athlete */
+async function myKid(u, id) {
+  const k = (await db.query('select k.* from kids k join kid_guardians g on g.kid_id=k.id where g.user_id=$1 and k.id=$2 and k.owner_user is null', [u.id, str(id, 30)])).rows[0];
+  if (!k) throw bad('Ребёнок не найден в вашем профиле');
+  return k;
+}
+route('POST', '/api/kids/invite', async (req, res, u, body) => {
+  need(u); limit('kid-invite:' + u.id, 20, 3600e3);
+  const k = await myKid(u, body.kid);
+  const n = (await db.query('select count(*)::int n from kid_guardians where kid_id=$1', [k.id])).rows[0].n;
+  if (n >= KID_GUARDIANS_MAX) throw bad(`У ребёнка уже ${n} взрослых с доступом — больше добавить нельзя`);
+  const token = rnd(24, 'abcdefghijkmnpqrstuvwxyz23456789');
+  await db.query(`delete from kid_invites where expires_at < now()`);
+  await db.query(`insert into kid_invites (token_hash, kid_id, from_user, kind, expires_at) values ($1,$2,$3,'guardian', now() + interval '7 days')`, [sha(token), k.id, u.id]);
+  return { link: `${SITE_URL()}/#kid=${token}`, days: 7 };
+});
+route('POST', '/api/kids/transfer', async (req, res, u, body) => {
+  need(u); limit('kid-transfer:' + u.id, 10, 3600e3);
+  const k = await myKid(u, body.kid);
+  if (!k.dob || ageOn(k.dob, today()) < 14) throw bad('Передать профиль можно, когда ребёнку исполнится 14 лет');
+  const email = str(body.email, 254).toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw bad('Укажите email, на который ребёнок будет входить на сайт');
+  if (email === u.email) throw bad('Нужен собственный email ребёнка, а не ваш');
+  const token = rnd(24, 'abcdefghijkmnpqrstuvwxyz23456789');
+  await db.query(`delete from kid_invites where kid_id=$1 and kind='transfer'`, [k.id]);
+  await db.query(`insert into kid_invites (token_hash, kid_id, from_user, kind, email, expires_at) values ($1,$2,$3,'transfer',$4, now() + interval '14 days')`, [sha(token), k.id, u.id, email]);
+  const link = `${SITE_URL()}/#kid=${token}`;
+  let mailed = false;
+  if (mail.configured()) {
+    try {
+      await mail.send({ to: email, subject: 'Рекорд: ваш профиль спортсмена', text: [`Здравствуйте, ${k.first}!`, '',
+        'Взрослый, который вёл ваш профиль на сайте центра спорта «Рекорд», передаёт его вам — вместе со всей историей стартов и результатов.',
+        `Чтобы принять, откройте ссылку и войдите на сайт с этим email (${email}):`, link, '', 'Ссылка действует 14 дней. Если вы не ждали это письмо — просто удалите его.'].join('\n') });
+      mailed = true;
+    } catch (e) { console.error('mail error:', e.message); }
+  }
+  return { link, mailed, days: 14 };
+});
+async function kidInvite(token) {
+  const i = (await db.query('select i.*, k.first, k.last, k.dob, k.owner_user, u.profile from kid_invites i join kids k on k.id=i.kid_id left join users u on u.id=i.from_user where i.token_hash=$1 and i.expires_at > now()', [sha(str(token, 60))])).rows[0];
+  if (!i || i.owner_user) throw bad('Приглашение устарело или уже использовано — попросите прислать новое');
+  return i;
+}
+route('POST', '/api/kids/invite/info', async (req, res, u, body) => {
+  need(u); limit('kid-accept:' + u.id, 30, 3600e3);
+  const i = await kidInvite(body.token), p = i.profile || {};
+  return { kind: i.kind, kid: `${i.first} ${i.last}`, from: `${p.first || ''} ${(p.last || '').slice(0, 1)}${p.last ? '.' : ''}`.trim(), email: i.kind === 'transfer' ? i.email : '',
+    already: i.kind === 'guardian' && !!(await db.query('select 1 from kid_guardians where kid_id=$1 and user_id=$2', [i.kid_id, u.id])).rows[0] };
+});
+route('POST', '/api/kids/accept', async (req, res, u, body) => {
+  need(u); limit('kid-accept:' + u.id, 30, 3600e3);
+  const i = await kidInvite(body.token);
+  let msg = '';
+  await db.tx(async q => {
+    await q('select pg_advisory_xact_lock(hashtext($1))', ['kids']);
+    if (i.kind === 'guardian') {
+      const has = (await q('select 1 from kid_guardians where kid_id=$1 and user_id=$2', [i.kid_id, u.id])).rows[0];
+      if (!has) {
+        const n = (await q('select count(*)::int n from kid_guardians where kid_id=$1', [i.kid_id])).rows[0].n;
+        if (n >= KID_GUARDIANS_MAX) throw bad('У ребёнка уже максимум взрослых с доступом');
+        await q('insert into kid_guardians (kid_id, user_id) values ($1,$2)', [i.kid_id, u.id]);
+      }
+      // the same child already added by this adult separately: merge it into the shared card
+      const key = (await q('select match_key from kids where id=$1', [i.kid_id])).rows[0].match_key;
+      for (const d of (await q('select k.id from kids k join kid_guardians g on g.kid_id=k.id where g.user_id=$1 and k.match_key=$2 and k.id<>$3', [u.id, key, i.kid_id])).rows) await mergeKids(q, i.kid_id, d.id);
+      await q('delete from kid_invites where token_hash=$1', [i.token_hash]);
+      msg = `${i.first} ${i.last} теперь в вашем профиле`;
+    } else {
+      if (u.email !== i.email) throw bad(`Это приглашение для ${i.email.replace(/^(.).*(@.*)$/, '$1***$2')}. Войдите на сайт с этим email`);
+      await q('update kids set owner_user=$2 where id=$1', [i.kid_id, u.id]);
+      await q('delete from kid_guardians where kid_id=$1', [i.kid_id]);
+      await q('delete from kid_invites where kid_id=$1', [i.kid_id]);
+      await q('update registrations set athlete_user=$2 where who=$1', [i.kid_id, u.id]);
+      const prof = u.profile || {};
+      if (!prof.first && !prof.last) {
+        const k = (await q('select * from kids where id=$1', [i.kid_id])).rows[0];
+        await q('update users set profile = profile || $2::jsonb where id=$1', [u.id, JSON.stringify({ first: k.first, last: k.last, gender: k.gender, dob: k.dob, affiliate: k.affiliate, print: k.print || `${k.first} ${k.last}`.toUpperCase() })]);
+      }
+      msg = 'Профиль и история выступлений теперь ваши';
+    }
+  });
+  return { ok: true, msg };
+});
+/* organizers: the same child added by different adults */
+route('POST', '/api/admin/kids/merge', async (req, res, u, body) => {
+  need(u, 'owner', 'admin');
+  const keep = str(body.keep, 30), drop = str(body.drop, 30);
+  await db.tx(async q => {
+    const r = (await q('select id, match_key from kids where id in ($1,$2) and owner_user is null', [keep, drop])).rows;
+    if (r.length !== 2 || keep === drop) throw bad('Карточки не найдены');
+    await mergeKids(q, keep, drop);
+  });
+  dirty();
+  return { dupes: await kidDupes() };
+});
+async function kidDupes() {
+  return (await db.query(`select k.id, k.first, k.last, k.dob, k.match_key, k.created_at,
+      (select coalesce(json_agg(u.email order by g.created_at), '[]') from kid_guardians g join users u on u.id=g.user_id where g.kid_id=k.id) adults,
+      (select count(*)::int from registrations r where r.who=k.id) regs
+    from kids k where k.owner_user is null and k.match_key in (select match_key from kids where owner_user is null group by 1 having count(*) > 1) order by k.match_key, k.created_at`)).rows
+    .map(k => ({ id: k.id, name: `${k.last} ${k.first}`, dob: k.dob, key: k.match_key, adults: k.adults, regs: k.regs }));
+}
 route('POST', '/api/account/delete', async (req, res, u) => {
   need(u);
   await db.tx(async q => {
     await q(`update registrations set person = jsonb_build_object('first','Удалённый','last','участник','affiliate', person->>'affiliate'), publish=false, user_id=null where user_id=$1`, [u.id]);
+    const solo = (await q('select kid_id from kid_guardians g where user_id=$1 and (select count(*) from kid_guardians x where x.kid_id=g.kid_id)=1', [u.id])).rows.map(r => r.kid_id);
     await q('delete from users where id=$1', [u.id]);
+    if (solo.length) await q(`delete from kids where id in (select jsonb_array_elements_text($1::jsonb))`, [JSON.stringify(solo)]);
   });
   dirty();
   send(res, 200, { ok: true }, { 'Set-Cookie': 'sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0' });
@@ -461,7 +623,7 @@ route('POST', '/api/register', async (req, res, u, body) => {
   const out = await db.tx(async q => {
     await q('select pg_advisory_xact_lock(hashtext($1))', [`${ev.id}:${div.id}`]);
     // one registration per day: a second category is allowed only on other days of the start
-    const dup = (await q(`select div_id from registrations where user_id=$1 and who=$2 and event_id=$3 and status in ${INTEAM}`, [u.id, who, ev.id])).rows;
+    const dup = (await q(`select div_id from registrations where who=$2 and (who <> 'me' or user_id=$1) and event_id=$3 and status in ${INTEAM}`, [u.id, who, ev.id])).rows;
     for (const x of dup) {
       if (x.div_id === div.id) throw bad('Этот участник уже записан в эту категорию');
       const od = (ev.divisions || []).find(d => d.id === x.div_id), a = divDaySet(ev, od || {}), b2 = divDaySet(ev, div);
@@ -642,7 +804,7 @@ route('POST', '/api/team/act', async (req, res, u, body) => {
   });
   dirty();
   if (mailTo) mailMember(mailTo, `команда «${cap.team}»`, [mailText, '', `${ev.name} · ${div.name}`, `${SITE_URL()}/#orders`]);
-  return { teams: await myTeams(u.id), orders: (await db.query('select * from registrations where user_id=$1 order by created_at', [u.id])).rows.map(orderOut) };
+  return { teams: await myTeams(u.id), orders: await myOrders(u.id) };
 });
 
 route('POST', '/api/refund', async (req, res, u, body) => {
@@ -725,6 +887,7 @@ route('GET', '/api/admin/state', async (req, res, u) => {
     DRAFT_RESULTS,
     PENDING: pending,
     SCORES: (await db.query('select id, reg_id, workout_id, value, state from scores')).rows.map(scoreOut),
+    KID_DUPES: await kidDupes(),
     WAIVERS: [...new Set(['Рекорд Талант', ...(await db.query("select waiver, count(*) n from registrations where waiver is not null group by 1 order by n desc limit 20")).rows.map(r => r.waiver)])],
     CREW: (await db.query('select * from crew order by created_at')).rows.map(crewOut),
     CREW_CFG: Object.fromEntries((await db.query('select * from crew_rates')).rows.map(r => [r.event_id, { rates: r.rates, shift: Number(r.shift_hours) }])),
@@ -1067,7 +1230,7 @@ route('PATCH', '/api/admin/scores/:id', async (req, res, u, body, p) => {
 });
 
 /* ---------- backups: a daily snapshot of every table, kept 14 days; the owner downloads them ---------- */
-const BACKUP_TABLES = ['content', 'users', 'staff', 'leads', 'teams', 'registrations', 'scores', 'consents', 'crew', 'crew_rates', 'tg_chats', 'notify_emails'];
+const BACKUP_TABLES = ['content', 'users', 'staff', 'leads', 'teams', 'registrations', 'scores', 'consents', 'crew', 'crew_rates', 'tg_chats', 'notify_emails', 'kids', 'kid_guardians'];
 async function makeBackup(kind) {
   const tables = {}; let rows = 0;
   for (const t of BACKUP_TABLES) { tables[t] = (await db.query(`select * from ${t}`)).rows; rows += tables[t].length; }

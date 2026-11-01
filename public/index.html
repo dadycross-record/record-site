@@ -753,7 +753,7 @@ function cookieBar(force){
   b.innerHTML=`<p>Мы используем cookies: необходимые — чтобы работали формы и вход, и аналитические Яндекс Метрики — чтобы понимать, что на сайте удобно, а что нет. Аналитические включим только с вашего согласия. <a href="/docs/privacy" target="_blank">Подробнее</a></p><div class="row"><button class="btn sm" data-ck="all">Принять</button><button class="btn sm ghost" data-ck="need">Только необходимые</button></div>`;
   document.body.appendChild(b);
 }
-const ROOT_TAB = {crewManage:"me",invite:"events",crewApply:"events",login:"me",home:"home",events:"events",event:"events",divisions:"events",team:"events",teamCreate:"events",teamJoin:"events",form:"events",pay:"events",done:"events",fail:"events",leaderboard:"leaderboard",me:"me",orders:"me",score:"me",qr:"me",profile:"me",admin:"me",adminEvent:"me",adminDiv:"me",adminWod:"me",adminPeople:"me",adminSch:"me",adminPromo:"me",adminClub:"me"};
+const ROOT_TAB = {kidInvite:"me",crewManage:"me",invite:"events",crewApply:"events",login:"me",home:"home",events:"events",event:"events",divisions:"events",team:"events",teamCreate:"events",teamJoin:"events",form:"events",pay:"events",done:"events",fail:"events",leaderboard:"leaderboard",me:"me",orders:"me",score:"me",qr:"me",profile:"me",admin:"me",adminEvent:"me",adminDiv:"me",adminWod:"me",adminPeople:"me",adminSch:"me",adminPromo:"me",adminClub:"me"};
 
 function header(title){
   if (isClub()) return clubHeader();
@@ -974,6 +974,22 @@ teamJoin(){
         <div class="muted tiny" style="margin-top:4px">Основной состав: ${t.main.length} из ${div.size}${full?"":` · свободно ${div.size-t.main.length}`}${mixNeed(div,t.main)?` · ${mixNeed(div,t.main)}`:""}${t.reserve.length?` · запасные: ${t.reserve.map(esc).join(", ")}`:""}</div></div>
         <button class="btn sm${full?" ghost":""}" data-join="${esc(t.name)}">${full?"В запас":"Подать заявку"}</button></div>`; }).join("") || '<div class="empty">Команд пока нет — создайте свою</div>'}</div>
     <div class="muted tiny" style="margin-top:12px">Заявку подтверждает капитан. Платить взнос нужно после того, как он примет вас в основной состав.</div>`};
+},
+kidInvite(){
+  const K = S.kidInv || {};
+  if (!USER) return {title:"Приглашение", html:`<div class="card stack"><div>Чтобы принять приглашение, войдите на сайт${K.kind==="transfer"?" с вашим email":""}.</div><button class="btn block" data-act="kidlogin">Войти</button></div>`};
+  if (!K.info && !K.err && !K.loading){ K.loading=true; api("POST","/api/kids/invite/info",{token:K.token}).then(r=>{ S.kidInv={...K,info:r,loading:false}; render(); }).catch(err=>{ S.kidInv={...K,err:err.message,loading:false}; render(); }); }
+  if (K.done) return {title:"Готово", html:`<div class="card stack"><div><b>${esc(K.done)}</b></div><button class="btn block" data-go="profile">Открыть профиль</button></div>`};
+  if (K.err) return {title:"Приглашение", html:`<div class="empty">${esc(K.err)}</div>`};
+  if (!K.info) return {title:"Приглашение", html:'<div class="muted">Загружаю…</div>'};
+  const I = K.info;
+  if (I.kind==="transfer") return {title:"Ваш профиль спортсмена", html:`<div class="card stack"><div style="font-family:var(--f-display);font-weight:800;font-size:22px">${esc(I.kid)}</div>
+    <div class="small">${esc(I.from||"Родитель")} передаёт вам профиль, который вёл на сайте «Рекорда». Вместе с ним к вам перейдёт вся история стартов и результатов.</div>
+    ${USER.email!==I.email?`<div class="rule">Приглашение отправлено на другой email. Выйдите и войдите с тем email, на который пришла ссылка.</div>`:`<button class="btn block" data-act="kidaccept" ${K.busy?"disabled":""}>Принять профиль</button>`}</div>`};
+  return {title:"Доступ к профилю ребёнка", html:`<div class="card stack"><div style="font-family:var(--f-display);font-weight:800;font-size:22px">${esc(I.kid)}</div>
+    <div class="small">${esc(I.from||"Взрослый")} приглашает вас вести профиль ребёнка вместе: записывать на старты и видеть результаты. Ребёнок останется одним и тем же, без дубля${I.already?" — он уже есть в вашем профиле":""}.</div>
+    ${I.already?'<button class="btn block" data-go="profile">Открыть профиль</button>':`<button class="btn block" data-act="kidaccept" ${K.busy?"disabled":""}>Принять</button>`}
+    <div class="muted tiny">Если вы уже добавляли этого ребёнка сами, карточки объединятся, его заявки сохранятся.</div></div>`};
 },
 invite(){
   const I = S.invite;
@@ -1196,10 +1212,11 @@ score(){
 profile(){
   const edit = S.p.edit || !profileReady();
   if (!edit){
-    const kv = [["Фамилия и имя",`${ME.last} ${ME.first}`],["Пол",ME.gender==="F"?"Женский":"Мужской"],["Дата рождения",ME.dob?dShort(ME.dob):"—"],["Клуб",ME.affiliate||"—"],["Телефон",ME.phone||"—"],["Email",USER.email],["Telegram",ME.tg||"—"],["Экстренный контакт",ME.emName?`${ME.emName}, ${ME.emPhone}`:"—"],["Дети",ME.kids.length?ME.kids.map(k=>`${k.first} ${k.last}, ${k.dob.slice(0,4)} г.р.`).join("; "):"—"]];
+    const kv = [["Фамилия и имя",`${ME.last} ${ME.first}`],["Пол",ME.gender==="F"?"Женский":"Мужской"],["Дата рождения",ME.dob?dShort(ME.dob):"—"],["Клуб",ME.affiliate||"—"],["Телефон",ME.phone||"—"],["Email",USER.email],["Telegram",ME.tg||"—"],["Экстренный контакт",ME.emName?`${ME.emName}, ${ME.emPhone}`:"—"]];
     return {title:"Анкета участника", html:`<div class="card kv">${kv.map(([k,v])=>`<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</div>
      <div class="stack" style="margin-top:14px"><button class="btn block" data-go="profile" data-edit="1">Изменить анкету</button></div>
      <div class="rule" style="margin-top:12px">Анкета заполняется один раз и подставляется в каждую регистрацию.</div>
+     ${ME.kids.length?`<h2 class="sec">Дети</h2><div class="stack">${ME.kids.map(kidCard).join("")}</div>`:""}
      <h2 class="sec">Аккаунт</h2>
      ${S.p.delAsk?`<div class="panel stack"><div class="small">Удалить аккаунт и анкету? Регистрации на старты останутся у организатора без ваших контактов, имя в лидерборде скроется.</div><div class="row"><button class="btn sm" data-act="accdelyes">Удалить</button><button class="btn sm ghost" data-act="accdelno">Отмена</button></div></div>`
        :'<button class="btn sm ghost" data-act="accdelask">Удалить аккаунт и отозвать согласие</button>'}`};
@@ -1280,6 +1297,20 @@ function affBoard(ev){
   return `<div class="lb-head" style="margin-top:12px"><span>#</span><span></span><span>Клуб</span><span class="wcols"></span><span class="hpts">Участников</span><span></span></div><div class="lb">${arr.map(x=>`<div class="lr ${x.place<=3?"r"+x.place:""}"><button tabindex="-1" style="cursor:default"><span class="rk">${x.place}</span><span class="av">${esc(x[0][0])}</span><span class="nm"><b>${esc(x[0])}</b><span>Иркутская область</span></span><span class="wcols"></span><span class="pts">${x[1]}</span><span></span></button></div>`).join("")}</div>
   <div class="rule" style="margin-top:12px">Рейтинг клубов показывает активность: сколько атлетов клуб выставил на старт.</div>`;
 }
+/* a child's card in the profile: who else has access, invite a second adult, hand over to the grown-up athlete */
+function kidCard(k){
+  const age = k.dob ? athleteAge({date:TODAY,ageMode:"date"}, k) : 0, A = S.p.kid && S.p.kid.id===k.id ? S.p.kid : null;
+  const who = k.shared ? `Доступ: вы и ещё ${k.shared} ${k.shared===1?"взрослый":"взрослых"}` : "Доступ только у вас";
+  let panel = "";
+  if (A && A.kind==="invite") panel = A.link ? `<div class="panel stack"><div class="small">Отправьте ссылку второму родителю или законному представителю. Он откроет её, войдёт на сайт — и ${esc(k.first)} появится в его профиле. Ссылка действует 7 дней, сработает один раз.</div><input class="inp mono" readonly value="${esc(A.link)}" id="kidLink"><div class="row wrap"><button class="btn sm" data-act="kidcopy">Скопировать</button>${navigator.share?'<button class="btn sm ghost" data-act="kidshare">Поделиться</button>':""}<button class="btn sm ghost" data-act="kidclose">Готово</button></div></div>` : `<div class="panel small">${A.err?esc(A.err):"Создаю ссылку…"}</div>`;
+  if (A && A.kind==="transfer") panel = A.link ? `<div class="panel stack"><div class="small">${A.mailed?`Письмо со ссылкой отправлено на <b>${esc(A.email)}</b>.`:"Отправьте эту ссылку ребёнку."} Он войдёт на сайт со своим email и подтвердит — профиль и вся история выступлений перейдут к нему, а из вашего профиля карточка уйдёт. Ваши прошлые заказы и оплаты останутся у вас. Ссылка действует 14 дней.</div><input class="inp mono" readonly value="${esc(A.link)}" id="kidLink"><div class="row wrap"><button class="btn sm" data-act="kidcopy">Скопировать</button><button class="btn sm ghost" data-act="kidclose">Готово</button></div></div>`
+    : `<div class="panel stack"><div class="small">Укажите email, с которым ${esc(k.first)} будет входить на сайт. Профиль, старты и результаты перейдут к нему.</div><input class="inp ${A.err?"err":""}" id="kidEmail" type="email" inputmode="email" placeholder="email ребёнка" value="${esc(A.email||"")}" autocomplete="off">${A.err?fErr(A.err):""}<div class="row wrap"><button class="btn sm" data-act="kidtransfergo" ${A.busy?"disabled":""}>${A.busy?"Отправляю…":"Передать профиль"}</button><button class="btn sm ghost" data-act="kidclose">Отмена</button></div></div>`;
+  return `<div class="card stack" style="gap:8px"><div class="row" style="justify-content:space-between;gap:10px"><div><b>${esc(k.last)} ${esc(k.first)}</b><div class="muted tiny">${k.dob?dShort(k.dob)+" · "+age+" "+yNom(age):""}${k.affiliate?" · "+esc(k.affiliate):""}</div></div><span class="chip neutral">${k.shared?"общий":"ваш"}</span></div>
+    <div class="muted small">${who}</div>
+    ${age>=18?`<div class="rule">${esc(k.first)} уже 18 — передайте ему профиль, чтобы он сам записывался на старты и видел свою историю.</div>`:""}
+    ${A?"":`<div class="row wrap">${k.shared<2?`<button class="btn sm ghost" data-kidinv="${k.id}">${k.shared?"Пригласить ещё взрослого":"Пригласить второго взрослого"}</button>`:""}${age>=14?`<button class="btn sm ghost" data-kidtr="${k.id}">Передать профиль ${age>=18?"":"ребёнку"}</button>`:""}</div>`}
+    ${panel}</div>`;
+}
 function orderCard(o){
   const ev = EVENTS.find(e=>e.id===o.event) || {name:"Старт удалён",divisions:[],format:"onsite",status:"ended",date:o.date}, d = ev.divisions.find(x=>x.id===o.div) || {name:""};
   const stMap = {new:'<span class="chip warn">Ожидает оплаты</span>',paid:'<span class="chip ok">Зарегистрирован</span>',refund_requested:'<span class="chip warn">Запрошен возврат</span>',refunded:'<span class="chip neutral">Возврат оформлен</span>',cancelled:'<span class="chip neutral">Отменена</span>',blocked:'<span class="chip full">Отклонена</span>',pending:'<span class="chip warn">Ждёт капитана</span>',reserve:'<span class="chip neutral">Запасной</span>'};
@@ -1288,8 +1319,9 @@ function orderCard(o){
   const scoring = scoreTargets().some(t=>t.o.id===o.id);
   return `<div class="order"><div class="hd"><span class="small">${ev.date?dateRange(ev):""} · ${ev.format==="online"?"Онлайн":"Очный"}</span>${stMap[o.status]||""}</div>
    <div class="bd"><div style="font-family:var(--f-display);font-weight:600;font-size:16px;text-transform:uppercase">${esc(ev.name)}</div>
-   <dl class="kv small" style="margin:10px 0 0"><dt>Участник</dt><dd>${esc(p.last||"")} ${esc(p.first||"")}</dd><dt>Категория</dt><dd>${esc(d.name)}${o.team?` · ${esc(o.team)}`:""}</dd><dt>Заказ</dt><dd class="mono">${o.id}</dd><dt>${o.status==="new"?"К оплате":"Взнос"}</dt><dd class="mono">${o.waiver?`бесплатно · ${esc(o.waiver)}`:fmtRub(o.status==="new"?o.due:o.paid)}</dd><dt>Лидерборд</dt><dd>${o.publish?"с именем":"анонимно"} <button class="linkbtn" data-pubtoggle="${o.id}">${o.publish?"скрыть имя":"показывать имя"}</button></dd></dl></div>
-   ${["new","paid"].includes(o.status)?`<div class="acts">${scoring?`<button class="btn sm" data-go="score">Сдать результат</button>`:""}<button class="btn sm ghost" data-go="profile">Анкета</button>${ev.status!=="ended"?`<button class="btn sm ghost" data-refund="${o.id}">${o.status==="paid"&&o.paid>0?"Возврат":"Отменить"}</button>`:""}</div>`:""}
+   <dl class="kv small" style="margin:10px 0 0"><dt>Участник</dt><dd>${esc(p.last||"")} ${esc(p.first||"")}</dd><dt>Категория</dt><dd>${esc(d.name)}${o.team?` · ${esc(o.team)}`:""}</dd><dt>Заказ</dt><dd class="mono">${o.id}</dd><dt>${o.status==="new"?"К оплате":"Взнос"}</dt><dd class="mono">${o.waiver?`бесплатно · ${esc(o.waiver)}`:fmtRub(o.status==="new"?o.due:o.paid)}</dd><dt>Лидерборд</dt><dd>${o.publish?"с именем":"анонимно"} ${o.mine===false?"":`<button class="linkbtn" data-pubtoggle="${o.id}">${o.publish?"скрыть имя":"показывать имя"}</button>`}</dd></dl></div>
+   ${o.mine===false?`<div class="rule" style="margin-top:10px">Заявку оформил другой взрослый из профиля ребёнка — оплата, отмена и возврат у него.</div>`:""}
+   ${["new","paid"].includes(o.status)&&o.mine!==false?`<div class="acts">${scoring?`<button class="btn sm" data-go="score">Сдать результат</button>`:""}<button class="btn sm ghost" data-go="profile">Анкета</button>${ev.status!=="ended"?`<button class="btn sm ghost" data-refund="${o.id}">${o.status==="paid"&&o.paid>0?"Возврат":"Отменить"}</button>`:""}</div>`:""}
    ${o.team?teamBox(o):""}
    ${o.note && ["blocked","cancelled"].includes(o.status)?`<div class="rule" style="margin-top:10px"><b>Комментарий организатора:</b> ${esc(o.note)}</div>`:""}
    ${panel}</div>`;
@@ -1930,7 +1962,7 @@ admin(){
    <h2 class="sec">Резервные копии</h2>
    ${backupCard()}`:""}
 `};
-  return {title:"Панель организатора", html: tabs + `
+  return {title:"Панель организатора", html: tabs + kidDupesCard() + `
    <div class="stats flat" style="margin-top:0"><div><b>${act.length}</b><span>Активных стартов</span></div><div><b>${reg}</b><span>Записано</span></div><div><b class="acc" style="font-size:17px">${Math.round(money/1000)} тыс ₽</b><span>Взносы</span></div></div>
    <div style="margin-top:14px">${dataCard()}</div>
    <button class="btn block" data-act="anew" style="margin-top:14px">+ Новый старт</button>
@@ -2364,7 +2396,7 @@ async function loadSession(){
 }
 async function loadAdmin(){
   const a = await api("GET","/api/admin/state");
-  ADM = {REGS:a.REGS||[], PENDING:a.PENDING||[], SCORES:a.SCORES||[], CREW:a.CREW||[], CREW_CFG:a.CREW_CFG||{}, WAIVERS:a.WAIVERS||["Рекорд Талант"], DRAFT_RESULTS:a.DRAFT_RESULTS||null};
+  ADM = {REGS:a.REGS||[], PENDING:a.PENDING||[], SCORES:a.SCORES||[], CREW:a.CREW||[], CREW_CFG:a.CREW_CFG||{}, WAIVERS:a.WAIVERS||["Рекорд Талант"], DRAFT_RESULTS:a.DRAFT_RESULTS||null, KID_DUPES:a.KID_DUPES||[]};
   if (a.PROMOS) PROMOS = a.PROMOS;
   if (a.ACCESS) ACCESS = a.ACCESS;
   if (a.CLUB_LEADS) CLUB_LEADS = a.CLUB_LEADS;
@@ -2472,6 +2504,16 @@ const CREW_SELF = [["judge","Судья","Судейство заданий, п�
 function myCrewList(){
   if (!MYCREW.length) return "";
   return `<h2 class="sec">Заявки в команду</h2><div class="card" style="padding:4px 14px">${MYCREW.map(c=>{ const ev=EVENTS.find(e=>e.id===c.event); return `<div class="arow"><div class="sp"><b>${esc(ev?ev.name:c.event)}</b><div class="muted tiny">${CREW_ROLE[c.role]?CREW_ROLE[c.role][0]:""}${ev&&ev.date?` · ${dateRange(ev)}`:""}</div></div><span class="chip ${CREW_STL[c.status][1]}">${c.status==="request"?"На рассмотрении":c.status==="confirmed"?"В команде":"Не в этот раз"}</span></div>`; }).join("")}</div>`;
+}
+/* the same child added by different adults: same surname, name and date of birth */
+function kidDupesCard(){
+  const D = (ADM && ADM.KID_DUPES) || [];
+  if (!D.length || S.viewAs==="judge") return "";
+  const groups = {}; D.forEach(k=>{ (groups[k.key]=groups[k.key]||[]).push(k); });
+  return `<div class="card stack" style="border-color:var(--accent);margin-bottom:14px"><b>Возможные дубли детей · ${Object.keys(groups).length}</b>
+    <div class="muted small">Один и тот же ребёнок (фамилия, имя и дата рождения совпадают) заведён разными взрослыми. «Объединить» оставит одну карточку: доступ получат все эти взрослые, заявки и результаты сохранятся.</div>
+    ${Object.values(groups).map(g=>`<div class="panel stack" style="gap:6px"><b>${esc(g[0].name)} · ${dShort(g[0].dob)}</b>${g.map(k=>`<div class="small">${esc(k.adults.join(", ")||"без взрослых")} · заявок: ${k.regs}</div>`).join("")}
+      <div class="row wrap"><button class="btn sm" data-kidmerge="${g.map(k=>k.id).join(",")}">Объединить</button><span class="muted tiny">Если это разные дети — ничего не делайте.</span></div></div>`).join("")}</div>`;
 }
 function notifyCard(){
   if (adm.nf===undefined){ adm.nf=null; api("GET","/api/admin/notify").then(r=>{ adm.nf=r; render(); }).catch(()=>{ adm.nf={mail:false, emails:[], tg:false}; render(); }); }
@@ -2818,6 +2860,16 @@ document.addEventListener("click", e=>{
   if (ds.act==="avdel"){ syncProfile(); api("PUT","/api/profile/avatar",{data:null}).then(()=>{ ME.avatar=""; USER.avatar=""; render(); toast("Фото убрано"); }).catch(err=>toast(err.message)); return; }
   if (ds.act==="kidadd"){ syncProfile(); S.p.v.kids.push({id:"",first:"",last:"",gender:"M",dob:""}); return render(); }
   if (ds.kiddel!==undefined){ syncProfile(); S.p.v.kids.splice(+ds.kiddel,1); return render(); }
+  if (ds.kidinv){ const id=ds.kidinv; S.p={...S.p,kid:{id,kind:"invite"}}; render(); api("POST","/api/kids/invite",{kid:id}).then(r=>{ if (S.p.kid&&S.p.kid.id===id){ S.p.kid={...S.p.kid,link:r.link}; render(); } }).catch(err=>{ S.p.kid={...S.p.kid,err:err.message}; render(); }); return; }
+  if (ds.kidtr){ S.p={...S.p,kid:{id:ds.kidtr,kind:"transfer"}}; return render(); }
+  if (ds.act==="kidclose"){ S.p={...S.p,kid:null}; return render(); }
+  if (ds.act==="kidcopy"){ const i=document.getElementById("kidLink"); if (i){ i.select(); (navigator.clipboard?navigator.clipboard.writeText(i.value):Promise.reject()).then(()=>toast("Ссылка скопирована")).catch(()=>{ try{ document.execCommand("copy"); toast("Ссылка скопирована"); }catch(_){} }); } return; }
+  if (ds.act==="kidshare"){ const i=document.getElementById("kidLink"); if (i && navigator.share) navigator.share({title:"Профиль ребёнка на сайте «Рекорда»", url:i.value}).catch(()=>{}); return; }
+  if (ds.act==="kidtransfergo"){ const A=S.p.kid, email=(document.getElementById("kidEmail")||{}).value||""; A.email=email.trim(); A.busy=true; A.err=""; render();
+    api("POST","/api/kids/transfer",{kid:A.id,email:A.email}).then(r=>{ S.p.kid={...A,busy:false,link:r.link,mailed:r.mailed}; render(); }).catch(err=>{ S.p.kid={...A,busy:false,err:err.message}; render(); }); return; }
+  if (ds.act==="kidlogin") return needLogin("Войдите, чтобы принять приглашение");
+  if (ds.act==="kidaccept"){ const K=S.kidInv; K.busy=true; render(); api("POST","/api/kids/accept",{token:K.token}).then(async r=>{ await loadSession(); S.kidInv={...K,busy:false,done:r.msg}; render(); }).catch(err=>{ S.kidInv={...K,busy:false,err:err.message}; render(); }); return; }
+  if (ds.kidmerge){ const ids=ds.kidmerge.split(","), keep=ids[0]; (async()=>{ try{ let r; for (const d of ids.slice(1)) r=await api("POST","/api/admin/kids/merge",{keep,drop:d}); ADM.KID_DUPES=r.dupes; toast("Карточки объединены"); render(); }catch(err){ toast(err.message); } })(); return; }
   if (ds.act==="accdelask"){ S.p={...S.p,delAsk:true}; return render(); }
   if (ds.act==="accdelno"){ S.p={...S.p,delAsk:false}; return render(); }
   if (ds.act==="accdelyes"){ api("POST","/api/account/delete",{}).then(()=>{ location.hash=""; location.reload(); }).catch(err=>toast(err.message)); return; }
@@ -2919,8 +2971,9 @@ if (location.hash==="#admin") S.route="admin";
 if (location.hash==="#orders") S.route="orders";
 function openInvite(){ if (!/^#join=[A-Za-z0-9]+$/.test(location.hash)) return false; const tok=location.hash.slice(6); S.invite={token:tok}; S.route="invite"; S.p={}; history.replaceState(null,"",location.pathname);
   api("GET","/api/invite/"+tok).then(r=>{ S.invite={...r,token:tok}; render(); }).catch(err=>{ S.invite={token:tok,err:err.message}; render(); }); return true; }
-openInvite();
-window.addEventListener("hashchange", ()=>{ if (openInvite()) render(); });
+function openKidInvite(){ if (!/^#kid=[a-z0-9]+$/.test(location.hash)) return false; S.kidInv={token:location.hash.slice(5)}; S.route="kidInvite"; S.p={}; history.replaceState(null,"",location.pathname); return true; }
+openInvite(); openKidInvite();
+window.addEventListener("hashchange", ()=>{ if (openInvite() || openKidInvite()) render(); });
 if (location.hash==="#comp") S.route="home";
 render();
 (async()=>{
