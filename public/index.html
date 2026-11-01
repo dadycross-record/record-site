@@ -204,6 +204,7 @@ label.f{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--
 .rule{font-size:12.5px;color:var(--muted);background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:10px 12px}
 .selbtn{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;background:none;border:0;padding:0;text-align:left}
 .selbtn b{font-family:var(--f-display);font-weight:600;font-size:16px;text-transform:uppercase}
+.rulesbody{margin-top:10px;font-size:14px;line-height:1.5}.rulesbody h4{margin:14px 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:.04em}.rulesbody p{margin:0 0 8px;color:var(--muted)}.rulesbody p b{color:var(--fg)}.ptgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px;margin:6px 0 4px}.ptgrid span{display:flex;justify-content:space-between;gap:6px;padding:5px 8px;border-radius:8px;background:rgba(255,255,255,.05);font-variant-numeric:tabular-nums;font-size:13px}.ptgrid i{font-style:normal;opacity:.55}
 .filters{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
 select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 18px) 20px,calc(100% - 13px) 20px;background-size:5px 5px;background-repeat:no-repeat;padding-right:32px}
 .iconbtn{height:46px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);display:grid;place-items:center}
@@ -637,7 +638,7 @@ const PT_TABLES = [
   [42,[100,96,92,88,84,80,76,72,68,65,62,59,56,53,50,47,44,41,39,37,35,33,31,29,27,25,23,21,19,17,16,15,14,13,12,11,10,9,8,7,6,5]],
   [56,[100,97,94,91,88,85,82,79,76,73,70,68,66,64,62,60,58,56,54,52,50,48,46,44,42,40,38,36,34,32,30,28,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3]],
   [84,[100,98,96,94,92,90,88,86,84,82,80,78,76,74,72,70,69,68,67,66,65,64,63,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2]],
-  [98,Array.from({length:98},(_,i)=>100-i)]
+  [100,Array.from({length:100},(_,i)=>100-i)]
 ];
 const ptTable = n => (PT_TABLES.find(([size])=>n<=size) || PT_TABLES[PT_TABLES.length-1])[1];
 const ptsFor = (place, n) => { if (!place || place>n) return 0; const t=ptTable(n); return place<=t.length ? t[place-1] : Math.max(0, t[t.length-1]-(place-t.length)); };
@@ -1084,7 +1085,7 @@ leaderboard(){
    ${(()=>{ const me=rows.find(r=>r.me); return me && !q ? `<div class="mine"><div class="muted tiny" style="margin:12px 0 6px">ВАШ РЕЗУЛЬТАТ</div><div class="lb">${row(me,ev,wi)}</div></div>` : ""; })()}
    <div class="lb-head" style="margin-top:8px"><span>#</span><span></span><span>${L.tab==="team"?"Команда":"Атлет"}</span><span class="wcols">${wi<0?ev.workouts.map(w=>`<span class="wc">${esc(w.name.split(" · ")[0])}</span>`).join(""):""}</span><span class="hpts">${wi<0?(usesPoints(ev0)?"Баллы":"Очки"):"Результат"}</span><span></span></div>
    <div class="lb">${shown.map(r=>row(r,ev,wi)).join("") || '<div class="empty">Никого не нашли</div>'}</div>
-   ${month==="year"?'<div class="rule" style="margin-top:12px">Таблица года: очки — сумма мест за месяцы, меньше значит выше. Пропущенный месяц — место «последний + 1».</div>':wi<0?(usesPoints(ev0)?`<div class="rule" style="margin-top:12px">За место в каждом комплексе — баллы по таблице для ${rows.length} ${rows.length%10===1&&rows.length%100!==11?"участника":"участников"} (1 место — 100). Итог — сумма баллов, больше значит выше. Равный результат делит место, следующее пропускается. Без результата — 0 баллов.</div>`:'<div class="rule" style="margin-top:12px">Очки — сумма мест по заданиям, меньше значит выше. Равный результат делит место, следующее пропускается. Без результата — место «последний + 1».</div>'):""}`;
+   ${month==="year"?'<div class="rule" style="margin-top:12px">Таблица года: очки — сумма мест за месяцы, меньше значит выше. Пропущенный месяц — место «последний + 1».</div>':wi<0?(usesPoints(ev0)?ptsRules(rows.length):'<div class="rule" style="margin-top:12px">Очки — сумма мест по заданиям, меньше значит выше. Равный результат делит место, следующее пропускается. Без результата — место «последний + 1».</div>'):""}`;
   return {title:null, html};
 },
 me(){
@@ -1222,6 +1223,25 @@ function evCard(ev){
   return `<button class="ev ${ev.status==="ended"?"dim":""}" data-go="event" data-ev="${ev.id}">${ev.cover?`<div class="cover" style="background-image:url(${ev.cover})"></div>`:'<div class="band"></div>'}<div class="in">
    <div class="row">${statusChip(ev.status)}<span class="sp"></span><span class="muted tiny">${ev.format==="online"?"Онлайн":"Очный"}</span></div>
    <h3>${esc(ev.name)}</h3><div class="meta"><span>${dateRange(ev)}${durTxt(ev)}</span><span>${ev.city}</span><span>${ev.divisions.length} категорий</span></div></div></button>`;
+}
+/* how points work — for athletes, under the overall leaderboard */
+function ptsRules(n){
+  const open=S.lb.rules, t=ptTable(n), word=n%10===1&&n%100!==11?"участник":(n%10>=2&&n%10<=4&&(n%100<10||n%100>=20))?"участника":"участников";
+  const band=(PT_TABLES.find(([sz])=>n<=sz)||PT_TABLES[PT_TABLES.length-1])[0], from=[0,...PT_TABLES.map(x=>x[0])][PT_TABLES.findIndex(x=>x[0]===band)]+1;
+  return `<div class="card rules" style="margin-top:12px;padding:12px 14px"><button class="wodhead" data-act="lbrules" aria-expanded="${!!open}"><div class="sp" style="text-align:left"><b>Как считаются баллы</b><div class="muted tiny">В категории ${n} ${word} — таблица «${from}–${band}», 1 место = 100 баллов</div></div><span class="small" style="color:var(--accent)">${open?"Скрыть":"Подробнее"}</span></button>
+  ${open?`<div class="rulesbody">
+    <h4>1. Место в комплексе</h4>
+    <p><b>На время.</b> Быстрее — выше. Время фиксируется до сотых секунды. Не уложились в лимит — считаются выполненные повторения: больше — выше. Любой, кто уложился в лимит, выше любого, кто не уложился.</p>
+    <p><b>На повторения.</b> Больше — выше. <b>На вес.</b> Больше килограммов — выше.</p>
+    <p>Одинаковый результат — одно место на двоих, следующее место пропускается: двое пятых, дальше седьмой.</p>
+    <h4>2. Баллы за место</h4>
+    <p>Сколько баллов даёт место, зависит от числа участников категории: до 14, 15–28, 29–42, 43–56, 57–84 и 85–100. В вашей категории сейчас ${n} ${word}:</p>
+    <div class="ptgrid">${t.slice(0,Math.max(n,1)).map((v,i)=>`<span><i>${i+1}</i>${v}</span>`).join("")}</div>
+    <h4>3. Общий зачёт</h4>
+    <p>Баллы за все комплексы складываются, больше — выше. При равной сумме выше тот, у кого лучшее место в комплексах; если равны — второе лучшее и так далее; если и так поровну — решает место в последнем комплексе, затем в предпоследнем.</p>
+    <h4>4. Нет результата</h4>
+    <p>Не финишировал (DNF), не вышел на старт (DNS), снялся (WD) или дисквалифицирован в комплексе (DQ) — 0 баллов за этот комплекс. Баллы за другие комплексы сохраняются.</p>
+  </div>`:""}</div>`;
 }
 function wodCard(w, ev0){
   const open = S.lb.desc===w.id, cap = w.cap ? ` · лимит ${Math.floor(w.cap/60)}:${String(w.cap%60).padStart(2,"0")}` : "";
@@ -1974,7 +1994,7 @@ adminEvent(){
     <div class="pills wrap">${PRESETS.map((p,i)=>`<button data-apreset="${i}">+ ${p.name}</button>`).join("")}</div>
     <h2 class="sec">Комплексы · ${ev.workouts.length}</h2>
     ${ev.permanent?"":`<div class="f">Общий зачёт${seg("ascr",ev.scoring==="places"?"places":"points",[["points","Баллы по таблице"],["places","Сумма мест"]])}</div>
-    <div class="muted tiny">${ev.scoring==="places"?"Места в комплексах складываются, меньше сумма — выше в итоге.":"За место в комплексе — баллы по таблице. Таблица выбирается по числу участников категории: до 14, 28, 42, 56, 84 и 98 и больше. Больше баллов — выше в итоге. При равенстве — лучшие места в комплексах, затем последний комплекс."}</div>`}
+    <div class="muted tiny">${ev.scoring==="places"?"Места в комплексах складываются, меньше сумма — выше в итоге.":"За место в комплексе — баллы по таблице. Таблица выбирается по числу участников категории: до 14, 28, 42, 56, 84 и 100. Больше баллов — выше в итоге. При равенстве — лучшие места в комплексах, затем последний комплекс."}</div>`}
     <div class="card" style="padding:4px 14px">${wodRows || '<div class="muted small" style="padding:12px 0">Заданий пока нет</div>'}</div>
     <button class="btn ghost block" data-awod="new">+ Задание</button>
     ${crewPanel(ev)}
@@ -2776,6 +2796,7 @@ document.addEventListener("click", e=>{
   if (ds.lbmonth){ S.lb.ev=ds.lbev; S.lb.month=ds.lbmonth; S.lb.w=-1; S.lb.open=null; S.lb.tab="ind"; S.lb.div="m"; return tab("leaderboard"); }
   if (ds.act==="rsxlsx"){ const ev0=EVENTS.find(e=>e.id===adm.rs.ev); const sh=ev0&&lbSheets(ev0, ev0.permanent ? (S.lb.month&&S.lb.month!=="year"?S.lb.month:curMonth(ev0).id) : null); if (!sh||!sh.length) return toast("Результатов пока нет"); downloadXlsx(`leaderboard-${ev0.id}.xlsx`, sh); return; }
   if (ds.act==="lbxlsx"){ const ev0=EVENTS.find(e=>e.id===S.lb.ev); const sh=ev0&&lbSheets(ev0, ev0.permanent ? (S.lb.month&&S.lb.month!=="year"?S.lb.month:curMonth(ev0).id) : null); if (!sh||!sh.length) return toast("Результатов пока нет"); downloadXlsx(`leaderboard-${ev0.id}.xlsx`, sh); return; }
+  if (ds.act==="lbrules"){ S.lb.rules=!S.lb.rules; return render(); }
   if (ds.act==="lbsearch"){ S.searchOpen=!S.searchOpen; if(!S.searchOpen) S.lb.q=""; render(); const i=document.getElementById("lbq"); i&&i.focus(); return; }
   if (ds.row!==undefined){ S.lb.open = S.lb.open===ds.row?null:ds.row; return render(); }
   if (ds.refund){ S.p={...S.p,refund:ds.refund}; return render(); }
