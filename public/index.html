@@ -1588,7 +1588,7 @@ function admEvRow(e){
   return `<div class="card stack"><div class="row">${statusChip(e.status)}<span class="sp"></span><span class="muted tiny">${e.format==="online"?"Онлайн":"Очный"} · ${e.date?dateRange(e):"без даты"}</span></div>
    <div style="font-family:var(--f-display);font-weight:600;font-size:16px;text-transform:uppercase">${esc(e.name||"Без названия")}</div>
    <div class="muted small">${e.divisions.length} категорий · ${taken} записано${e.status==="open"?` · регистрация до ${dShort(e.regTo)}`:""}${nNew?` · <b style="color:var(--accent)">${nNew} ${nNew===1?"заявка ждёт":"заявок ждут"} оплаты</b>`:""}</div>
-   <div class="row"><button class="btn sm" data-adm-ev="${e.id}">Изменить</button><button class="btn sm ghost" data-adm-people="${e.id}">Участники</button></div></div>`;
+   <div class="row wrap"><button class="btn sm" data-adm-ev="${e.id}">Изменить</button><button class="btn sm ghost" data-adm-people="${e.id}">Участники</button><button class="btn sm ghost" data-lbev="${e.id}">Лидерборд</button></div></div>`;
 }
 const ROLE_L = {owner:"Владелец",admin:"Организатор",judge:"Судья",athlete:"Участник"};
 const ADMIN_ROUTES = ["adminClub","admin","adminEvent","adminDiv","adminWod","adminSch","adminPeople","adminPromo"];
@@ -2016,6 +2016,7 @@ adminEvent(){
   ev.docs = ev.docs || [];
   const stHint = {draft:"Черновик видите только вы.",open:"Старт виден в приложении, запись открыта до даты окончания регистрации.",live:"Старт идёт: открыт лидерборд, для онлайн-стартов — сдача результатов.",ended:"Регистрация и сдача закрыты, лидерборд остаётся."}[adm.st];
   return {title: ev.name || "Новый старт", html:`<div class="stack">
+    ${EVENTS.some(e=>e.id===ev.id)?`<div class="row wrap" style="gap:8px"><button class="btn sm" data-lbev="${ev.id}">Лидерборд</button><button class="btn sm ghost" data-adm-people="${ev.id}">Участники и результаты</button></div>`:""}
     <h2 class="sec" style="margin-top:0">Основное</h2>
     <label class="f">Название<input class="inp ${E.name?"err":""}" id="aName" value="${esc(ev.name)}" placeholder="Например, Детская Гонка Рекорда"></label>${fErr(E.name)}
     <label class="f">Подзаголовок<input class="inp" id="aEn" value="${esc(ev.en||"")}" placeholder="RECORD KIDS"></label>
@@ -2576,7 +2577,7 @@ function evQuick(ev, secs){
   const ic = k => `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${I[k]}</svg>`;
   const mine = ORDERS.some(o=>o.event===ev.id);
   const btns = [on("schedule")&&!ev.permanent?`<button data-evt="schedule">${ic("sch")}Расписание</button>`:"", on("wods")?`<button data-evt="wods">${ic("wod")}Задания</button>`:"",
-    ev.status!=="draft"&&ev.status!=="open"||Object.keys(RESULTS||{}).some(k=>k.startsWith(ev.id))?`<button data-lbev="${ev.id}">${ic("res")}Результаты</button>`:"",
+    ev.status!=="draft"&&ev.status!=="open"||isStaffView()||Object.keys(allResults()).some(k=>k.startsWith(ev.id+":")||k.startsWith(ev.id+"@"))?`<button data-lbev="${ev.id}">${ic("res")}Лидерборд</button>`:"",
     mine?`<button data-tab-go="me" data-sub="orders">${ic("my")}Моя заявка</button>`:""].filter(Boolean);
   return btns.length ? `<div class="quick" style="grid-template-columns:repeat(${btns.length},1fr);margin-top:12px">${btns.join("")}</div>` : "";
 }
@@ -2842,7 +2843,8 @@ document.addEventListener("click", e=>{
   if (ds.go) return go(ds.go,{});
   if (ds.evf){ S.p={f:ds.evf}; return render(); }
   if (ds.evt){ S.p={...S.p,t:ds.evt}; return render(); }
-  if (ds.lbev){ S.lb.ev=ds.lbev; S.lb.w=-1; S.lb.open=null; S.lb.div=(EVENTS.find(e=>e.id===ds.lbev)||{divisions:[{}]}).divisions[0].id||"m"; return tab("leaderboard"); }
+  if (ds.lbev && !ds.lbmonth){ const ev=EVENTS.find(e=>e.id===ds.lbev)||{divisions:[]}, RS=allResults(); const d=ev.divisions.find(x=>Object.keys(RS).some(k=>k===`${ev.id}:${x.id}`||k.startsWith(`${ev.id}@`)&&k.endsWith(`:${x.id}`)))||ev.divisions[0]||{};
+    S.lb.ev=ds.lbev; S.lb.w=-1; S.lb.open=null; S.lb.desc=null; S.lb.div=d.id||"m"; S.lb.tab=d.type==="team"?"team":"ind"; S.lb.init=true; return tab("leaderboard"); }
   if (ds.dtype){ S.p={...S.p,type:ds.dtype}; return render(); }
   if (ds.act==="divlogin") return needLogin("Войдите, чтобы записаться на старт");
   if (ds.act==="divprofile") return go("profile",{edit:true,then:"divisions"});
