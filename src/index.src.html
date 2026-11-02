@@ -514,7 +514,7 @@ const divDays = (ev,d) => { const days=evDays(ev); if (days.length<2) return "";
 const divDaysNote = (ev,d) => { const t=divDays(ev,d); return t && t!=="все дни" ? ` · выступает: ${t}` : ""; };
 
 /* ---------- demo data ---------- */
-const ME = {first:"",last:"",print:"",gender:"M",dob:"",affiliate:"",phone:"",email:"",tg:"",emName:"",emPhone:"",avatar:"",kids:[]};
+const ME = {first:"",last:"",print:"",gender:"M",dob:"",affiliate:"",size:"",phone:"",email:"",tg:"",emName:"",emPhone:"",avatar:"",kids:[]};
 let GYMS = ["RECORD","CF BAZA"];
 /* date of birth: type it by hand (ДД.ММ.ГГГГ) or pick it in the calendar; the hidden date input keeps the ISO value */
 const dobInput = (id, val, err) => `<div class="dob"><input class="inp ${err?"err":""}" id="${id}_t" data-dob="${id}" inputmode="numeric" placeholder="ДД.ММ.ГГГГ" maxlength="10" autocomplete="off" value="${val?dShort(val):""}"><span class="iconbtn dobbtn" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span><input type="date" class="dobcal" id="${id}" value="${esc(val||"")}" min="1920-01-01" max="${TODAY}" aria-label="Выбрать дату в календаре"></div>`;
@@ -1031,6 +1031,7 @@ invite(){
 form(){
   const {ev,div,team} = S.reg, f = S.reg.f, p = personOf(S.reg.who), kid = S.reg.who!=="me";
   const age = athleteAge(ev, p);
+  if (!f.sizeSet){ f.sizeSet = true; if (p && p.size && (kid?KID_SIZES:ADULT_SIZES).some(x=>x[0]===p.size)) f.size = p.size; }
   if (kid && !KID_SIZES.some(x=>x[0]===f.size)) f.size = kidSizeFor(age);
   if (!kid && !ADULT_SIZES.some(x=>x[0]===f.size)) f.size = "L";
   const base = div.price, disc = promoOff(S.reg), total = base-disc;
@@ -1238,7 +1239,7 @@ score(){
 profile(){
   const edit = S.p.edit || !profileReady();
   if (!edit){
-    const kv = [["Фамилия и имя",`${ME.last} ${ME.first}`],["Пол",ME.gender==="F"?"Женский":"Мужской"],["Дата рождения",ME.dob?dShort(ME.dob):"—"],["Клуб",ME.affiliate||"—"],["Телефон",ME.phone||"—"],["Email",USER.email],["Telegram",ME.tg||"—"],["Экстренный контакт",ME.emName?`${ME.emName}, ${ME.emPhone}`:"—"]];
+    const kv = [["Фамилия и имя",`${ME.last} ${ME.first}`],["Пол",ME.gender==="F"?"Женский":"Мужской"],["Дата рождения",ME.dob?dShort(ME.dob):"—"],["Клуб",ME.affiliate||"—"],["Футболка",ME.size||"не выбрана"],["Телефон",ME.phone||"—"],["Email",USER.email],["Telegram",ME.tg||"—"],["Экстренный контакт",ME.emName?`${ME.emName}, ${ME.emPhone}`:"—"]];
     return {title:"Анкета участника", html:`<div class="card kv">${kv.map(([k,v])=>`<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</div>
      <div class="stack" style="margin-top:14px"><button class="btn block" data-go="profile" data-edit="1">Изменить анкету</button></div>
      <div class="rule" style="margin-top:12px">Анкета заполняется один раз и подставляется в каждую регистрацию.</div>
@@ -1254,7 +1255,7 @@ profile(){
    <form class="stack" id="fProfile" novalidate>
     <div class="grid2"><label class="f">Фамилия<input class="inp ${e.last?"err":""}" id="pLast" value="${esc(v.last)}" autocomplete="family-name"></label><label class="f">Имя<input class="inp ${e.first?"err":""}" id="pFirst" value="${esc(v.first)}" autocomplete="given-name"></label></div>
     <div class="grid2"><label class="f">Пол${sel("pGender",v.gender,[["M","Мужской"],["F","Женский"]])}</label><label class="f">Дата рождения${dobInput("pDob", v.dob, e.dob)}</label></div>
-    <label class="f">Клуб${gymInput("pAff", v.affiliate)}</label>
+    <div class="grid2"><label class="f">Клуб${gymInput("pAff", v.affiliate)}</label><label class="f">Размер футболки${sel("pSize", v.size||"", [["","Не выбран"],...ADULT_SIZES])}</label></div>
     <div class="grid2"><label class="f">Телефон<input class="inp ${e.phone?"err":""}" id="pPhone" type="tel" value="${esc(v.phone)}" placeholder="+7" autocomplete="tel"></label><label class="f">Telegram<input class="inp" id="pTg" value="${esc(v.tg)}" placeholder="@name"></label></div>
     <div class="grid2"><label class="f">Экстренный контакт<input class="inp" id="pEm" value="${esc(v.emName)}" placeholder="Имя"></label><label class="f">Телефон<input class="inp" id="pEmP" type="tel" value="${esc(v.emPhone)}" placeholder="+7"></label></div>
     ${Object.values(e).filter(Boolean).map(x=>`<div class="err-t">${esc(x)}</div>`).join("")}
@@ -1262,7 +1263,7 @@ profile(){
     <div class="muted tiny">Добавьте детей, чтобы записывать их на детские старты от своего аккаунта.</div>
     ${v.kids.map((k,i)=>`<div class="card stack"><div class="grid2"><label class="f">Фамилия<input class="inp" id="kLast${i}" value="${esc(k.last)}"></label><label class="f">Имя<input class="inp" id="kFirst${i}" value="${esc(k.first)}"></label></div>
       <div class="grid2"><label class="f">Пол${sel("kGender"+i,k.gender,[["M","Мальчик"],["F","Девочка"]])}</label><label class="f">Дата рождения${dobInput("kDob"+i, k.dob)}</label></div>
-      <label class="f">Клуб${gymInput("kAff"+i, k.affiliate)}</label>
+      <div class="grid2"><label class="f">Клуб${gymInput("kAff"+i, k.affiliate)}</label><label class="f">Размер футболки${sel("kSize"+i, k.size||"", [["","Не выбран"],...KID_SIZES])}</label></div>
       <button type="button" class="btn sm ghost" data-kiddel="${i}" style="align-self:flex-start">Убрать</button></div>`).join("")}
     <button type="button" class="btn ghost" data-act="kidadd" style="align-self:flex-start">+ Ребёнок</button>
     <button class="btn block" type="submit" ${S.p.busy?"disabled":""}>${S.p.busy?"Сохраняю…":"Сохранить анкету"}</button>
@@ -1331,7 +1332,7 @@ function kidCard(k){
   if (A && A.kind==="invite") panel = A.link ? `<div class="panel stack"><div class="small">Отправьте ссылку второму родителю или законному представителю. Он откроет её, войдёт на сайт — и ${esc(k.first)} появится в его профиле. Ссылка действует 7 дней, сработает один раз.</div><input class="inp mono" readonly value="${esc(A.link)}" id="kidLink"><div class="row wrap"><button class="btn sm" data-act="kidcopy">Скопировать</button>${navigator.share?'<button class="btn sm ghost" data-act="kidshare">Поделиться</button>':""}<button class="btn sm ghost" data-act="kidclose">Готово</button></div></div>` : `<div class="panel small">${A.err?esc(A.err):"Создаю ссылку…"}</div>`;
   if (A && A.kind==="transfer") panel = A.link ? `<div class="panel stack"><div class="small">${A.mailed?`Письмо со ссылкой отправлено на <b>${esc(A.email)}</b>.`:"Отправьте эту ссылку ребёнку."} Он войдёт на сайт со своим email и подтвердит — профиль и вся история выступлений перейдут к нему, а из вашего профиля карточка уйдёт. Ваши прошлые заказы и оплаты останутся у вас. Ссылка действует 14 дней.</div><input class="inp mono" readonly value="${esc(A.link)}" id="kidLink"><div class="row wrap"><button class="btn sm" data-act="kidcopy">Скопировать</button><button class="btn sm ghost" data-act="kidclose">Готово</button></div></div>`
     : `<div class="panel stack"><div class="small">Укажите email, с которым ${esc(k.first)} будет входить на сайт. Профиль, старты и результаты перейдут к нему.</div><input class="inp ${A.err?"err":""}" id="kidEmail" type="email" inputmode="email" placeholder="email ребёнка" value="${esc(A.email||"")}" autocomplete="off">${A.err?fErr(A.err):""}<div class="row wrap"><button class="btn sm" data-act="kidtransfergo" ${A.busy?"disabled":""}>${A.busy?"Отправляю…":"Передать профиль"}</button><button class="btn sm ghost" data-act="kidclose">Отмена</button></div></div>`;
-  return `<div class="card stack" style="gap:8px"><div class="row" style="justify-content:space-between;gap:10px"><div><b>${esc(k.last)} ${esc(k.first)}</b><div class="muted tiny">${k.dob?dShort(k.dob)+" · "+age+" "+yNom(age):""}${k.affiliate?" · "+esc(k.affiliate):""}</div></div><span class="chip neutral">${k.shared?"общий":"ваш"}</span></div>
+  return `<div class="card stack" style="gap:8px"><div class="row" style="justify-content:space-between;gap:10px"><div><b>${esc(k.last)} ${esc(k.first)}</b><div class="muted tiny">${k.dob?dShort(k.dob)+" · "+age+" "+yNom(age):""}${k.affiliate?" · "+esc(k.affiliate):""}${k.size?" · футболка "+esc(sizeLabel(k.size)):""}</div></div><span class="chip neutral">${k.shared?"общий":"ваш"}</span></div>
     <div class="muted small">${who}</div>
     ${age>=18?`<div class="rule">${esc(k.first)} уже 18 — передайте ему профиль, чтобы он сам записывался на старты и видел свою историю.</div>`:""}
     ${A?"":`<div class="row wrap">${k.shared<2?`<button class="btn sm ghost" data-kidinv="${k.id}">${k.shared?"Пригласить ещё взрослого":"Пригласить второго взрослого"}</button>`:""}${age>=14?`<button class="btn sm ghost" data-kidtr="${k.id}">Передать профиль ${age>=18?"":"ребёнку"}</button>`:""}</div>`}
@@ -2516,8 +2517,8 @@ function myPlace(o){
 }
 function syncProfile(){
   const g=id=>document.getElementById(id), v=S.p.v; if (!v || !g("pLast")) return;
-  Object.assign(v,{last:g("pLast").value.trim(),first:g("pFirst").value.trim(),gender:g("pGender").value,dob:g("pDob").value,affiliate:g("pAff").value.trim(),phone:g("pPhone").value.trim(),tg:g("pTg").value.trim(),emName:g("pEm").value.trim(),emPhone:g("pEmP").value.trim()});
-  v.kids.forEach((k,i)=>{ if (g("kLast"+i)) Object.assign(k,{last:g("kLast"+i).value.trim(),first:g("kFirst"+i).value.trim(),gender:g("kGender"+i).value,dob:g("kDob"+i).value,affiliate:g("kAff"+i)?g("kAff"+i).value.trim():(k.affiliate||"")}); });
+  Object.assign(v,{last:g("pLast").value.trim(),first:g("pFirst").value.trim(),gender:g("pGender").value,dob:g("pDob").value,affiliate:g("pAff").value.trim(),size:g("pSize")?g("pSize").value:(v.size||""),phone:g("pPhone").value.trim(),tg:g("pTg").value.trim(),emName:g("pEm").value.trim(),emPhone:g("pEmP").value.trim()});
+  v.kids.forEach((k,i)=>{ if (g("kLast"+i)) Object.assign(k,{last:g("kLast"+i).value.trim(),first:g("kFirst"+i).value.trim(),gender:g("kGender"+i).value,dob:g("kDob"+i).value,affiliate:g("kAff"+i)?g("kAff"+i).value.trim():(k.affiliate||""),size:g("kSize"+i)?g("kSize"+i).value:(k.size||"")}); });
 }
 async function submitReg(){
   const r=S.reg, f=r.f;

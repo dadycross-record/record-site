@@ -132,6 +132,7 @@ create table if not exists kid_guardians (kid_id text not null references kids(i
 create index if not exists kid_guardians_user on kid_guardians(user_id);
 create table if not exists kid_invites (token_hash text primary key, kid_id text not null references kids(id) on delete cascade, from_user bigint, kind text not null, email text, expires_at timestamptz not null, created_at timestamptz not null default now());
 alter table registrations add column if not exists penalty text;
+alter table kids add column if not exists size text;
 alter table registrations add column if not exists athlete_user bigint references users(id) on delete set null;
 insert into kids (id, first, last, gender, dob, affiliate, print, created_by, created_at)
   select k->>'id', coalesce(k->>'first',''), coalesce(k->>'last',''), coalesce(k->>'gender','M'), coalesce(k->>'dob',''), coalesce(k->>'affiliate',''), k->>'print', u.id, u.created_at
@@ -282,6 +283,7 @@ async function logConsent(req, subject, kind, ref) {
 /* ---------- validation of stored person data ---------- */
 const GENDERS = ['M', 'F'];
 const nm = (v, max) => str(v, max).replace(/[<>"`\\]/g, '');
+const ADULT_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'], KID_SIZES = ['104', '110', '116', '122', '128', '134', '140', '146', '152', '158', '164', 'XS', 'S', 'M'];
 function cleanPerson(p, kid) {
   p = p || {};
   const o = {
@@ -289,6 +291,7 @@ function cleanPerson(p, kid) {
     dob: /^\d{4}-\d{2}-\d{2}$/.test(p.dob || '') ? p.dob : '', affiliate: canonGym(nm(p.affiliate, 80)),
   };
   o.print = (nm(p.print, 60) || `${o.first} ${o.last}`).toUpperCase();
+  o.size = (kid ? KID_SIZES : ADULT_SIZES).includes(p.size) ? p.size : '';
   if (!kid) Object.assign(o, { phone: str(p.phone, 30), tg: str(p.tg, 40), emName: nm(p.emName, 80), emPhone: str(p.emPhone, 30) });
   else o.id = /^kid[a-z0-9]{1,16}$/.test(p.id || '') ? p.id : 'kid' + rnd(8, 'abcdefghijklmnopqrstuvwxyz0123456789');
   return o;
@@ -300,7 +303,7 @@ const KID_GUARDIANS_MAX = 3;
 async function kidsOf(uid, q = (...a) => db.query(...a)) {
   return (await q(`select k.*, (select count(*)::int from kid_guardians g2 where g2.kid_id=k.id) n from kids k join kid_guardians g on g.kid_id=k.id
     where g.user_id=$1 and k.owner_user is null order by g.created_at, k.created_at`, [uid])).rows
-    .map(k => ({ id: k.id, first: k.first, last: k.last, gender: k.gender, dob: k.dob, affiliate: k.affiliate, print: k.print || `${k.first} ${k.last}`.toUpperCase(), shared: k.n - 1 }));
+    .map(k => ({ id: k.id, first: k.first, last: k.last, gender: k.gender, dob: k.dob, affiliate: k.affiliate, size: k.size || '', print: k.print || `${k.first} ${k.last}`.toUpperCase(), shared: k.n - 1 }));
 }
 async function mergeKids(q, keep, drop) {
   if (keep === drop) return;
@@ -434,11 +437,11 @@ route('PUT', '/api/profile', async (req, res, u, body) => {
       if (clash && !curIds.has(clash.id)) throw bad(kidDupMsg(k));
       if (clash && !own) { k.id = clash.id; own = !keep.has(k.id); if (!own) throw bad('Один и тот же ребёнок указан дважды'); }
       if (own) {
-        await q('update kids set first=$2, last=$3, gender=$4, dob=$5, affiliate=$6, print=$7, match_key=$8 where id=$1', [k.id, k.first, k.last, k.gender, k.dob, k.affiliate, k.print, key]);
+        await q('update kids set first=$2, last=$3, gender=$4, dob=$5, affiliate=$6, print=$7, match_key=$8, size=$9 where id=$1', [k.id, k.first, k.last, k.gender, k.dob, k.affiliate, k.print, key, k.size || null]);
         keep.add(k.id);
       } else {
         const id = 'kid' + rnd(8, 'abcdefghijklmnopqrstuvwxyz0123456789');
-        await q('insert into kids (id, first, last, gender, dob, affiliate, print, match_key, created_by) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [id, k.first, k.last, k.gender, k.dob, k.affiliate, k.print, key, u.id]);
+        await q('insert into kids (id, first, last, gender, dob, affiliate, print, match_key, created_by, size) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)', [id, k.first, k.last, k.gender, k.dob, k.affiliate, k.print, key, u.id, k.size || null]);
         await q('insert into kid_guardians (kid_id, user_id) values ($1,$2)', [id, u.id]);
       }
     }
@@ -621,7 +624,7 @@ route('POST', '/api/register', async (req, res, u, body) => {
   if (!cons.rules) throw bad('Нужно принять условия участия');
   if (!cons.pd) throw bad('Нужно согласие на обработку персональных данных');
   if (age < 18 && !cons.parent) throw bad('Нужно согласие законного представителя');
-  const size = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '104', '110', '116', '122', '128', '134', '140', '146', '152', '158', '164'].includes(body.size) ? body.size : null;
+  const size = [...ADULT_SIZES, ...KID_SIZES].includes(body.size) ? body.size : null;
   const snap = { ...cleanPerson(person, who !== 'me'), phone: u.profile.phone, emName: u.profile.emName || '', emPhone: u.profile.emPhone || '', affiliate: canonGym(nm(body.affiliate, 80)) || person.affiliate || '' };
   if (who !== 'me') snap.parent = `${u.profile.first || ''} ${u.profile.last || ''}`.trim();
   let out_captain = null;
