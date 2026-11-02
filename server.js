@@ -621,7 +621,7 @@ route('POST', '/api/register', async (req, res, u, body) => {
   if (!cons.rules) throw bad('Нужно принять условия участия');
   if (!cons.pd) throw bad('Нужно согласие на обработку персональных данных');
   if (age < 18 && !cons.parent) throw bad('Нужно согласие законного представителя');
-  const size = ['XS', 'S', 'M', 'L', 'XL', 'XXL'].includes(body.size) ? body.size : null;
+  const size = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '104', '110', '116', '122', '128', '134', '140', '146', '152', '158', '164'].includes(body.size) ? body.size : null;
   const snap = { ...cleanPerson(person, who !== 'me'), phone: u.profile.phone, emName: u.profile.emName || '', emPhone: u.profile.emPhone || '', affiliate: canonGym(nm(body.affiliate, 80)) || person.affiliate || '' };
   if (who !== 'me') snap.parent = `${u.profile.first || ''} ${u.profile.last || ''}`.trim();
   let out_captain = null;
