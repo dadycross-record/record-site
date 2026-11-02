@@ -947,9 +947,19 @@ event(){
   }
   else if (t==="wods"){
     const card = w => `<div class="card wod"><h4>${esc(w.name)}</h4><div class="muted tiny">${esc(w.note)}</div><ul>${w.body.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`;
+    // per-category complexes: a picker; athletes land on their own category
+    const perDiv = ev.workouts.some(w=>w.divs&&w.divs.length), divsW = ev.divisions.filter(d=>divWorkouts(ev,d.id).length);
+    S.wdiv = S.wdiv || {};
+    const mine = ORDERS.filter(o=>o.event===ev.id && (ACTIVE_ST.includes(o.status)||["pending","reserve"].includes(o.status))).map(o=>o.div).filter(id=>divsW.some(d=>d.id===id));
+    if (perDiv && S.wdiv[ev.id]===undefined) S.wdiv[ev.id] = mine[0] || "";
+    const wd = perDiv && divsW.some(d=>d.id===S.wdiv[ev.id]) ? S.wdiv[ev.id] : "";
+    const picker = perDiv ? `<div class="f" style="margin-bottom:6px"><select class="inp" id="wodDiv" aria-label="Категория">${[["","Все категории"],...divsW.map(d=>[d.id,d.name+(mine.includes(d.id)?" · ваша":"")])].map(([k,l])=>`<option value="${k}" ${k===wd?"selected":""}>${esc(l)}</option>`).join("")}</select></div>
+      <div class="muted tiny" style="margin-bottom:10px">${wd?(mine.includes(wd)?"Показаны задания вашей категории.":"Показаны задания выбранной категории."):"У каждой категории свои задания — выберите свою, чтобы видеть только их."}</div>` : "";
+    const list = wd ? divWorkouts(ev, wd) : null;
     body = !ev.workouts.length ? '<div class="empty">Задания опубликуют ближе к старту</div>'
+      : picker + (list ? (multi ? days.map(d=>{ const ws=list.filter(w=>(w.day||days[0])===d); return ws.length ? `<h2 class="sec">${dayLabel(ev,d)}</h2><div class="stack">${ws.map(card).join("")}</div>` : ""; }).join("") : `<div class="stack">${list.map(card).join("")}</div>`)
       : multi ? days.map(d=>{ const ws=ev.workouts.filter(w=>(w.day||days[0])===d); return ws.length ? `<h2 class="sec">${dayLabel(ev,d)}</h2><div class="stack">${ws.map(card).join("")}</div>` : ""; }).join("")
-      : wodGroups(ev).map(g=>`${g.title?`<h2 class="sec">${esc(g.title)}</h2>`:""}<div class="stack">${g.ws.map(card).join("")}</div>`).join("");
+      : wodGroups(ev).map(g=>`${g.title?`<h2 class="sec">${esc(g.title)}</h2>`:""}<div class="stack">${g.ws.map(card).join("")}</div>`).join(""));
   }
   const canReg = ev.permanent ? ["open","live"].includes(ev.status) : (ev.status==="open" || (ev.status==="live" && TODAY<=ev.regTo));
   return {title:ev.name, html:`<div class="tabs" role="tablist">${tabsHtml}</div><div style="margin-top:14px">${body}</div>
@@ -3099,6 +3109,7 @@ document.addEventListener("change", e=>{
   if (e.target.dataset && e.target.dataset.regquick){ const id=e.target.dataset.regquick, st=e.target.value; e.target.disabled=true;
     api("PATCH","/api/admin/regs/"+encodeURIComponent(id),{status:st}).then(async r=>{ const i=ADM.REGS.findIndex(x=>x.id===r.order.id); if(i>=0) ADM.REGS[i]={...ADM.REGS[i],...r.order}; if (r.warn) setTimeout(()=>toast(r.warn),1500); await loadContent(); render(); toast("Статус: "+(REG_ST_OPTS.find(x=>x[0]===st)||[0,st])[1]); }).catch(err=>{ toast(err.message); render(); }); return; }
   if (e.target.dataset && e.target.dataset.pen){ const reg=e.target.dataset.pen, text=e.target.value.trim(); api("POST","/api/admin/penalty",{reg,text}).then(r=>{ ADM.PENALTIES=ADM.PENALTIES||{}; if (r.text) ADM.PENALTIES[reg]=r.text; else delete ADM.PENALTIES[reg]; toast(r.text?"Штраф записан":"Запись удалена"); }).catch(err=>toast(err.message)); return; }
+  if (id==="wodDiv"){ const ev=EVENTS.find(x=>x.id===S.p.ev); if (ev){ S.wdiv=S.wdiv||{}; S.wdiv[ev.id]=e.target.value; } return render(); }
   if (id==="rqDiv"){ adm.rq.div=e.target.value; return render(); }
   if (id==="regDiv"){ adm.rf.div=e.target.value; adm.rf.sel={}; return render(); }
   if (id==="regAll"){ const ev=curEv(), {list}=regFilter(ev, ADM.REGS.filter(o=>o.event===ev.id)); list.filter(o=>o.status==="new").forEach(o=>{ adm.rf.sel[o.id]=e.target.checked; }); return render(); }
