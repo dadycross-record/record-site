@@ -209,6 +209,8 @@ label.f{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--
 .selbtn b{font-family:var(--f-display);font-weight:600;font-size:16px;text-transform:uppercase}
 .rulesbody{margin-top:10px;font-size:14px;line-height:1.5}.rulesbody h4{margin:14px 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:.04em}.rulesbody p{margin:0 0 8px;color:var(--muted)}.rulesbody p b{color:var(--fg)}.ptgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px;margin:6px 0 4px}.ptgrid span{display:flex;justify-content:space-between;gap:6px;padding:5px 8px;border-radius:8px;background:rgba(255,255,255,.05);font-variant-numeric:tabular-nums;font-size:13px}.ptgrid i{font-style:normal;opacity:.55}
 .dob{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 46px;gap:8px}.dobbtn{display:grid;place-items:center}.dobcal{position:absolute;right:0;top:0;width:46px;height:100%;opacity:0;cursor:pointer;border:0;padding:0}.dobcal::-webkit-calendar-picker-indicator{position:absolute;inset:0;width:100%;height:100%;cursor:pointer}
+.resbar{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,240px);gap:8px}@media(max-width:600px){.resbar{grid-template-columns:1fr}}
+.resgrid{min-width:100%}.resgrid th,.resgrid td{vertical-align:top;white-space:nowrap}.resgrid td .inp{width:104px;padding:8px 10px;min-height:0;height:40px}.resgrid .inp.miss{border-color:rgba(247,177,0,.55)}.resgrid .nm{position:sticky;left:0;z-index:1;background:var(--surface);min-width:150px;white-space:normal}.resgrid .pen .inp{width:220px}.resgrid .rsmeta{margin-top:3px}
 .filters{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
 select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 18px) 20px,calc(100% - 13px) 20px;background-size:5px 5px;background-repeat:no-repeat;padding-right:32px}
 .iconbtn{height:46px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);display:grid;place-items:center}
@@ -775,7 +777,7 @@ function header(title){
 }
 const NAV = [["home","Главная"],["events","Старты"],["leaderboard","Лидерборд"],["me","Профиль"]];
 function topnav(){ const cur = ROOT_TAB[S.route]; return `<nav class="topnav" aria-label="Разделы">${NAV.map(([k,l])=>`<button data-tab="${k}" ${cur===k?'aria-current="page"':""}>${l}</button>`).join("")}</nav>`; }
-const WIDTH = {club:"wide",adminClub:"mid",home:"wide",events:"wide",leaderboard:"wide",admin:"wide",adminPeople:"wide",orders:"wide",divisions:"wide",event:"mid",teamJoin:"mid"};
+const WIDTH = {adminResults:"wide",club:"wide",adminClub:"mid",home:"wide",events:"wide",leaderboard:"wide",admin:"wide",adminPeople:"wide",orders:"wide",divisions:"wide",event:"mid",teamJoin:"mid"};
 const statusChip = s => ({open:'<span class="chip open">Регистрация открыта</span>',live:'<span class="chip live">Идёт</span>',ended:'<span class="chip ended">Завершён</span>',draft:'<span class="chip neutral">Черновик</span>'}[s]);
 const isPub = e => e.status!=="draft";
 const isStaffView = () => ["owner","admin","judge"].includes(S.viewAs);
@@ -1578,15 +1580,15 @@ function admEvRow(e){
   return `<div class="card stack"><div class="row">${statusChip(e.status)}<span class="sp"></span><span class="muted tiny">${e.format==="online"?"Онлайн":"Очный"} · ${e.date?dateRange(e):"без даты"}</span></div>
    <div style="font-family:var(--f-display);font-weight:600;font-size:16px;text-transform:uppercase">${esc(e.name||"Без названия")}</div>
    <div class="muted small">${e.divisions.length} категорий · ${taken} записано${e.status==="open"?` · регистрация до ${dShort(e.regTo)}`:""}${nNew?` · <b style="color:var(--accent)">${nNew} ${nNew===1?"заявка ждёт":"заявок ждут"} оплаты</b>`:""}</div>
-   <div class="row wrap"><button class="btn sm" data-adm-ev="${e.id}">Изменить</button><button class="btn sm ghost" data-adm-people="${e.id}">Участники</button><button class="btn sm ghost" data-lbev="${e.id}">Лидерборд</button></div></div>`;
+   <div class="row wrap"><button class="btn sm" data-adm-ev="${e.id}">Изменить</button><button class="btn sm ghost" data-adm-res="${e.id}">Результаты</button></div></div>`;
 }
 const ROLE_L = {owner:"Владелец",admin:"Организатор",judge:"Судья",athlete:"Участник"};
-const ADMIN_ROUTES = ["adminClub","admin","adminEvent","adminDiv","adminWod","adminSch","adminPeople","adminPromo"];
+const ADMIN_ROUTES = ["adminClub","admin","adminEvent","adminDiv","adminWod","adminSch","adminPeople","adminPromo","adminResults"];
 const LOGIN_ROUTES = ["me","orders","crewApply","crewManage","score","profile","form","team","teamCreate","teamJoin","done",...ADMIN_ROUTES];
 function allowed(route){
   if (!ADMIN_ROUTES.includes(route)) return true;
   if (!["owner","admin","judge"].includes(S.viewAs)) return false;
-  if (S.viewAs==="judge") return route==="admin" || route==="adminPeople";
+  if (S.viewAs==="judge") return route==="admin" || route==="adminResults";
   return true;
 }
 const canEdit = () => S.viewAs==="owner" || S.viewAs==="admin";
@@ -1694,6 +1696,7 @@ function adminClick(t, ds){
   if (ds.who){ S.who=ds.who; render(); return true; }
   if (ds.admEv){ adm.evId=ds.admEv; adm.err={}; adm.delAsk=false; adm.st=curEv().status; go("adminEvent",{}); return true; }
   if (ds.admPeople){ adm.evId=ds.admPeople; go("adminPeople",{}); return true; }
+  if (ds.admRes){ adm.evId=ds.admRes; go("adminResults",{}); return true; }
   if (ds.act==="anew" || ds.act==="akids"){ const ev=newEvent(ds.act==="akids"?"kids":""); EVENTS.push(ev); adm.evId=ev.id; adm.st="draft"; adm.err={}; go("adminEvent",{}); if (ds.act==="akids") toast("Шаблон создан: 8 возрастных групп и 2 задания"); return true; }
   const ev = curEv();
   if (ds.afmt){ ev.format=ds.afmt; render(); return true; }
@@ -1923,9 +1926,11 @@ noAccess(){
 admin(){
   const pend = ADM.PENDING;
   if (S.viewAs==="judge") return {title:"Панель судьи", html:`
-   <div class="rule">Роль «Судья»: вы проверяете результаты онлайн-стартов. Старты, участников, промокоды и доступ видит организатор.</div>
+   <div class="rule">Роль «Судья»: вы вносите результаты атлетов и проверяете результаты онлайн-стартов. Заявки, оплаты и настройки стартов видит организатор.</div>
    <h2 class="sec">Результаты на проверке · ${pend.length}</h2>
-   ${pend.length?`<div class="stack cards">${pend.map(scoreReview).join("")}</div>`:'<div class="empty">Новых результатов нет</div>'}`};
+   ${pend.length?`<div class="stack cards">${pend.map(scoreReview).join("")}</div>`:'<div class="empty">Новых результатов нет</div>'}
+   <h2 class="sec">Ввод результатов</h2>
+   <div class="stack">${EVENTS.filter(e=>e.status!=="open").map(e=>`<div class="card row wrap" style="justify-content:space-between;gap:10px"><div><b>${esc(e.name)}</b><div class="row" style="gap:6px;margin-top:4px">${statusChip(e.status)}<span class="muted tiny">${e.date?dHuman(e.date):""}</span></div></div><div class="row" style="gap:8px"><button class="btn sm" data-adm-res="${e.id}">Результаты</button><button class="btn sm ghost" data-lbev="${e.id}">Лидерборд</button></div></div>`).join("")||'<div class="empty">Стартов пока нет</div>'}</div>`};
   const act = EVENTS.filter(e=>e.status==="open"||e.status==="live");
   const actRegs = ADM.REGS.filter(o=>ACTIVE_ST.includes(o.status) && act.some(e=>e.id===o.event));
   const reg = actRegs.length, money = actRegs.reduce((a,o)=>a+(o.paid||0),0);
@@ -2006,7 +2011,7 @@ adminEvent(){
   ev.docs = ev.docs || [];
   const stHint = {draft:"Черновик видите только вы.",open:"Старт виден в приложении, запись открыта до даты окончания регистрации.",live:"Старт идёт: открыт лидерборд, для онлайн-стартов — сдача результатов.",ended:"Регистрация и сдача закрыты, лидерборд остаётся."}[adm.st];
   return {title: ev.name || "Новый старт", html:`<div class="stack">
-    ${EVENTS.some(e=>e.id===ev.id)?`<div class="row wrap" style="gap:8px"><button class="btn sm" data-lbev="${ev.id}">Лидерборд</button><button class="btn sm ghost" data-adm-people="${ev.id}">Участники и результаты</button></div>`:""}
+    ${EVENTS.some(e=>e.id===ev.id)?`<div class="row wrap" style="gap:8px"><button class="btn sm" data-adm-people="${ev.id}">Участники и заявки</button><button class="btn sm ghost" data-lbev="${ev.id}">Лидерборд</button></div>`:""}
     <h2 class="sec" style="margin-top:0">Основное</h2>
     <label class="f">Название<input class="inp ${E.name?"err":""}" id="aName" value="${esc(ev.name)}" placeholder="Например, Детская Гонка Рекорда"></label>${fErr(E.name)}
     <label class="f">Подзаголовок<input class="inp" id="aEn" value="${esc(ev.en||"")}" placeholder="RECORD KIDS"></label>
@@ -2130,22 +2135,59 @@ adminSch(){
     <button class="btn block" data-act="ssave">${adm.schIdx===null?"Добавить в программу":"Сохранить"}</button>
   </div>`};
 },
+adminResults(){
+  const ev=curEv(); if (!ev) return {title:"Результаты", html:'<div class="empty">Старт не найден</div>'};
+  const R = adm.rq = adm.rq && adm.rq.ev===ev.id ? adm.rq : {ev:ev.id, q:"", div:"", miss:false};
+  const owner = S.viewAs==="owner", pts = usesPoints(ev), q = R.q.trim().toLowerCase();
+  const paid = ADM.REGS.filter(o=>o.event===ev.id && o.status==="paid");
+  const divs = ev.divisions.filter(d=>paid.some(o=>o.div===d.id));
+  const sc = (regs, w) => { const x = ADM.SCORES.find(s=>regs.includes(s.reg) && s.workout===w && s.state!=="rejected"); return x ? x.value : null; };
+  let total=0, done=0;
+  const blocks = divs.filter(d=>!R.div || d.id===R.div).map(div=>{
+    const mon = ev.permanent ? curMonth(ev).id : undefined, ws = divWorkouts(ev, div.id).filter(w=>!ev.permanent || w.month===mon), regs = paid.filter(o=>o.div===div.id);
+    let lines = div.type==="team" ? [...new Set(regs.filter(o=>o.team && (o.role||"main")==="main").map(o=>o.team))].map(tn=>{ const ms=regs.filter(o=>o.team===tn); return {name:tn, sub:ms.map(o=>`${(o.person||{}).last||""} ${((o.person||{}).first||"")[0]||""}.`).join(", "), reg:(ms.find(o=>o.captain)||ms[0]).id, regs:ms.map(o=>o.id), pubs:ms.map(o=>o.pub)}; })
+      : regs.map(o=>({name:`${(o.person||{}).last||""} ${(o.person||{}).first||""}`.trim(), sub:"", reg:o.id, regs:[o.id], pubs:[o.pub]}));
+    lines.sort((a,b)=>a.name.localeCompare(b.name,"ru"));
+    lines.forEach(L=>{ L.vals = ws.map(w=>sc(L.regs, w.id)); });
+    lines.forEach(L=>{ total += ws.length; done += L.vals.filter(v=>v!==null).length; });
+    if (q) lines = lines.filter(L=>(L.name+" "+L.sub).toLowerCase().includes(q));
+    if (R.miss) lines = lines.filter(L=>L.vals.some(v=>v===null));
+    if (!lines.length) return "";
+    const lb = leaderboard(ev.id, div.id, mon), rk = L => lb.rows.find(r=>(r.k||[]).some(k=>L.pubs.includes(k)));
+    const nDone = lines.reduce((a,L)=>a+L.vals.filter(v=>v!==null).length,0), nAll = lines.length*ws.length;
+    return `<h2 class="sec" style="display:flex;justify-content:space-between;gap:10px;align-items:baseline"><span>${esc(div.name)}</span><span class="muted tiny" style="text-transform:none;letter-spacing:0">внесено ${nDone} из ${nAll}</span></h2>
+    ${ws.length?`<div class="card tbl-wrap resgrid-wrap" style="padding:0"><table class="tbl resgrid"><thead><tr><th class="nm">${div.type==="team"?"Команда":"Атлет"}</th>${ws.map(w=>`<th title="${esc(w.name)}">${esc(w.name.split(" · ")[0])}<div class="muted tiny" style="font-weight:400;text-transform:none;letter-spacing:0">${{time:"время / повт.",reps:"повторения",load:"кг",place:"место"}[w.type]||""}${w.cap?" · "+Math.floor(w.cap/60)+":"+String(w.cap%60).padStart(2,"0"):""}</div></th>`).join("")}<th class="num">Итог</th>${owner?'<th class="pen">Штраф<div class="muted tiny" style="font-weight:400;text-transform:none;letter-spacing:0">видите только вы</div></th>':""}</tr></thead><tbody>
+      ${lines.map(L=>{ const r=rk(L); return `<tr><td class="nm"><b>${esc(L.name)}</b>${L.sub?`<div class="muted tiny">${esc(L.sub)}</div>`:""}${q&&!R.div?`<div class="muted tiny">${esc(div.name)}</div>`:""}</td>
+        ${ws.map((w,wi)=>{ const v=L.vals[wi]; return `<td><input class="inp mono ${v===null?"miss":""}" data-rsreg="${L.reg}" data-rsw="${w.id}" data-rsev="${ev.id}" value="${esc(resInput(w.type,v))}" placeholder="${v===null?"—":""}" inputmode="${w.type==="time"?"text":"decimal"}" autocomplete="off" aria-label="${esc(L.name)} · ${esc(w.name)}">${v!==null&&r?`<div class="muted tiny rsmeta">#${r.wr[wi]}${pts?" · "+r.wp[wi]:""}</div>`:""}</td>`; }).join("")}
+        <td class="num mono">${r&&L.vals.some(v=>v!==null)?`<b>${r.place}</b><div class="muted tiny">${pts?r.pts+" б.":"Σ "+r.pts}</div>`:"—"}</td>
+        ${owner?`<td class="pen"><input class="inp" data-pen="${L.reg}" value="${esc((ADM.PENALTIES||{})[L.reg]||"")}" placeholder="Нарушение, решение…" maxlength="500" autocomplete="off"></td>`:""}</tr>`; }).join("")}
+    </tbody></table></div>`:'<div class="empty">У категории нет комплексов — добавьте их в редакторе старта</div>'}`;
+  }).join("");
+  return {title:"Результаты", html:`<div class="muted small" style="margin-bottom:10px">${esc(ev.name)}${ev.permanent?" · "+monthTitle(curMonth(ev).id):ev.date?" · "+dHuman(ev.date):""}</div>
+    <div class="resbar"><input class="inp" id="rqQ" type="search" placeholder="Поиск атлета или команды" value="${esc(R.q)}" autocomplete="off">
+      <select class="inp" id="rqDiv" aria-label="Категория"><option value="">Все категории</option>${divs.map(d=>`<option value="${d.id}" ${d.id===R.div?"selected":""}>${esc(d.name)}</option>`).join("")}</select></div>
+    <div class="row wrap" style="gap:8px;margin:10px 0 4px;align-items:center"><div class="pills" role="tablist" style="margin:0"><button role="tab" aria-selected="${!R.miss}" data-rqmiss="0">Все</button><button role="tab" aria-selected="${R.miss}" data-rqmiss="1">Не внесено</button></div>
+      <span class="muted small">Внесено <b>${done}</b> из <b>${total}</b></span><span class="sp"></span><button class="btn sm ghost" data-lbev="${ev.id}">Лидерборд</button>${["owner","admin"].includes(S.viewAs)?`<button class="btn sm ghost" data-act="rsxlsx">Excel</button>`:""}</div>
+    <div class="muted tiny" style="margin-bottom:6px">Время до сотых — <b>12:54,15</b>; не уложился в лимит — число повторений; вес — кг. Сохраняется само по Enter или при переходе к другому полю; Enter — к следующему атлету. Пустое поле с жёлтой рамкой — результата ещё нет.</div>
+    ${divs.length ? (blocks || '<div class="empty">Никого не нашли</div>') : '<div class="empty">Нет оплаченных участников — вносить результаты пока некому.</div>'}`};
+},
 adminPeople(){
   const ev=curEv(); if (!ev) return {title:"Участники", html:'<div class="empty">Старт не найден</div>'};
   const regs = ADM.REGS.filter(o=>o.event===ev.id), nNew = regs.filter(o=>o.status==="new").length;
   const crew = ADM.CREW.filter(c=>c.event===ev.id), nReq = crew.filter(c=>c.status==="request").length;
   const judge = S.viewAs==="judge";
-  const t = judge ? "res" : ["stats","regs","crew","res"].includes(adm.ptab) ? adm.ptab : "stats";
-  if (judge) return {title:"Результаты", html:`<div class="muted small" style="margin-bottom:10px">${esc(ev.name)} · ${ev.date?dHuman(ev.date):""}</div>${resultsTab(ev)}`};
-  const tabs = `<div class="admtabs t4" role="tablist">
+  const t = ["stats","regs","crew"].includes(adm.ptab) ? adm.ptab : "stats";
+  if (judge) return {title:"Участники", html:'<div class="empty">Раздел для организатора</div>'};
+  const tabs = `<div class="admtabs t3" role="tablist">
     <button role="tab" aria-selected="${t==="stats"}" data-ptab="stats"><b>Участники</b><span>статистика старта</span></button>
     <button role="tab" aria-selected="${t==="regs"}" data-ptab="regs"><b>Заявки${nNew?` <i class="tabn">${nNew}</i>`:""}</b><span>${nNew?`${nNew} не обработано`:"все обработаны"}</span></button>
     <button role="tab" aria-selected="${t==="crew"}" data-ptab="crew"><b>Судьи и волонтёры${nReq?` <i class="tabn">${nReq}</i>`:""}</b><span>заявки и команда старта</span></button>
-    <button role="tab" aria-selected="${t==="res"}" data-ptab="res"><b>Результаты</b><span>ввод по комплексам</span></button></div>`;
+    </div>
+    <div class="row wrap" style="margin:-4px 0 14px"><button class="btn sm ghost" data-adm-res="${ev.id}">Ввод результатов</button><button class="btn sm ghost" data-lbev="${ev.id}">Лидерборд</button></div>`;
   const body = t==="regs" ? `${nNew?`<div class="rule small" style="margin:0 0 4px">Подсвечены заявки, по которым ещё нет оплаты: <b>${nNew}</b>. Когда участник оплатил — нажмите «Оплачено» или откройте заявку по фамилии.</div>`:""}
       ${regs.length ? regTable(ev, regs) : '<div class="empty">Заявок пока нет</div>'}
       <div class="row wrap" style="margin-top:12px"><button class="btn sm ghost" data-act="regcsv" ${regs.length?"":"disabled"}>Скачать заявки для Excel</button></div>`
-    : t==="crew" ? crewTab(ev, crew) : t==="res" ? resultsTab(ev) : peopleStats(ev, regs);
+    : t==="crew" ? crewTab(ev, crew) : peopleStats(ev, regs);
   return {title:"Участники", html:`<div class="muted small" style="margin-bottom:10px">${esc(ev.name)} · ${ev.date?dHuman(ev.date):""}</div>${tabs}${body}`};
 }
 });
@@ -2422,7 +2464,7 @@ async function loadSession(){
 }
 async function loadAdmin(){
   const a = await api("GET","/api/admin/state");
-  ADM = {REGS:a.REGS||[], PENDING:a.PENDING||[], SCORES:a.SCORES||[], CREW:a.CREW||[], CREW_CFG:a.CREW_CFG||{}, WAIVERS:a.WAIVERS||["Рекорд Талант"], DRAFT_RESULTS:a.DRAFT_RESULTS||null, KID_DUPES:a.KID_DUPES||[]};
+  ADM = {REGS:a.REGS||[], PENDING:a.PENDING||[], SCORES:a.SCORES||[], CREW:a.CREW||[], CREW_CFG:a.CREW_CFG||{}, WAIVERS:a.WAIVERS||["Рекорд Талант"], DRAFT_RESULTS:a.DRAFT_RESULTS||null, KID_DUPES:a.KID_DUPES||[], PENALTIES:a.PENALTIES||{}};
   if (a.PROMOS) PROMOS = a.PROMOS;
   if (a.ACCESS) ACCESS = a.ACCESS;
   if (a.CLUB_LEADS) CLUB_LEADS = a.CLUB_LEADS;
@@ -2608,7 +2650,8 @@ function resultsTab(ev){
     <div class="row wrap" style="margin-top:12px"><button class="btn sm" data-lbopen="${ev.id}|${div.id}">Открыть лидерборд категории</button>${["owner","admin"].includes(S.viewAs)?`<button class="btn sm ghost" data-act="rsxlsx">Скачать лидерборд в Excel</button>`:""}</div>`;
 }
 async function saveResult(input){
-  const ev=curEv(), R=adm.rs, w=(ev.workouts||[]).find(x=>x.id===R.w), reg=input.dataset.rsreg, raw=input.value.trim();
+  const ev=EVENTS.find(e=>e.id===input.dataset.rsev)||curEv(), wid=input.dataset.rsw||(adm.rs&&adm.rs.w), w=(ev.workouts||[]).find(x=>x.id===wid), reg=input.dataset.rsreg, raw=input.value.trim();
+  if (!w) return false;
   const prev = ADM.SCORES.find(x=>x.reg===reg && x.workout===w.id);
   if (!raw && !prev) return;
   let value = null;
@@ -2871,8 +2914,9 @@ document.addEventListener("click", e=>{
   if (ds.lbdesc){ S.lb.desc = S.lb.desc===ds.lbdesc ? null : ds.lbdesc; return render(); }
   if (ds.lbm){ S.lb.month=ds.lbm; S.lb.w=-1; S.lb.open=null; return render(); }
   if (ds.lbmonth){ S.lb.ev=ds.lbev; S.lb.month=ds.lbmonth; S.lb.w=-1; S.lb.open=null; S.lb.tab="ind"; S.lb.div="m"; return tab("leaderboard"); }
-  if (ds.act==="rsxlsx"){ const ev0=EVENTS.find(e=>e.id===adm.rs.ev); const sh=ev0&&lbSheets(ev0, ev0.permanent ? (S.lb.month&&S.lb.month!=="year"?S.lb.month:curMonth(ev0).id) : null); if (!sh||!sh.length) return toast("Результатов пока нет"); downloadXlsx(`leaderboard-${ev0.id}.xlsx`, sh); return; }
+  if (ds.act==="rsxlsx"){ const ev0=EVENTS.find(e=>e.id===((adm.rq&&adm.rq.ev)||(adm.rs&&adm.rs.ev))); const sh=ev0&&lbSheets(ev0, ev0.permanent ? (S.lb.month&&S.lb.month!=="year"?S.lb.month:curMonth(ev0).id) : null); if (!sh||!sh.length) return toast("Результатов пока нет"); downloadXlsx(`leaderboard-${ev0.id}.xlsx`, sh); return; }
   if (ds.act==="lbxlsx"){ const ev0=EVENTS.find(e=>e.id===S.lb.ev); const sh=ev0&&lbSheets(ev0, ev0.permanent ? (S.lb.month&&S.lb.month!=="year"?S.lb.month:curMonth(ev0).id) : null); if (!sh||!sh.length) return toast("Результатов пока нет"); downloadXlsx(`leaderboard-${ev0.id}.xlsx`, sh); return; }
+  if (ds.rqmiss!==undefined){ adm.rq.miss = ds.rqmiss==="1"; return render(); }
   if (ds.act==="lbrules"){ S.lb.rules=!S.lb.rules; return render(); }
   if (ds.act==="lbsearch"){ S.searchOpen=!S.searchOpen; if(!S.searchOpen) S.lb.q=""; render(); const i=document.getElementById("lbq"); i&&i.focus(); return; }
   if (ds.row!==undefined){ S.lb.open = S.lb.open===ds.row?null:ds.row; return render(); }
@@ -2907,7 +2951,11 @@ document.addEventListener("keydown", e=>{ if (e.key==="Enter" && e.target.datase
 document.addEventListener("change", e=>{
   const id = e.target.id;
   if (id==="rsDiv"){ adm.rs.div=e.target.value; adm.rs.w=""; return render(); }
-  if (e.target.dataset && e.target.dataset.rsreg){ const i=+e.target.dataset.rsi; saveResult(e.target).then(ok=>{ if (ok!==false){ const y=window.scrollY; render(); window.scrollTo(0,y); const nx=document.querySelector(`[data-rsi="${i+1}"]`); if (nx && adm.rsNext){ nx.focus(); nx.select(); } adm.rsNext=false; } }); return; }
+  if (e.target.dataset && e.target.dataset.rsreg){ const t=e.target, wid=t.dataset.rsw, col=[...document.querySelectorAll(`[data-rsw="${wid}"]`)], idx=col.indexOf(t), nextReg=col[idx+1]&&col[idx+1].dataset.rsreg, go=adm.rsNext;
+    saveResult(t).then(ok=>{ adm.rsNext=false; if (ok===false) return; const y=window.scrollY, sx=(document.querySelector(".resgrid-wrap")||{}).scrollLeft; render(); window.scrollTo(0,y);
+      if (go && nextReg){ const nx=document.querySelector(`[data-rsw="${wid}"][data-rsreg="${nextReg}"]`); if (nx){ nx.focus(); nx.select(); } } }); return; }
+  if (e.target.dataset && e.target.dataset.pen){ const reg=e.target.dataset.pen, text=e.target.value.trim(); api("POST","/api/admin/penalty",{reg,text}).then(r=>{ ADM.PENALTIES=ADM.PENALTIES||{}; if (r.text) ADM.PENALTIES[reg]=r.text; else delete ADM.PENALTIES[reg]; toast(r.text?"Штраф записан":"Запись удалена"); }).catch(err=>toast(err.message)); return; }
+  if (id==="rqDiv"){ adm.rq.div=e.target.value; return render(); }
   if (id==="regDiv"){ adm.rf.div=e.target.value; adm.rf.sel={}; return render(); }
   if (id==="regAll"){ const ev=curEv(), {list}=regFilter(ev, ADM.REGS.filter(o=>o.event===ev.id)); list.filter(o=>o.status==="new").forEach(o=>{ adm.rf.sel[o.id]=e.target.checked; }); return render(); }
   if (e.target.dataset && e.target.dataset.cwd){ const [cid,d]=e.target.dataset.cwd.split("|"), c=ADM.CREW.find(x=>x.id===+cid); if (!c) return; const work={...c.work}; if (e.target.checked) work[d]={k:"full"}; else delete work[d]; const y=window.scrollY;
@@ -2930,6 +2978,7 @@ document.addEventListener("input", e=>{
   if (e.target.id==="pVal"){ syncPromo(); const el=document.getElementById("promoPrev"); if (el) el.innerHTML=promoPreview(); }
   if (e.target.id==="dMin"||e.target.id==="dMax"){ syncDiv(); const w=document.getElementById("whoTxt"); if(w) w.innerHTML=whoText(); }
   if (e.target.id==="tq"){ S.p={...S.p,q:e.target.value}; const pos=e.target.selectionStart; render(); const i=document.getElementById("tq"); i.focus(); i.setSelectionRange(pos,pos); }
+  if (e.target.id==="rqQ"){ adm.rq.q=e.target.value; const pos=e.target.selectionStart; render(); const i=document.getElementById("rqQ"); if (i){ i.focus(); try{ i.setSelectionRange(pos,pos); }catch(_){} } return; }
   if (e.target.id==="lbq"){ S.lb.q=e.target.value; const pos=e.target.selectionStart; render(); const i=document.getElementById("lbq"); i.focus(); i.setSelectionRange(pos,pos); }
 });
 document.addEventListener("submit", e=>{

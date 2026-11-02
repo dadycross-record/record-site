@@ -131,6 +131,7 @@ create index if not exists kids_key on kids(match_key);
 create table if not exists kid_guardians (kid_id text not null references kids(id) on delete cascade, user_id bigint not null references users(id) on delete cascade, created_at timestamptz not null default now(), primary key(kid_id, user_id));
 create index if not exists kid_guardians_user on kid_guardians(user_id);
 create table if not exists kid_invites (token_hash text primary key, kid_id text not null references kids(id) on delete cascade, from_user bigint, kind text not null, email text, expires_at timestamptz not null, created_at timestamptz not null default now());
+alter table registrations add column if not exists penalty text;
 alter table registrations add column if not exists athlete_user bigint references users(id) on delete set null;
 insert into kids (id, first, last, gender, dob, affiliate, print, created_by, created_at)
   select k->>'id', coalesce(k->>'first',''), coalesce(k->>'last',''), coalesce(k->>'gender','M'), coalesce(k->>'dob',''), coalesce(k->>'affiliate',''), k->>'print', u.id, u.created_at
@@ -892,6 +893,7 @@ route('GET', '/api/admin/state', async (req, res, u) => {
     PENDING: pending,
     SCORES: (await db.query('select id, reg_id, workout_id, value, state from scores')).rows.map(scoreOut),
     KID_DUPES: await kidDupes(),
+    ...(u.role === 'owner' ? { PENALTIES: Object.fromEntries(regs.filter(r => r.penalty).map(r => [r.id, r.penalty])) } : {}),
     WAIVERS: [...new Set(['Рекорд Талант', ...(await db.query("select waiver, count(*) n from registrations where waiver is not null group by 1 order by n desc limit 20")).rows.map(r => r.waiver)])],
     CREW: (await db.query('select * from crew order by created_at')).rows.map(crewOut),
     CREW_CFG: Object.fromEntries((await db.query('select * from crew_rates')).rows.map(r => [r.event_id, { rates: r.rates, shift: Number(r.shift_hours) }])),
@@ -899,6 +901,14 @@ route('GET', '/api/admin/state', async (req, res, u) => {
 });
 const scoreOut = s => ({ id: s.id, reg: s.reg_id, workout: s.workout_id, value: s.value, state: s.state });
 
+/* internal penalty notes: only the owner writes and reads them */
+route('POST', '/api/admin/penalty', async (req, res, u, body) => {
+  need(u, 'owner');
+  const text = String(body.text == null ? '' : body.text).replace(/[\u0000-\u0008\u000b-\u001f]/g, '').trim().slice(0, 500);
+  const r = await db.query('update registrations set penalty=$2 where id=$1 returning id', [str(body.reg, 40), text || null]);
+  if (!r.rows.length) throw bad('Участник не найден');
+  return { reg: r.rows[0].id, text };
+});
 route('POST', '/api/admin/score', async (req, res, u, body) => {
   need(u, 'owner', 'admin', 'judge');
   const reg = (await db.query('select * from registrations where id=$1', [str(body.reg, 40)])).rows[0];
