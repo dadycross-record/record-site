@@ -1721,6 +1721,7 @@ function adminClick(t, ds){
   if (ds.admEv){ adm.evId=ds.admEv; adm.err={}; adm.delAsk=false; adm.st=curEv().status; go("adminEvent",{}); return true; }
   if (ds.admPeople){ adm.evId=ds.admPeople; go("adminPeople",{}); return true; }
   if (ds.admRes){ adm.evId=ds.admRes; go("adminResults",{}); return true; }
+  if (ds.act==="ofsnow"){ adm.ofsBusy=true; render(); api("POST","/api/admin/backups/offsite",{}).then(r=>{ OFFSITE={...OFFSITE,last:r.last,error:""}; adm.ofsBusy=false; BACKUPS=null; render(); toast("Копия отправлена на Яндекс Диск"); }).catch(err=>{ OFFSITE={...OFFSITE,error:err.message}; adm.ofsBusy=false; render(); toast(err.message); }); return true; }
   if (ds.aevf){ adm.evf=ds.aevf; render(); return true; }
   if (ds.divopen){ adm.divOpen = adm.divOpen===ds.divopen ? null : ds.divopen; render(); return true; }
   if (ds.regjump){ const ev=curEv(), o=ADM.REGS.find(x=>x.id===ds.regjump); adm.rf={ev:ev.id, st:"all", q:"", div:o?o.div:"", sel:{}}; adm.ptab="regs"; adm.regOpen=ds.regjump; render(); setTimeout(()=>{ const el=document.querySelector(`[data-regopen="${ds.regjump}"]`); if (el) el.scrollIntoView({block:"center"}); },50); return true; }
@@ -2582,17 +2583,26 @@ document.getElementById("docIn").addEventListener("change", e=>{
   rd.readAsDataURL(f);
 });
 /* backups: the server makes one a day and keeps 14; the owner downloads them to a computer */
-let BACKUPS = null;
+let BACKUPS = null, OFFSITE = null;
 const fmtStamp = iso => { const d = new Date(Date.parse(iso)+8*3600e3).toISOString(); return `${d.slice(8,10)}.${d.slice(5,7)}.${d.slice(0,4)}, ${d.slice(11,16)}`; };
 function backupCard(){
-  if (BACKUPS===null){ BACKUPS=[]; api("GET","/api/admin/backups").then(r=>{ BACKUPS=r.backups; if (S.route==="admin") render(); }).catch(()=>{}); }
+  if (BACKUPS===null){ BACKUPS=[]; api("GET","/api/admin/backups").then(r=>{ BACKUPS=r.backups; OFFSITE=r.offsite||null; if (S.route==="admin") render(); }).catch(()=>{}); }
   const list = BACKUPS.slice(0,14);
   return `<div class="card stack">
     <div class="small">Сайт сам сохраняет копию всей базы раз в сутки и хранит копии 14 дней. Раз в неделю скачивайте свежую копию на компьютер: если с сервером что-то случится, данные можно будет восстановить из неё.</div>
     <div class="row wrap"><button class="btn sm" data-act="bkpnow" ${adm.bkpBusy?"disabled":""}>${adm.bkpBusy?"Готовлю копию…":"Скачать копию сейчас"}</button></div>
+    ${offsiteBox()}
     ${list.length?`<div style="padding:0 2px">${list.map(b=>`<div class="arow"><div class="sp"><b>${fmtStamp(b.created)}</b><div class="muted tiny">${b.kind==="daily"?"автоматическая":"вручную"} · ${b.rows} записей · ${fmtSize(b.size)}</div></div><button class="btn sm ghost" data-bkp="${b.id}">Скачать</button></div>`).join("")}</div>`:'<div class="muted tiny">Первая автоматическая копия появится в течение часа после запуска сайта.</div>'}
     <div class="muted tiny">В копии есть персональные данные участников. Храните файл на своём компьютере и никому его не пересылайте.</div>
   </div>`;
+}
+function offsiteBox(){
+  const O = OFFSITE; if (!O) return "";
+  if (!O.ready) return `<div class="panel stack" style="gap:6px"><b>Копия вне сервера: Яндекс Диск — не подключён</b><div class="muted tiny">${O.keyShort?"Ключ шифрования короче 12 символов — задайте длиннее. ":""}Чтобы копии каждый день уходили на ваш Яндекс Диск в зашифрованном виде, в настройках сервера нужно задать логин Яндекса, пароль приложения для «Файлов (WebDAV)» и ключ шифрования.</div></div>`;
+  return `<div class="panel stack" style="gap:6px"><div class="row" style="justify-content:space-between;gap:10px"><b>Копия вне сервера: Яндекс Диск</b><span class="chip ${O.error?"full":O.last?"ok":"neutral"}">${O.error?"ошибка":O.last?"работает":"ждёт первой копии"}</span></div>
+    <div class="muted tiny">Аккаунт ${esc(O.user)} · папка ${esc(O.dir)} · шифрование AES-256. Каждый день — файл дня недели (7 штук по кругу) и файл месяца.${O.last?` Последняя отправка: ${fmtStamp(O.last)}.`:""}</div>
+    ${O.error?`<div class="err-t">${esc(O.error)}</div>`:""}
+    <div class="row wrap"><button class="btn sm ghost" data-act="ofsnow" ${adm.ofsBusy?"disabled":""}>${adm.ofsBusy?"Отправляю…":"Отправить копию сейчас"}</button></div></div>`;
 }
 async function downloadBackup(id){
   const r = await fetch("/api/admin/backups/"+id, {credentials:"same-origin"});

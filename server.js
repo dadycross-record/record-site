@@ -4,6 +4,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const https = require('https');
 const zlib = require('zlib');
 const { Pool } = require('./lib/pg');
 const mail = require('./lib/mail');
@@ -1323,17 +1324,64 @@ async function makeBackup(kind) {
   await db.query(`delete from backups where created_at < now() - interval '14 days'`);
   return r.rows[0];
 }
+/* off-site copy: the daily backup also goes to Yandex Disk over WebDAV, encrypted with the owner's passphrase.
+   BACKUP_WEBDAV_USER / BACKUP_WEBDAV_PASS — Yandex login and an app password for «Файлы (WebDAV)»; BACKUP_KEY — passphrase.
+   Files rotate by weekday (7) plus one per month, so the folder never grows without bound. */
+const offsite = { last: null, error: '' };
+const ofs = () => ({ url: String(process.env.BACKUP_WEBDAV_URL || 'https://webdav.yandex.ru').replace(/\/$/, ''), user: String(process.env.BACKUP_WEBDAV_USER || '').trim(), pass: String(process.env.BACKUP_WEBDAV_PASS || '').trim(), key: String(process.env.BACKUP_KEY || ''), dir: '/' + String(process.env.BACKUP_DIR || 'record-backups').replace(/^\/+|\/+$/g, '') });
+const offsiteReady = () => { const c = ofs(); return !!(c.user && c.pass && c.key.length >= 12); };
+function encryptBackup(buf, pass) {
+  const salt = crypto.randomBytes(16), iv = crypto.randomBytes(12), key = crypto.scryptSync(pass, salt, 32);
+  const c = crypto.createCipheriv('aes-256-gcm', key, iv), enc = Buffer.concat([c.update(buf), c.final()]);
+  return Buffer.concat([Buffer.from('RECBK1'), salt, iv, c.getAuthTag(), enc]);
+}
+function davRequest(method, path, body) {
+  const c = ofs(), u = new URL(c.url + path);
+  return new Promise((resolve, reject) => {
+    const r = (u.protocol === 'http:' ? require('http') : https).request(u, { method, headers: { Authorization: 'Basic ' + Buffer.from(c.user + ':' + c.pass).toString('base64'), ...(body ? { 'Content-Type': 'application/octet-stream', 'Content-Length': body.length } : {}) } }, res => {
+      res.resume(); res.on('end', () => resolve(res.statusCode));
+    });
+    r.on('error', reject); r.setTimeout(120000, () => r.destroy(new Error('timeout'))); r.end(body || undefined);
+  });
+}
+async function uploadOffsite(id) {
+  if (!offsiteReady()) return;
+  try {
+    const b = (await db.query('select created_at, data from backups where id=$1', [id])).rows[0]; if (!b) return;
+    const raw = typeof b.data === 'string' ? Buffer.from(b.data.replace(/^\\x/, ''), 'hex') : b.data;
+    const enc = encryptBackup(raw, ofs().key), d = new Date(b.created_at.getTime() + 8 * 3600e3), dir = ofs().dir;
+    const st = await davRequest('MKCOL', dir + '/'); if (![201, 405, 301].includes(st) && st >= 300) throw new Error('папка: ответ ' + st);
+    const day = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][d.getUTCDay()], month = d.toISOString().slice(0, 7);
+    for (const name of [`record-backup-${day}.bin`, `record-backup-${month}.bin`]) {
+      const code = await davRequest('PUT', `${dir}/${name}`, enc);
+      if (code >= 300) throw new Error(code === 401 || code === 403 ? 'Яндекс Диск не принял логин или пароль приложения' : `Яндекс Диск ответил ${code}`);
+    }
+    offsite.last = new Date().toISOString(); offsite.error = ''; console.log('offsite backup uploaded', id, enc.length);
+  } catch (e) { offsite.error = e.message; console.error('offsite backup failed:', e.message); }
+}
 async function dailyBackup() {
   try {
     const { rows } = await db.query(`select 1 from backups where created_at > now() - interval '23 hours'`);
-    if (!rows.length) { const b = await makeBackup('daily'); console.log('backup created', b.id); }
+    if (!rows.length) { const b = await makeBackup('daily'); console.log('backup created', b.id); await uploadOffsite(b.id); }
+    else if (offsiteReady() && (!offsite.last || Date.now() - Date.parse(offsite.last) > 25 * 3600e3)) {
+      const last = (await db.query('select id from backups order by created_at desc limit 1')).rows[0]; if (last) await uploadOffsite(last.id);
+    }
   } catch (e) { console.error('backup failed:', e.message); }
 }
 const backupOut = b => ({ id: b.id, created: b.created_at, kind: b.kind, size: b.size, rows: b.rows });
 
 route('GET', '/api/admin/backups', async (req, res, u) => {
   need(u, 'owner');
-  return { backups: (await db.query('select id, created_at, kind, size, rows from backups order by created_at desc')).rows.map(backupOut) };
+  return { backups: (await db.query('select id, created_at, kind, size, rows from backups order by created_at desc')).rows.map(backupOut),
+    offsite: { ready: offsiteReady(), user: ofs().user ? ofs().user.replace(/^(.).*?(.)(@.*)?$/, '$1***$2$3') : '', dir: ofs().dir, last: offsite.last, error: offsite.error, keyShort: !!ofs().key && ofs().key.length < 12 } };
+});
+route('POST', '/api/admin/backups/offsite', async (req, res, u) => {
+  need(u, 'owner');
+  limit('offsite:' + u.id, 6, 3600e3);
+  if (!offsiteReady()) throw bad('Яндекс Диск ещё не подключён');
+  const b = await makeBackup('manual'); await uploadOffsite(b.id);
+  if (offsite.error) throw bad(offsite.error);
+  return { last: offsite.last };
 });
 route('POST', '/api/admin/backups', async (req, res, u) => {
   need(u, 'owner');
