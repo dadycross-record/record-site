@@ -1719,6 +1719,7 @@ function adminClick(t, ds){
   if (ds.admEv){ adm.evId=ds.admEv; adm.err={}; adm.delAsk=false; adm.st=curEv().status; go("adminEvent",{}); return true; }
   if (ds.admPeople){ adm.evId=ds.admPeople; go("adminPeople",{}); return true; }
   if (ds.admRes){ adm.evId=ds.admRes; go("adminResults",{}); return true; }
+  if (ds.aevf){ adm.evf=ds.aevf; render(); return true; }
   if (ds.act==="anew" || ds.act==="akids"){ const ev=newEvent(ds.act==="akids"?"kids":""); EVENTS.push(ev); adm.evId=ev.id; adm.st="draft"; adm.err={}; go("adminEvent",{}); if (ds.act==="akids") toast("Шаблон создан: 8 возрастных групп и 2 задания"); return true; }
   const ev = curEv();
   if (ds.afmt){ ev.format=ds.afmt; render(); return true; }
@@ -2019,7 +2020,14 @@ admin(){
    <div style="margin-top:14px">${dataCard()}</div>
    <div class="grid2" style="margin-top:14px;gap:10px"><button class="btn block" data-act="anew">+ Новый старт</button><button class="btn block ghost" data-go="adminAthlete">Проверить атлета</button></div>
    ${pend.length?`<h2 class="sec">Результаты на проверке · ${pend.length}</h2><div class="stack">${pend.map(scoreReview).join("")}</div>`:""}
-   <h2 class="sec">Старты</h2><div class="stack cards">${list.map(admEvRow).join("") || '<div class="empty">Стартов нет. Нажмите «+ Новый старт».</div>'}</div>
+   <h2 class="sec">Старты</h2>
+   ${(()=>{ const F=[["now","Актуальные",e=>e.status==="open"||e.status==="live"],["draft","Черновики",e=>e.status==="draft"],["past","Прошедшие",e=>e.status==="ended"]];
+     const f=F.find(x=>x[0]===adm.evf)||F[0], shown=list.filter(f[2]);
+     if (f[0]==="past") shown.sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
+     if (f[0]==="now") shown.sort((a,b)=>(a.status==="live"?0:1)-(b.status==="live"?0:1) || String(a.date||"").localeCompare(String(b.date||"")));
+     return `<div class="pills" role="tablist" style="margin-bottom:12px">${F.map(([k,l,fn])=>`<button role="tab" aria-selected="${f[0]===k}" data-aevf="${k}">${l} · ${list.filter(fn).length}</button>`).join("")}</div>
+       <div class="muted tiny" style="margin:-4px 0 10px">${{now:"Идут сейчас и с открытой регистрацией",draft:"Готовятся — участники их не видят",past:"Завершённые старты, сначала последние"}[f[0]]}</div>
+       <div class="stack cards">${shown.map(admEvRow).join("") || `<div class="empty">${{now:"Актуальных стартов нет. Нажмите «+ Новый старт» или опубликуйте черновик.",draft:"Черновиков нет",past:"Прошедших стартов пока нет"}[f[0]]}</div>`}</div>`; })()}
    <h2 class="sec">Промокоды · ${PROMOS.length}</h2>
    <div class="card" style="padding:4px 14px">${PROMOS.map((p,i)=>`<div class="arow"><span class="mono" style="font-weight:700;color:var(--accent);min-width:92px">${esc(p.code)}</span><div class="sp"><b>${promoWhat(p)}</b><div class="muted tiny">Использован ${p.used}${p.limit?` из ${p.limit}`:" раз, без лимита"} · ${p.until?`до ${dShort(p.until)}`:"бессрочно"}${p.note?` · ${esc(p.note)}`:""}</div></div><button class="iconbtn sm" data-apromo="${i}" aria-label="Изменить промокод">${IC.edit}</button><button class="iconbtn sm" data-apromodel="${i}" aria-label="Удалить промокод">${IC.del}</button></div>`).join("") || '<div class="muted small" style="padding:12px 0">Промокодов пока нет</div>'}</div>
    <button class="btn ghost" data-apromo="new" style="margin-top:10px">+ Промокод</button>
