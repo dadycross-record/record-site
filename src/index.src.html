@@ -1048,7 +1048,7 @@ form(){
     <div class="grid2"><label class="f">Экстренный контакт<input class="inp" value="${esc(ME.emName||"не указан")}" disabled></label><label class="f">Телефон<input class="inp" value="${esc(ME.emPhone||"—")}" disabled></label></div>
     <div class="muted tiny">Данные берутся из анкеты. Исправить их можно в <button type="button" class="linkbtn" data-go="profile">анкете участника</button>.</div>
     <h2 class="sec" style="margin-top:8px">Промокод</h2>
-    <div class="row"><input class="inp sp" id="rPromo" placeholder="Например, RECORD10" value="${esc(f.promo)}"><button class="btn ghost" type="button" data-act="promo">Применить</button></div>
+    <div class="row"><input class="inp sp" id="rPromo" placeholder="Если есть" value="${esc(f.promo)}"><button class="btn ghost" type="button" data-act="promo">Применить</button></div>
     ${f.promoMsg?`<div class="${f.promoOk?"ok-t":"err-t"}">${f.promoMsg}</div>`:""}
     <h2 class="sec" style="margin-top:8px">Согласия</h2>
     <label class="check"><input type="checkbox" id="c1" ${f.c1?"checked":""}><span>Принимаю <a href="/docs/rules" target="_blank">условия участия</a>, правила старта и стандарты движений</span></label>
@@ -2126,7 +2126,7 @@ adminWod(){
 adminPromo(){
   const p=adm.pr, E=adm.perr||{};
   return {title: adm.prIdx===null ? "Новый промокод" : `Промокод ${p.code}`, html:`<div class="stack">
-    <label class="f">Код<input class="inp mono ${E.code?"err":""}" id="pCode" value="${esc(p.code)}" placeholder="RECORD10" autocapitalize="characters" autocomplete="off"></label>${fErr(E.code)}
+    <label class="f">Код<input class="inp mono ${E.code?"err":""}" id="pCode" value="${esc(p.code)}" placeholder="Например, LETO2026" autocapitalize="characters" autocomplete="off"></label>${fErr(E.code)}
     <div class="muted tiny">Латинские буквы и цифры, от 3 до 20 символов. Участник вводит его при регистрации.</div>
     <div class="f">Скидка${seg("pkind",p.kind,[["pct","Процент от взноса"],["rub","Сумма в рублях"]])}</div>
     <label class="f">${p.kind==="pct"?"Размер скидки, %":"Размер скидки, ₽"}<input class="inp mono ${E.value?"err":""}" id="pVal" inputmode="numeric" value="${esc(p.value)}"></label>${fErr(E.value)}
