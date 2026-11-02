@@ -688,6 +688,13 @@ const ptsFor = (place, n) => { if (!place || place>n) return 0; const t=ptTable(
 const usesPoints = ev => !ev.permanent && ev.scoring!=="places";
 const allResults = () => (ADM && ADM.DRAFT_RESULTS) ? {...RESULTS, ...ADM.DRAFT_RESULTS} : RESULTS;
 /* which complexes a category does: w.divs empty = all categories */
+/* задания по категориям: комплексы с одинаковым набором категорий — одна группа с заголовком */
+function wodGroups(ev){
+  const ws=ev.workouts||[]; if (!ws.some(w=>w.divs&&w.divs.length)) return [{title:"",ws}];
+  const groups=[]; const byKey={};
+  ws.forEach(w=>{ const k=(w.divs&&w.divs.length)?w.divs.join(","):"*"; if (!byKey[k]){ byKey[k]={key:k,ws:[]}; groups.push(byKey[k]); } byKey[k].ws.push(w); });
+  return groups.map(g=>({ws:g.ws, title: g.key==="*" ? "Все категории" : g.key.split(",").map(id=>(ev.divisions.find(d=>d.id===id)||{name:"?"}).name).join(" · ")}));
+}
 const divWorkouts = (ev, divId) => (ev.workouts||[]).filter(w=>!w.divs || !w.divs.length || w.divs.includes(divId));
 function keyOf(type, v){
   if (v===null || v===undefined) return null;
@@ -942,7 +949,7 @@ event(){
     const card = w => `<div class="card wod"><h4>${esc(w.name)}</h4><div class="muted tiny">${esc(w.note)}</div><ul>${w.body.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`;
     body = !ev.workouts.length ? '<div class="empty">Задания опубликуют ближе к старту</div>'
       : multi ? days.map(d=>{ const ws=ev.workouts.filter(w=>(w.day||days[0])===d); return ws.length ? `<h2 class="sec">${dayLabel(ev,d)}</h2><div class="stack">${ws.map(card).join("")}</div>` : ""; }).join("")
-      : `<div class="stack">${ev.workouts.map(card).join("")}</div>`;
+      : wodGroups(ev).map(g=>`${g.title?`<h2 class="sec">${esc(g.title)}</h2>`:""}<div class="stack">${g.ws.map(card).join("")}</div>`).join("");
   }
   const canReg = ev.permanent ? ["open","live"].includes(ev.status) : (ev.status==="open" || (ev.status==="live" && TODAY<=ev.regTo));
   return {title:ev.name, html:`<div class="tabs" role="tablist">${tabsHtml}</div><div style="margin-top:14px">${body}</div>
