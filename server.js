@@ -450,6 +450,11 @@ route('PUT', '/api/profile', async (req, res, u, body) => {
       await q(`delete from kids where id=$1 and not exists (select 1 from kid_guardians where kid_id=$1) and not exists (select 1 from registrations where who=$1)`, [k.id]);
     }
     await q('update users set profile=$1 where id=$2', [profile, u.id]);
+    // a size changed in the profile reaches the athlete's current registrations (the ones still in play)
+    const ended = JSON.stringify(((await rawContent()).EVENTS || []).filter(e => e.status === 'ended').map(e => e.id));
+    const notEnded = `and event_id not in (select jsonb_array_elements_text($3::jsonb))`;
+    if (profile.size) await q(`update registrations set size=$2 where user_id=$1 and who='me' and status in ${INTEAM} and coalesce(size,'')<>$2 ${notEnded}`, [u.id, profile.size, ended]);
+    for (const k of await kidsOf(u.id, q)) if (k.size) await q(`update registrations set size=$2 where who=$1 and status in ${INTEAM} and coalesce(size,'')<>$2 ${notEnded}`, [k.id, k.size, ended]);
   });
   return { profile, kids: await kidsOf(u.id) };
 });
