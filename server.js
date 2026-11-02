@@ -901,6 +901,68 @@ route('GET', '/api/admin/state', async (req, res, u) => {
 });
 const scoreOut = s => ({ id: s.id, reg: s.reg_id, workout: s.workout_id, value: s.value, state: s.state });
 
+/* organizers: look up an athlete — profile, children / parents, history of starts */
+const likeQ = q => '%' + String(q).toLowerCase().replace(/ё/g, 'е').replace(/[%_\\]/g, '') + '%';
+const NORM_SQL = x => `translate(lower(coalesce(${x},'')),'ё','е')`;
+route('POST', '/api/admin/athletes', async (req, res, u, body) => {
+  need(u, 'owner', 'admin');
+  const q = str(body.q, 80).trim();
+  if (q.length < 2) return { list: [] };
+  const words = q.split(/\s+/).slice(0, 3).map(likeQ), digits = q.replace(/\D/g, '');
+  const userHay = `${NORM_SQL("u.profile->>'last'")} || ' ' || ${NORM_SQL("u.profile->>'first'")} || ' ' || lower(u.email)`;
+  const users = (await db.query(`select u.id, u.email, u.profile, u.created_at, (select count(*)::int from kid_guardians g where g.user_id=u.id) kids,
+      (select count(*)::int from registrations r where r.user_id=u.id or r.athlete_user=u.id) regs from users u
+    where (${words.map((_, i) => `${userHay} like $${i + 1}`).join(' and ')})${digits.length >= 5 ? ` or regexp_replace(coalesce(u.profile->>'phone',''),'\\D','','g') like $${words.length + 1}` : ''}
+    order by u.profile->>'last', u.profile->>'first' limit 30`, digits.length >= 5 ? [...words, '%' + digits.slice(-10) + '%'] : words)).rows;
+  const kidHay = `${NORM_SQL('k.last')} || ' ' || ${NORM_SQL('k.first')}`;
+  const kids = (await db.query(`select k.id, k.first, k.last, k.dob, k.owner_user, (select count(*)::int from registrations r where r.who=k.id) regs,
+      (select coalesce(json_agg(coalesce(nullif(trim(coalesce(x.profile->>'first','') || ' ' || coalesce(x.profile->>'last','')),''), x.email)), '[]') from kid_guardians g join users x on x.id=g.user_id where g.kid_id=k.id) parents
+    from kids k where ${words.map((_, i) => `${kidHay} like $${i + 1}`).join(' and ')} order by k.last, k.first limit 30`, words)).rows;
+  // people known only from registrations (no account any more, or imported results)
+  const regHay = `${NORM_SQL("person->>'last'")} || ' ' || ${NORM_SQL("person->>'first'")}`;
+  const guests = (await db.query(`select person->>'last' last, person->>'first' first, coalesce(person->>'dob','') dob, count(*)::int regs from registrations
+    where user_id is null and athlete_user is null and who='me' and ${words.map((_, i) => `${regHay} like $${i + 1}`).join(' and ')} group by 1,2,3 order by 1,2 limit 20`, words)).rows;
+  return { list: [
+    ...users.map(x => ({ type: 'user', id: String(x.id), name: `${x.profile.last || ''} ${x.profile.first || ''}`.trim() || x.email, dob: x.profile.dob || '', email: x.email, kids: x.kids, regs: x.regs })),
+    ...kids.map(k => ({ type: 'kid', id: k.id, name: `${k.last} ${k.first}`, dob: k.dob, parents: k.parents, regs: k.regs, moved: !!k.owner_user })),
+    ...guests.map(g => ({ type: 'guest', id: JSON.stringify([g.last || '', g.first || '', g.dob]), name: `${g.last || ''} ${g.first || ''}`.trim(), dob: g.dob, regs: g.regs })),
+  ] };
+});
+route('POST', '/api/admin/athlete', async (req, res, u, body) => {
+  need(u, 'owner', 'admin');
+  const type = str(body.type, 10), id = str(body.id, 300);
+  const userCard = x => ({ id: String(x.id), email: x.email, created: x.created_at, profile: x.profile || {}, avatar: x.avatar || '' });
+  const regsOut = rows => rows.map(r => ({ ...orderOut(r), email: r.email || '', created: r.created_at, ...(u.role === 'owner' && r.penalty ? { penalty: r.penalty } : {}) }));
+  const regSel = `select r.*, x.email from registrations r left join users x on x.id=r.user_id`;
+  if (type === 'user') {
+    const x = (await db.query('select * from users where id=$1', [Number(id) || 0])).rows[0];
+    if (!x) throw bad('Аккаунт не найден');
+    const kids = (await db.query(`select k.*, (select coalesce(json_agg(json_build_object('id', g2.user_id, 'email', y.email, 'name', trim(coalesce(y.profile->>'first','') || ' ' || coalesce(y.profile->>'last','')))), '[]')
+        from kid_guardians g2 join users y on y.id=g2.user_id where g2.kid_id=k.id and g2.user_id<>$1) others
+      from kids k join kid_guardians g on g.kid_id=k.id where g.user_id=$1 order by k.dob`, [x.id])).rows;
+    const fromKid = (await db.query('select id, first, last, dob from kids where owner_user=$1', [x.id])).rows;
+    const regs = (await db.query(`${regSel} where (r.who='me' and r.user_id=$1) or r.athlete_user=$1 order by r.created_at desc`, [x.id])).rows;
+    const kidRegs = (await db.query(`${regSel} where r.user_id=$1 and r.who<>'me' order by r.created_at desc`, [x.id])).rows;
+    const crew = (await db.query('select * from crew where user_id=$1 order by created_at desc', [x.id])).rows;
+    return { type, user: userCard(x), kids: kids.map(k => ({ id: k.id, first: k.first, last: k.last, dob: k.dob, gender: k.gender, affiliate: k.affiliate, others: k.others })),
+      fromKid, regs: regsOut(regs), kidRegs: regsOut(kidRegs), crew: crew.map(c => ({ event: c.event_id, role: c.role, status: c.status })) };
+  }
+  if (type === 'kid') {
+    const k = (await db.query('select * from kids where id=$1', [id])).rows[0];
+    if (!k) throw bad('Ребёнок не найден');
+    const parents = (await db.query('select y.*, g.created_at linked from kid_guardians g join users y on y.id=g.user_id where g.kid_id=$1 order by g.created_at', [k.id])).rows;
+    const owner = k.owner_user ? (await db.query('select * from users where id=$1', [k.owner_user])).rows[0] : null;
+    const regs = (await db.query(`${regSel} where r.who=$1 order by r.created_at desc`, [k.id])).rows;
+    return { type, kid: { id: k.id, first: k.first, last: k.last, dob: k.dob, gender: k.gender, affiliate: k.affiliate, created: k.created_at },
+      parents: parents.map(y => ({ ...userCard(y), linked: y.linked })), owner: owner ? userCard(owner) : null, regs: regsOut(regs) };
+  }
+  if (type === 'guest') {
+    let key; try { key = JSON.parse(id); } catch (_) { throw bad('Неверный запрос'); }
+    const regs = (await db.query(`${regSel} where r.user_id is null and r.athlete_user is null and r.who='me' and coalesce(r.person->>'last','')=$1 and coalesce(r.person->>'first','')=$2 and coalesce(r.person->>'dob','')=$3 order by r.created_at desc`, key.slice(0, 3).map(String))).rows;
+    return { type, guest: { last: key[0], first: key[1], dob: key[2] }, regs: regsOut(regs) };
+  }
+  throw bad('Неверный запрос');
+});
 /* internal penalty notes: only the owner writes and reads them */
 route('POST', '/api/admin/penalty', async (req, res, u, body) => {
   need(u, 'owner');

@@ -219,6 +219,7 @@ label.f{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--
 .dob{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 46px;gap:8px}.dobbtn{display:grid;place-items:center}.dobcal{position:absolute;right:0;top:0;width:46px;height:100%;opacity:0;cursor:pointer;border:0;padding:0}.dobcal::-webkit-calendar-picker-indicator{position:absolute;inset:0;width:100%;height:100%;cursor:pointer}
 .resbar{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,240px);gap:8px}@media(max-width:600px){.resbar{grid-template-columns:1fr}}
 .resgrid{min-width:100%}.resgrid th,.resgrid td{vertical-align:top;white-space:nowrap}.resgrid td .inp{width:104px;padding:8px 10px;min-height:0;height:40px}.resgrid .inp.miss{border-color:rgba(247,177,0,.55)}.resgrid .nm{position:sticky;left:0;z-index:1;background:var(--surface);min-width:150px;white-space:normal}.resgrid .pen .inp{width:220px}.resgrid .rsmeta{margin-top:3px}
+.linkrow{background:none;border:0;color:inherit;cursor:pointer}.linkrow:hover b{color:var(--accent)}
 .filters{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
 select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 18px) 20px,calc(100% - 13px) 20px;background-size:5px 5px;background-repeat:no-repeat;padding-right:32px}
 .iconbtn{height:46px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);display:grid;place-items:center}
@@ -787,7 +788,7 @@ function header(title){
 }
 const NAV = [["home","Главная"],["events","Старты"],["leaderboard","Лидерборд"],["me","Профиль"]];
 function topnav(){ const cur = ROOT_TAB[S.route]; return `<nav class="topnav" aria-label="Разделы">${NAV.map(([k,l])=>`<button data-tab="${k}" ${cur===k?'aria-current="page"':""}>${l}</button>`).join("")}</nav>`; }
-const WIDTH = {adminResults:"wide",club:"wide",adminClub:"mid",home:"wide",events:"wide",leaderboard:"wide",admin:"wide",adminPeople:"wide",orders:"wide",divisions:"wide",event:"mid",teamJoin:"mid"};
+const WIDTH = {adminAthlete:"mid",adminResults:"wide",club:"wide",adminClub:"mid",home:"wide",events:"wide",leaderboard:"wide",admin:"wide",adminPeople:"wide",orders:"wide",divisions:"wide",event:"mid",teamJoin:"mid"};
 const statusChip = s => ({open:'<span class="chip open">Регистрация открыта</span>',live:'<span class="chip live">Идёт</span>',ended:'<span class="chip ended">Завершён</span>',draft:'<span class="chip neutral">Черновик</span>'}[s]);
 const isPub = e => e.status!=="draft";
 const isStaffView = () => ["owner","admin","judge"].includes(S.viewAs);
@@ -1593,7 +1594,7 @@ function admEvRow(e){
    <div class="row wrap"><button class="btn sm" data-adm-ev="${e.id}">Изменить</button><button class="btn sm ghost" data-adm-people="${e.id}">Участники</button><button class="btn sm ghost" data-adm-res="${e.id}">Результаты</button></div></div>`;
 }
 const ROLE_L = {owner:"Владелец",admin:"Организатор",judge:"Судья",athlete:"Участник"};
-const ADMIN_ROUTES = ["adminClub","admin","adminEvent","adminDiv","adminWod","adminSch","adminPeople","adminPromo","adminResults"];
+const ADMIN_ROUTES = ["adminClub","admin","adminEvent","adminDiv","adminWod","adminSch","adminPeople","adminPromo","adminResults","adminAthlete"];
 const LOGIN_ROUTES = ["me","orders","crewApply","crewManage","score","profile","form","team","teamCreate","teamJoin","done",...ADMIN_ROUTES];
 function allowed(route){
   if (!ADMIN_ROUTES.includes(route)) return true;
@@ -2005,7 +2006,7 @@ admin(){
   return {title:"Панель организатора", html: tabs + kidDupesCard() + `
    <div class="stats flat" style="margin-top:0"><div><b>${act.length}</b><span>Активных стартов</span></div><div><b>${reg}</b><span>Записано</span></div><div><b class="acc" style="font-size:17px">${Math.round(money/1000)} тыс ₽</b><span>Взносы</span></div></div>
    <div style="margin-top:14px">${dataCard()}</div>
-   <button class="btn block" data-act="anew" style="margin-top:14px">+ Новый старт</button>
+   <div class="grid2" style="margin-top:14px;gap:10px"><button class="btn block" data-act="anew">+ Новый старт</button><button class="btn block ghost" data-go="adminAthlete">Проверить атлета</button></div>
    ${pend.length?`<h2 class="sec">Результаты на проверке · ${pend.length}</h2><div class="stack">${pend.map(scoreReview).join("")}</div>`:""}
    <h2 class="sec">Старты</h2><div class="stack cards">${list.map(admEvRow).join("") || '<div class="empty">Стартов нет. Нажмите «+ Новый старт».</div>'}</div>
    <h2 class="sec">Промокоды · ${PROMOS.length}</h2>
@@ -2144,6 +2145,20 @@ adminSch(){
     <label class="f">Подробности<input class="inp" id="sDesc" value="${esc(s.desc)}" placeholder="Необязательно"></label>
     <button class="btn block" data-act="ssave">${adm.schIdx===null?"Добавить в программу":"Сохранить"}</button>
   </div>`};
+},
+adminAthlete(){
+  const A = adm.ath = adm.ath || {q:"", list:null, card:null};
+  if (S.viewAs==="judge") return {title:"Проверить атлета", html:'<div class="empty">Раздел для организатора</div>'};
+  const search = `<input class="inp" id="athQ" type="search" placeholder="Фамилия, имя, email или телефон" value="${esc(A.q)}" autocomplete="off">
+    <div class="muted tiny" style="margin:6px 0 12px">Ищем по взрослым аккаунтам, детям и участникам без аккаунта (например, из импортированных результатов).</div>`;
+  if (A.card) return {title:"Профиль атлета", html: A.card.loading ? '<div class="muted">Загружаю…</div>' : athleteCard(A.card)};
+  const TL = {user:"аккаунт", kid:"ребёнок", guest:"без аккаунта"};
+  const list = A.list===null ? (A.q.trim().length>=2 ? '<div class="muted">Ищу…</div>' : '<div class="empty">Начните вводить — от двух букв</div>')
+    : A.list.length ? `<div class="stack" style="gap:8px">${A.list.map((x,i)=>`<button class="card row" data-athopen="${i}" style="text-align:left;width:100%;gap:12px;justify-content:space-between">
+        <div><b>${esc(x.name)}</b><div class="muted tiny">${x.dob?dShort(x.dob)+" · "+ageNow(x.dob)+" "+yNom(ageNow(x.dob))+" · ":""}${x.email?esc(x.email)+" · ":""}${x.type==="kid"?`взрослые: ${esc((x.parents||[]).join(", ")||"нет")}${x.moved?" · профиль передан атлету":""} · `:""}${x.kids?`детей: ${x.kids} · `:""}стартов: ${x.regs}</div></div>
+        <span class="chip ${x.type==="user"?"ok":x.type==="kid"?"warn":"neutral"}">${TL[x.type]}</span></button>`).join("")}</div>`
+    : '<div class="empty">Никого не нашли</div>';
+  return {title:"Проверить атлета", html: search + list};
 },
 adminResults(){
   const ev=curEv(); if (!ev) return {title:"Результаты", html:'<div class="empty">Старт не найден</div>'};
@@ -2584,6 +2599,54 @@ function myCrewList(){
   return `<h2 class="sec">Заявки в команду</h2><div class="card" style="padding:4px 14px">${MYCREW.map(c=>{ const ev=EVENTS.find(e=>e.id===c.event); return `<div class="arow"><div class="sp"><b>${esc(ev?ev.name:c.event)}</b><div class="muted tiny">${CREW_ROLE[c.role]?CREW_ROLE[c.role][0]:""}${ev&&ev.date?` · ${dateRange(ev)}`:""}</div></div><span class="chip ${CREW_STL[c.status][1]}">${c.status==="request"?"На рассмотрении":c.status==="confirmed"?"В команде":"Не в этот раз"}</span></div>`; }).join("")}</div>`;
 }
 /* the same child added by different adults: same surname, name and date of birth */
+/* athlete card for organizers */
+const ageNow = dob => dob ? ageOn(dob, TODAY) : "";
+function athRegsTable(regs, owner, who){
+  if (!regs.length) return '<div class="empty">Стартов пока нет</div>';
+  const RS = allResults();
+  return `<div class="card tbl-wrap" style="padding:0"><table class="tbl"><thead><tr><th>Старт</th>${who?"<th>Участник</th>":""}<th>Категория</th><th>Статус</th><th class="num">Взнос</th><th class="num">Место</th>${owner?"<th>Штраф</th>":""}</tr></thead><tbody>
+  ${regs.map(o=>{ const ev=EVENTS.find(e=>e.id===o.event)||{name:o.event,divisions:[]}, d=(ev.divisions||[]).find(x=>x.id===o.div)||{name:o.div}, pp=o.person||{};
+    let place="—"; if (ev.id && !ev.permanent && RS[resKey(ev,o.div)]){ const r=leaderboard(ev.id,o.div).rows.find(r=>(r.k||[]).includes(o.pub)); if (r) place=`${r.place}${usesPoints(ev)?` · ${r.pts} б.`:""}`; }
+    return `<tr><td><b>${esc(ev.name)}</b><div class="muted tiny">${ev.date?dShort(ev.date):""} · заказ ${esc(o.id)}</div></td>${who?`<td>${esc(`${pp.last||""} ${pp.first||""}`)}</td>`:""}<td>${esc(d.name)}${o.team?`<div class="muted tiny">команда ${esc(o.team)}${o.role==="reserve"?" · запасной":""}</div>`:""}</td>
+      <td>${esc(REG_ST[o.status]||o.status)}</td><td class="num mono">${o.waiver?`0 ₽<div class="muted tiny">${esc(o.waiver)}</div>`:`${fmtRub(o.paid||0)}${o.due&&o.paid<o.due?`<div class="muted tiny">из ${fmtRub(o.due)}</div>`:""}`}</td>
+      <td class="num mono">${place}</td>${owner?`<td class="small">${esc(o.penalty||"")}</td>`:""}</tr>`; }).join("")}</tbody></table></div>`;
+}
+function athleteCard(C){
+  const owner = S.viewAs==="owner", kv = rows => `<div class="card kv">${rows.filter(r=>r[1]!==undefined&&r[1]!==null&&r[1]!=="").map(([k,v,raw])=>`<dt>${k}</dt><dd>${raw?v:esc(v)}</dd>`).join("")}</div>`;
+  const tel = p => p ? `<a href="tel:${esc(String(p).replace(/[^\d+]/g,""))}">${esc(p)}</a>` : "";
+  const av = (url, name) => url ? `<div style="background:center/cover url(${url});border-radius:50%;width:64px;height:64px;flex:none"></div>` : `<div style="width:64px;height:64px;flex:none;display:grid;place-items:center;border-radius:50%;background:var(--surface);border:1px solid var(--line);font-weight:800">${esc(name.split(" ").map(x=>x[0]||"").slice(0,2).join(""))}</div>`;
+  const back = `<button class="btn sm ghost" data-act="athback" style="margin-bottom:12px">← К поиску</button>`;
+  const head = (avHtml, name, chips) => `<div class="card row" style="gap:14px;margin-bottom:12px;align-items:center">${avHtml}<div><div style="font-family:var(--f-display);font-weight:800;font-size:20px">${esc(name)}</div><div class="row wrap" style="gap:6px;margin-top:6px">${chips}</div></div></div>`;
+  const userRef = (y, note) => `<button class="arow linkrow" data-athuser="${y.id}" style="width:100%;text-align:left"><div class="sp"><b>${esc(`${(y.profile||{}).last||""} ${(y.profile||{}).first||""}`.trim()||y.name||y.email)}</b><div class="muted tiny">${esc(y.email||"")}${(y.profile||{}).phone?" · "+esc(y.profile.phone):""}${note?" · "+note:""}</div></div><span class="muted">›</span></button>`;
+  if (C.type==="user"){
+    const p=C.user.profile||{}, name=`${p.last||""} ${p.first||""}`.trim()||C.user.email;
+    return back + head(av(C.user.avatar,name), name, `<span class="chip ok">аккаунт</span>${C.fromKid.length?'<span class="chip neutral">профиль передан от родителя</span>':""}`)
+      + kv([["Фамилия, имя",name],["Пол",p.gender==="F"?"женский":"мужской"],["Дата рождения",p.dob?`${dShort(p.dob)} · ${ageNow(p.dob)} ${yNom(ageNow(p.dob))}`:"не указана"],["Клуб",p.affiliate||"—"],["Телефон",tel(p.phone)||"—",1],["Email",C.user.email],["Telegram",p.tg||"—"],["Экстренный контакт",p.emName?`${p.emName}${p.emPhone?", "+p.emPhone:""}`:"—"],["Имя в лидерборде",p.print||""],["Аккаунт создан",dShort(String(C.user.created).slice(0,10))]])
+      + `<h2 class="sec">Дети · ${C.kids.length}</h2>
+      ${C.kids.length?`<div class="card" style="padding:4px 14px">${C.kids.map(k=>`<button class="arow linkrow" data-athkid="${k.id}" style="width:100%;text-align:left"><div class="sp"><b>${esc(k.last)} ${esc(k.first)}</b><div class="muted tiny">${k.dob?dShort(k.dob)+" · "+ageNow(k.dob)+" "+yNom(ageNow(k.dob)):""}${k.affiliate?" · "+esc(k.affiliate):""} · ${k.others.length?"также ведёт: "+esc(k.others.map(o=>o.name||o.email).join(", ")):"ведёт только этот взрослый"}</div></div><span class="muted">›</span></button>`).join("")}</div>`:'<div class="muted small">Детей в профиле нет</div>'}
+      ${C.fromKid.length?`<div class="rule" style="margin-top:10px">Этот профиль раньше был детским и передан атлету: ${C.fromKid.map(k=>`<button class="linkbtn" data-athkid="${k.id}">${esc(k.last)} ${esc(k.first)}</button>`).join(", ")}. История выступлений из детского профиля — ниже.</div>`:""}
+      <h2 class="sec">Старты атлета · ${C.regs.length}</h2>${athRegsTable(C.regs, owner)}
+      ${C.kidRegs.length?`<h2 class="sec">Записи детей, которые оформил этот взрослый · ${C.kidRegs.length}</h2>${athRegsTable(C.kidRegs, owner, true)}`:""}
+      ${C.crew.length?`<h2 class="sec">В команде стартов</h2><div class="card" style="padding:4px 14px">${C.crew.map(c=>`<div class="arow"><div class="sp"><b>${esc((EVENTS.find(e=>e.id===c.event)||{name:c.event}).name)}</b><div class="muted tiny">${esc((CREW_ROLE[c.role]||[c.role])[0])} · ${c.status==="confirmed"?"подтверждён":c.status==="request"?"заявка":esc(c.status)}</div></div></div>`).join("")}</div>`:""}`;
+  }
+  if (C.type==="kid"){
+    const k=C.kid, name=`${k.last} ${k.first}`;
+    return back + head(av("",name), name, `<span class="chip warn">ребёнок</span>${C.owner?'<span class="chip neutral">профиль передан атлету</span>':""}`)
+      + kv([["Фамилия, имя",name],["Пол",k.gender==="F"?"женский":"мужской"],["Дата рождения",k.dob?`${dShort(k.dob)} · ${ageNow(k.dob)} ${yNom(ageNow(k.dob))}`:"не указана"],["Клуб",k.affiliate||"—"],["Карточка создана",dShort(String(k.created).slice(0,10))]])
+      + `${C.owner?`<h2 class="sec">Теперь у атлета свой аккаунт</h2><div class="card" style="padding:4px 14px">${userRef(C.owner,"профиль передан")}</div>`:""}
+      <h2 class="sec">Родители и законные представители · ${C.parents.length}</h2>
+      ${C.parents.length?`<div class="card" style="padding:4px 14px">${C.parents.map(y=>userRef(y,"доступ с "+dShort(String(y.linked).slice(0,10)))).join("")}</div>`:`<div class="muted small">${C.owner?"Профиль передан атлету — у взрослых больше нет доступа":"Нет взрослых с доступом"}</div>`}
+      <h2 class="sec">Старты · ${C.regs.length}</h2>${athRegsTable(C.regs, owner)}
+      ${C.regs.length?`<div class="muted tiny" style="margin-top:6px">Записывали: ${esc([...new Set(C.regs.map(o=>o.email||"—"))].join(", "))}</div>`:""}`;
+  }
+  const g=C.guest, name=`${g.last} ${g.first}`, p0=(C.regs[0]||{}).person||{};
+  return back + head(av("",name), name, '<span class="chip neutral">без аккаунта</span>')
+    + `<div class="rule" style="margin-bottom:12px">Атлет есть только в заявках и результатах: аккаунт удалён или результаты импортированы. Данные — из заявок.</div>`
+    + kv([["Дата рождения",g.dob?dShort(g.dob):"не указана"],["Клуб",p0.affiliate||"—"],["Телефон",tel(p0.phone)||"—",1]])
+    + `<h2 class="sec">Старты · ${C.regs.length}</h2>${athRegsTable(C.regs, owner)}`;
+}
+function athOpen(type, id){ const A=adm.ath; A.card={loading:true}; api("POST","/api/admin/athlete",{type,id}).then(r=>{ A.card=r; render(); window.scrollTo(0,0); }).catch(err=>{ A.card=null; toast(err.message); render(); }); }
+let athTimer=null;
 function kidDupesCard(){
   const D = (ADM && ADM.KID_DUPES) || [];
   if (!D.length || S.viewAs==="judge") return "";
@@ -2926,6 +2989,10 @@ document.addEventListener("click", e=>{
   if (ds.lbmonth){ S.lb.ev=ds.lbev; S.lb.month=ds.lbmonth; S.lb.w=-1; S.lb.open=null; S.lb.tab="ind"; S.lb.div="m"; return tab("leaderboard"); }
   if (ds.act==="rsxlsx"){ const ev0=EVENTS.find(e=>e.id===((adm.rq&&adm.rq.ev)||(adm.rs&&adm.rs.ev))); const sh=ev0&&lbSheets(ev0, ev0.permanent ? (S.lb.month&&S.lb.month!=="year"?S.lb.month:curMonth(ev0).id) : null); if (!sh||!sh.length) return toast("Результатов пока нет"); downloadXlsx(`leaderboard-${ev0.id}.xlsx`, sh); return; }
   if (ds.act==="lbxlsx"){ const ev0=EVENTS.find(e=>e.id===S.lb.ev); const sh=ev0&&lbSheets(ev0, ev0.permanent ? (S.lb.month&&S.lb.month!=="year"?S.lb.month:curMonth(ev0).id) : null); if (!sh||!sh.length) return toast("Результатов пока нет"); downloadXlsx(`leaderboard-${ev0.id}.xlsx`, sh); return; }
+  if (ds.athopen!==undefined){ const x=adm.ath.list[+ds.athopen]; athOpen(x.type, x.id); return render(); }
+  if (ds.athkid){ athOpen("kid", ds.athkid); return render(); }
+  if (ds.athuser){ athOpen("user", ds.athuser); return render(); }
+  if (ds.act==="athback"){ adm.ath.card=null; return render(); }
   if (ds.rqmiss!==undefined){ adm.rq.miss = ds.rqmiss==="1"; return render(); }
   if (ds.act==="lbrules"){ S.lb.rules=!S.lb.rules; return render(); }
   if (ds.act==="lbsearch"){ S.searchOpen=!S.searchOpen; if(!S.searchOpen) S.lb.q=""; render(); const i=document.getElementById("lbq"); i&&i.focus(); return; }
@@ -2988,6 +3055,10 @@ document.addEventListener("input", e=>{
   if (e.target.id==="pVal"){ syncPromo(); const el=document.getElementById("promoPrev"); if (el) el.innerHTML=promoPreview(); }
   if (e.target.id==="dMin"||e.target.id==="dMax"){ syncDiv(); const w=document.getElementById("whoTxt"); if(w) w.innerHTML=whoText(); }
   if (e.target.id==="tq"){ S.p={...S.p,q:e.target.value}; const pos=e.target.selectionStart; render(); const i=document.getElementById("tq"); i.focus(); i.setSelectionRange(pos,pos); }
+  if (e.target.id==="athQ"){ const A=adm.ath, v=e.target.value; A.q=v; clearTimeout(athTimer);
+    const refocus = () => { const pos=(document.getElementById("athQ")||{}).selectionStart; render(); const i=document.getElementById("athQ"); if (i){ i.focus(); try{ i.setSelectionRange(pos,pos); }catch(_){} } };
+    if (v.trim().length<2){ A.list=null; refocus(); } else athTimer=setTimeout(()=>{ api("POST","/api/admin/athletes",{q:v}).then(r=>{ if (A.q===v){ A.list=r.list; refocus(); } }).catch(err=>toast(err.message)); }, 300);
+    return; }
   if (e.target.id==="rqQ"){ adm.rq.q=e.target.value; const pos=e.target.selectionStart; render(); const i=document.getElementById("rqQ"); if (i){ i.focus(); try{ i.setSelectionRange(pos,pos); }catch(_){} } return; }
   if (e.target.id==="lbq"){ S.lb.q=e.target.value; const pos=e.target.selectionStart; render(); const i=document.getElementById("lbq"); i.focus(); i.setSelectionRange(pos,pos); }
 });
