@@ -1590,7 +1590,7 @@ function admEvRow(e){
   return `<div class="card stack"><div class="row">${statusChip(e.status)}<span class="sp"></span><span class="muted tiny">${e.format==="online"?"Онлайн":"Очный"} · ${e.date?dateRange(e):"без даты"}</span></div>
    <div style="font-family:var(--f-display);font-weight:600;font-size:16px;text-transform:uppercase">${esc(e.name||"Без названия")}</div>
    <div class="muted small">${e.divisions.length} категорий · ${taken} записано${e.status==="open"?` · регистрация до ${dShort(e.regTo)}`:""}${nNew?` · <b style="color:var(--accent)">${nNew} ${nNew===1?"заявка ждёт":"заявок ждут"} оплаты</b>`:""}</div>
-   <div class="row wrap"><button class="btn sm" data-adm-ev="${e.id}">Изменить</button><button class="btn sm ghost" data-adm-res="${e.id}">Результаты</button></div></div>`;
+   <div class="row wrap"><button class="btn sm" data-adm-ev="${e.id}">Изменить</button><button class="btn sm ghost" data-adm-people="${e.id}">Участники</button><button class="btn sm ghost" data-adm-res="${e.id}">Результаты</button></div></div>`;
 }
 const ROLE_L = {owner:"Владелец",admin:"Организатор",judge:"Судья",athlete:"Участник"};
 const ADMIN_ROUTES = ["adminClub","admin","adminEvent","adminDiv","adminWod","adminSch","adminPeople","adminPromo","adminResults"];
