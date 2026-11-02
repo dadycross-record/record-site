@@ -219,6 +219,8 @@ label.f{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--
 .resbar{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,240px);gap:8px}@media(max-width:600px){.resbar{grid-template-columns:1fr}}
 .resgrid{min-width:100%}.resgrid th,.resgrid td{vertical-align:top;white-space:nowrap}.resgrid td .inp{width:104px;padding:8px 10px;min-height:0;height:40px}.resgrid .inp.miss{border-color:rgba(247,177,0,.55)}.resgrid .nm{position:sticky;left:0;z-index:1;background:var(--surface);min-width:150px;white-space:normal}.resgrid .pen .inp{width:220px}.resgrid .rsmeta{margin-top:3px}
 .linkrow{background:none;border:0;color:inherit;cursor:pointer}.linkrow:hover b{color:var(--accent)}
+.tbl tr.divrow{cursor:pointer}.tbl tr.divrow:hover .divname,.tbl tr.divrow.open .divname{color:var(--accent)}.tbl tr.divlist td{padding:4px 10px 14px}
+.divathlist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;overflow:hidden}.divath{display:flex;align-items:center;gap:12px;padding:10px 14px;border-top:1px solid var(--line)}.divath:first-child{border-top:0}.divath.off{opacity:.55}.divath .stsel{width:160px}
 .filters{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
 select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 18px) 20px,calc(100% - 13px) 20px;background-size:5px 5px;background-repeat:no-repeat;padding-right:32px}
 .iconbtn{height:46px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);display:grid;place-items:center}
@@ -1710,6 +1712,8 @@ function adminClick(t, ds){
   if (ds.admPeople){ adm.evId=ds.admPeople; go("adminPeople",{}); return true; }
   if (ds.admRes){ adm.evId=ds.admRes; go("adminResults",{}); return true; }
   if (ds.aevf){ adm.evf=ds.aevf; render(); return true; }
+  if (ds.divopen){ adm.divOpen = adm.divOpen===ds.divopen ? null : ds.divopen; render(); return true; }
+  if (ds.regjump){ const ev=curEv(), o=ADM.REGS.find(x=>x.id===ds.regjump); adm.rf={ev:ev.id, st:"all", q:"", div:o?o.div:"", sel:{}}; adm.ptab="regs"; adm.regOpen=ds.regjump; render(); setTimeout(()=>{ const el=document.querySelector(`[data-regopen="${ds.regjump}"]`); if (el) el.scrollIntoView({block:"center"}); },50); return true; }
   if (ds.act==="anew" || ds.act==="akids"){ const ev=newEvent(ds.act==="akids"?"kids":""); EVENTS.push(ev); adm.evId=ev.id; adm.st="draft"; adm.err={}; go("adminEvent",{}); if (ds.act==="akids") toast("Шаблон создан: 8 возрастных групп и 2 задания"); return true; }
   const ev = curEv();
   if (ds.afmt){ ev.format=ds.afmt; render(); return true; }
@@ -2747,6 +2751,18 @@ async function saveResult(input){
     return true;
   } catch(err){ input.classList.add("err"); toast(err.message); return false; }
 }
+/* athletes of one category, opened from the participants' table */
+function divAthletes(ev, d, regs){
+  const list = regs.filter(o=>o.div===d.id), act = list.filter(o=>ACTIVE_ST.includes(o.status)||["pending","reserve"].includes(o.status)), rest = list.filter(o=>!act.includes(o));
+  const nm = o => `${(o.person||{}).last||""} ${(o.person||{}).first||""}`.trim();
+  const ord = {new:0,paid:1,refund_requested:2,pending:3,reserve:4};
+  act.sort((a,b)=>(ord[a.status]??9)-(ord[b.status]??9) || nm(a).localeCompare(nm(b),"ru"));
+  rest.sort((a,b)=>nm(a).localeCompare(nm(b),"ru"));
+  if (!list.length) return '<div class="muted small" style="padding:6px 0">В категории пока никто не записан</div>';
+  const row = o => { const p=o.person||{}; return `<div class="divath${ACTIVE_ST.includes(o.status)?"":" off"}"><div class="sp"><button class="linkbtn regname" data-regjump="${o.id}">${esc(nm(o))}</button><div class="muted tiny">${esc(p.phone||"")}${p.dob?" · "+dShort(p.dob):""}${o.team?" · команда "+esc(o.team):""}${p.affiliate?" · "+esc(p.affiliate):""}</div></div>
+    <span class="mono small">${o.waiver?"0 ₽":fmtRub(o.status==="paid"?o.paid:o.due)}</span>${regStSelect(o)}</div>`; };
+  return `<div class="divathlist">${act.map(row).join("")}${rest.length?`<div class="muted tiny" style="margin:10px 0 4px">Не участвуют · ${rest.length}</div>${rest.map(row).join("")}`:""}</div>`;
+}
 function peopleStats(ev, regs){
   const act = regs.filter(o=>ACTIVE_ST.includes(o.status)), paidL = act.filter(o=>o.status==="paid"), newL = act.filter(o=>o.status==="new");
   const sum = act.reduce((a,o)=>a+(o.paid||0),0), due = newL.reduce((a,o)=>a+(o.due||0),0);
@@ -2758,7 +2774,7 @@ function peopleStats(ev, regs){
   return `<div class="stats flat s4" style="margin-top:0"><div><b>${act.length}</b><span>Участников</span></div><div><b>${paidL.length}</b><span>Оплатили</span></div><div><b class="${newL.length?"acc":""}">${newL.length}</b><span>Ждут оплаты${due?` · ${fmtRub(due)}`:""}</span></div><div><b style="font-size:17px">${fmtRub(sum)}</b><span>Получено</span></div></div>
     <h2 class="sec">По категориям</h2>
     <div class="card tbl-wrap"><table class="tbl"><thead><tr><th>Категория</th><th class="num">Записано</th><th class="num">Оплатили</th><th class="num c-hide">Мест</th></tr></thead><tbody>
-    ${ev.divisions.map(d=>`<tr><td>${esc(d.name)}<div class="muted tiny">${ageLabel(d,ev)}</div><div class="minibar"><i style="width:${Math.min(100,Math.round(d.taken/(d.limit||1)*100))}%"></i></div></td><td class="num">${byDiv(d).length}${d.type==="team"?`<div class="muted tiny">${d.taken} ком.</div>`:""}</td><td class="num">${paidDiv(d)}</td><td class="num c-hide">${d.limit||"—"}</td></tr>`).join("")}
+    ${ev.divisions.map(d=>`<tr class="divrow${adm.divOpen===d.id?" open":""}" data-divopen="${d.id}" title="Показать атлетов категории"><td><span class="divname">${esc(d.name)}</span> <span class="muted tiny">${adm.divOpen===d.id?"▲":"▼"}</span><div class="muted tiny">${ageLabel(d,ev)}</div><div class="minibar"><i style="width:${Math.min(100,Math.round(d.taken/(d.limit||1)*100))}%"></i></div></td><td class="num">${byDiv(d).length}${d.type==="team"?`<div class="muted tiny">${d.taken} ком.</div>`:""}</td><td class="num">${paidDiv(d)}</td><td class="num c-hide">${d.limit||"—"}</td></tr>${adm.divOpen===d.id?`<tr class="divlist"><td colspan="4">${divAthletes(ev, d, regs)}</td></tr>`:""}`).join("")}
     <tr><td><b>Итого</b></td><td class="num"><b>${act.length}</b></td><td class="num"><b>${paidL.length}</b></td><td class="c-hide"></td></tr></tbody></table></div>
     ${szKeys.length?`<h2 class="sec">Размеры футболок</h2><div class="card"><div class="row wrap" style="gap:8px">${szKeys.map(k=>`<span class="chip neutral">${esc(sizeLabel(k))} · ${sizes[k]}</span>`).join("")}</div></div>`:""}
     ${other.length?`<div class="muted small" style="margin-top:12px">Не участвуют: ${[["cancelled","отменено"],["blocked","отклонено"],["refunded","возврат сделан"]].filter(([k])=>oc(k)).map(([k,l])=>`${l} — ${oc(k)}`).join(", ")}</div>`:""}
@@ -2945,7 +2961,7 @@ function render(){
   scheduleSave();
 }
 document.addEventListener("click", e=>{
-  const t = e.target.closest("button,[data-go]"); if(!t) return;
+  const t = e.target.closest("button,[data-go],[data-divopen]"); if(!t) return;
   const ds = t.dataset;
   if (ds.ck){ const was=MK_ON; try{ localStorage.setItem(MK_KEY, JSON.stringify({c:ds.ck,t:Date.now()})); }catch(_){} document.querySelectorAll(".ckbar").forEach(x=>x.remove()); if (ds.ck==="all") mkStart(); else if (was) location.reload(); return; }
   if (ds.act==="cookies"){ cookieBar(true); return; }
