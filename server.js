@@ -1172,7 +1172,25 @@ route('PATCH', '/api/admin/regs/:id', async (req, res, u, body, p) => {
     if (to.limit && n >= to.limit) warn = `В категории «${to.name}» теперь ${n + 1} при лимите ${to.limit}`;
     div = to.id;
   }
-  const r = await db.query('update registrations set status=$1, paid=$2, note=$3, div_id=$4, updated_by=$5, waiver=$6 where id=$7 returning *', [st, paid, note, div, u.email, waiver, id]);
+  // athlete added by the organizer (no account yet): the organizer keeps the data up to date
+  let person = cur.person, size = cur.size, publish = cur.publish;
+  if (body.person && cur.who === 'offline' && !cur.user_id) {
+    const pin = body.person, np = cleanPerson(pin, false);
+    if (!np.last || !np.first) throw bad('Укажите фамилию и имя');
+    if (!np.dob) throw bad('Укажите дату рождения');
+    person = { ...np, size: cur.person.size || '' };
+    const pa = nm(pin.parent, 80); if (pa) person.parent = pa;
+    const ev = ((await rawContent()).EVENTS || []).find(e => e.id === cur.event_id);
+    const d = ev && ev.divisions.find(x => x.id === div);
+    if (ev && d) {
+      if ((d.g === 'M' || d.g === 'F') && person.gender !== d.g) throw bad(d.g === 'M' ? 'Категория только для мужчин' : 'Категория только для женщин');
+      if (['new', 'paid', 'refund_requested'].includes(st) && await samePersonReg(db.query.bind(db), ev, d, person, x => x.id === id)) throw bad(SAME_MSG(person));
+    }
+    if (body.size !== undefined) { size = [...ADULT_SIZES, ...KID_SIZES].includes(body.size) ? body.size : null; person.size = size || ''; }
+    if (body.publish !== undefined) publish = !!body.publish;
+  }
+  const r = await db.query('update registrations set status=$1, paid=$2, note=$3, div_id=$4, updated_by=$5, waiver=$6, person=$8, size=$9, publish=$10 where id=$7 returning *', [st, paid, note, div, u.email, waiver, id, person, size, publish]);
+  if (publish && !cur.publish) await logConsent(req, 'offline:' + id, 'publish', id);
   await fixCaptain(cur.event_id, cur.div_id, cur.team);
   dirty();
   return { order: orderOut(r.rows[0]), warn };

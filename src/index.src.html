@@ -1989,6 +1989,8 @@ function adminClick(t, ds){
     const id=ds.regsave, g=k=>document.getElementById(k+"_"+id);
     const paid=g("rePaid").value.replace(/\s/g,""); if (!/^\d+$/.test(paid)){ toast("Оплачено — целое число рублей"); g("rePaid").focus(); return true; }
     const dv=g("reDiv"), cur=ADM.REGS.find(x=>x.id===id), body={status:g("reSt").value, paid:+paid, note:g("reNote").value};
+    if (g("edLast")){ body.person={last:g("edLast").value.trim(), first:g("edFirst").value.trim(), gender:g("edG").value, dob:g("edDob").value, affiliate:g("edClub").value.trim(), phone:g("edPhone").value.trim(), parent:g("edParent").value.trim()}; body.size=g("edSize").value; body.publish=g("edPub").checked;
+      if (!body.person.last||!body.person.first){ toast("Укажите фамилию и имя"); return true; } if (!body.person.dob){ toast("Укажите дату рождения"); return true; } }
     if (dv && cur && dv.value!==cur.div) body.div=dv.value;
     api("PATCH","/api/admin/regs/"+encodeURIComponent(id),body).then(async r=>{ if (body.div) setTimeout(()=>toast(`Перенесён в «${(curEv().divisions.find(d=>d.id===body.div)||{}).name}». Взнос не пересчитан — поправьте сумму, если нужно`),1500); if (r.warn) setTimeout(()=>toast(r.warn),4500); const i=ADM.REGS.findIndex(x=>x.id===id); if(i>=0) ADM.REGS[i]={...ADM.REGS[i],...r.order}; await loadContent(); render(); toast("Заявка сохранена"); }).catch(err=>toast(err.message));
     return true;
@@ -3012,6 +3014,18 @@ function regDetail(ev, o){
   const team = (ev.divisions.find(d=>d.id===o.div)||{}).type==="team";
   return `<div class="stack regdet">
     <div class="regmeta">${meta.map(([k,v])=>`<div><span>${k}</span><b>${esc(v)}</b></div>`).join("")}</div>
+    ${o.who==="offline"?`<div class="panel stack" style="margin:0"><b class="small">Данные атлета</b><div class="muted tiny">Атлет без аккаунта — данные ведёт организатор. Исправьте и нажмите «Сохранить» внизу.</div>
+      <div class="regedit">
+        <label class="f">Фамилия<input class="inp" id="edLast_${o.id}" value="${esc(p.last||"")}" autocomplete="off"></label>
+        <label class="f">Имя<input class="inp" id="edFirst_${o.id}" value="${esc(p.first||"")}" autocomplete="off"></label>
+        <label class="f">Пол<select class="inp" id="edG_${o.id}"><option value="M" ${p.gender!=="F"?"selected":""}>Мужской</option><option value="F" ${p.gender==="F"?"selected":""}>Женский</option></select></label>
+        <label class="f">Дата рождения${dobInput("edDob_"+o.id, p.dob||"")}</label>
+        <label class="f">Клуб<input class="inp" id="edClub_${o.id}" value="${esc(p.affiliate||"")}"></label>
+        <label class="f">Телефон<input class="inp" id="edPhone_${o.id}" inputmode="tel" value="${esc(p.phone||"")}"></label>
+        <label class="f">Родитель (для детей)<input class="inp" id="edParent_${o.id}" value="${esc(p.parent||"")}"></label>
+        <label class="f">Футболка<select class="inp" id="edSize_${o.id}">${[["","—"],...ADULT_SIZES,...KID_SIZES.filter(([k])=>/^\d+$/.test(k))].map(([k,l])=>`<option value="${k}" ${(o.size||"")===k?"selected":""}>${esc(l)}</option>`).join("")}</select></label>
+      </div>
+      <label class="check"><input type="checkbox" id="edPub_${o.id}" ${o.publish?"checked":""}><span>Согласие на публикацию имени в лидерборде получено</span></label></div>`:""}
     ${o.who==="offline"?`<div class="panel stack" style="margin:0"><b class="small">Привязать к аккаунту</b><div class="muted tiny">Атлет (или родитель) входит на сайт со своим email — затем введите этот email здесь. Заявка, результаты и история перейдут в его профиль.</div>
       <div class="row wrap" style="gap:8px"><input class="inp" style="flex:1;min-width:180px" id="lnEmail_${o.id}" type="email" placeholder="email аккаунта" autocomplete="off">
       <select class="inp" style="width:auto" id="lnAs_${o.id}"><option value="me">это сам атлет</option><option value="kid" ${p.dob&&ageOn(p.dob,TODAY)<14?"selected":""}>ребёнок этого взрослого</option></select>
