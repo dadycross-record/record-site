@@ -1107,7 +1107,7 @@ form(){
   if (kid && !KID_SIZES.some(x=>x[0]===f.size)) f.size = kidSizeFor(age);
   if (!kid && !ADULT_SIZES.some(x=>x[0]===f.size)) f.size = "L";
   const base = div.price, disc = promoOff(S.reg), total = base-disc;
-  const ready = f.c1 && f.c2 && (age>=18 || f.c3);
+  const ready = f.c1 && f.c2 && f.c4 && (age>=18 || f.c3);
   return {title:"Анкета участника", html:`
    <div class="card"><div class="muted small">${ev.name} · ${dHuman(ev.date)}</div><div style="font-weight:700;font-size:16px;margin-top:2px">${esc(div.name)}${team?` · <span style="color:var(--accent)">${esc(team)}</span>`:""}</div><div class="muted small" style="margin-top:4px">Участник: ${esc(p.first)} ${esc(p.last)}</div></div>
    <h2 class="sec">Данные из профиля</h2>
@@ -1126,7 +1126,7 @@ form(){
     <label class="check"><input type="checkbox" id="c1" ${f.c1?"checked":""}><span>Принимаю <a href="/docs/rules" target="_blank">условия участия</a>, правила старта и стандарты движений</span></label>
     <label class="check"><input type="checkbox" id="c2" ${f.c2?"checked":""}><span>Даю <a href="/docs/consent" target="_blank">согласие на обработку персональных данных</a> и ознакомлен с <a href="/docs/privacy" target="_blank">политикой</a></span></label>
     ${age<18?`<label class="check"><input type="checkbox" id="c3" ${f.c3?"checked":""}><span>${kid?`Я, ${esc(ME.first)} ${esc(ME.last)}, законный представитель, согласен на участие ребёнка и обработку его данных`:"Законный представитель согласен на участие"}</span></label>`:""}
-    <label class="check"><input type="checkbox" id="c4" ${f.c4?"checked":""}><span>Можно показывать ${kid?"имя ребёнка":"моё имя"}, клуб и результаты в открытом лидерборде — <a href="/docs/publish" target="_blank">согласие на распространение</a>. Без галочки в таблице будет «Участник №…»</span></label>
+    <label class="check"><input type="checkbox" id="c4" ${f.c4?"checked":""}><span>Даю <a href="/docs/publish" target="_blank">согласие на распространение</a>: ${kid?"имя ребёнка":"моё имя"}, клуб и результаты показываются в открытом лидерборде. Это условие участия в соревнованиях</span></label>
     <label class="check"><input type="checkbox" id="c5" ${f.c5?"checked":""}><span>Можно публиковать фото и видео со старта в соцсетях клуба</span></label>
     <div class="card stack" style="margin-top:6px">
       <div class="sum"><span class="muted">Взнос</span><span class="mono">${fmtRub(base)}</span></div>
@@ -1418,7 +1418,7 @@ function orderCard(o){
   const scoring = scoreTargets().some(t=>t.o.id===o.id);
   return `<div class="order"><div class="hd"><span class="small">${ev.date?dateRange(ev):""} · ${ev.format==="online"?"Онлайн":"Очный"}</span>${stMap[o.status]||""}</div>
    <div class="bd"><div style="font-family:var(--f-display);font-weight:600;font-size:16px;text-transform:uppercase">${esc(ev.name)}</div>
-   <dl class="kv small" style="margin:10px 0 0"><dt>Участник</dt><dd>${esc(p.last||"")} ${esc(p.first||"")}</dd><dt>Категория</dt><dd>${esc(d.name)}${o.team?` · ${esc(o.team)}`:""}</dd><dt>Заказ</dt><dd class="mono">${o.id}</dd><dt>${o.status==="new"?"К оплате":"Взнос"}</dt><dd class="mono">${o.waiver?`бесплатно · ${esc(o.waiver)}`:fmtRub(o.status==="new"?o.due:o.paid)}</dd><dt>Лидерборд</dt><dd>${o.publish?"с именем":"анонимно"} ${o.mine===false?"":`<button class="linkbtn" data-pubtoggle="${o.id}">${o.publish?"скрыть имя":"показывать имя"}</button>`}</dd></dl></div>
+   <dl class="kv small" style="margin:10px 0 0"><dt>Участник</dt><dd>${esc(p.last||"")} ${esc(p.first||"")}</dd><dt>Категория</dt><dd>${esc(d.name)}${o.team?` · ${esc(o.team)}`:""}</dd><dt>Заказ</dt><dd class="mono">${o.id}</dd><dt>${o.status==="new"?"К оплате":"Взнос"}</dt><dd class="mono">${o.waiver?`бесплатно · ${esc(o.waiver)}`:fmtRub(o.status==="new"?o.due:o.paid)}</dd><dt>Лидерборд</dt><dd>с именем${!o.publish && o.mine!==false?` · <button class="linkbtn" data-pubtoggle="${o.id}">дать согласие на публикацию</button>`:""}</dd></dl></div>
    ${o.mine===false?`<div class="rule" style="margin-top:10px">Заявку оформил другой взрослый из профиля ребёнка — оплата, отмена и возврат у него.</div>`:""}
    ${["new","paid"].includes(o.status)&&o.mine!==false?`<div class="acts">${scoring?`<button class="btn sm" data-go="score">Сдать результат</button>`:""}<button class="btn sm ghost" data-go="profile">Анкета</button>${ev.status!=="ended"?`<button class="btn sm ghost" data-refund="${o.id}">${o.status==="paid"&&o.paid>0?"Возврат":"Отменить"}</button>`:""}</div>`:""}
    ${o.team?teamBox(o):""}
@@ -1648,7 +1648,7 @@ function lbSheets(ev0, month){
     const who = r => { const o=reg(r); return o ? `${(o.person||{}).last||""} ${(o.person||{}).first||""}`.trim()+(o.publish?"":" *") : r.n; };
     const club = r => { const o=reg(r); return o ? ((o.person||{}).affiliate||r.a||"") : (r.a||""); };
     const body=rows.map(r=>[r.place, who(r), club(r), ...ws.flatMap((w,i)=>{ const v=r.r[i], has=v!==null&&v!==undefined; return [has?(w.type==="time"&&typeof v==="number"?`${Math.floor(v/60)}:${String(Math.floor(v%60)).padStart(2,"0")},${String(Math.round(v*100)%100).padStart(2,"0")}`:typeof v==="object"?`лимит · ${v.cap} повт.`:v):"—", has?r.wr[i]:"", ...(pts?[has?r.wp[i]:0]:[])]; }), r.pts]);
-    return {name:d.name, cols:[7,26,16,...ws.flatMap(()=>[14,7,...(pts?[7]:[])]),12], rows:[[{v:`${ev0.name}${month?" · "+monthTitle(month)+" "+month.slice(0,4):""} · ${d.name}`,b:true}],[],head.map(v=>({v,b:true})),...body,...(body.some(x=>/ \*$/.test(x[1]))?[[],[{v:"* — не дал(а) согласия на публикацию имени: на сайте показан как «Участник №…». Файл только для организатора."}]]:[])]};
+    return {name:d.name, cols:[7,26,16,...ws.flatMap(()=>[14,7,...(pts?[7]:[])]),12], rows:[[{v:`${ev0.name}${month?" · "+monthTitle(month)+" "+month.slice(0,4):""} · ${d.name}`,b:true}],[],head.map(v=>({v,b:true})),...body,...(body.some(x=>/ \*$/.test(x[1]))?[[],[{v:"* — нет согласия на публикацию имени: нужно получить (на бумаге или в «Мои старты» → «дать согласие»)."}]]:[])]};
   });
 }
 function downloadCsv(name, rows){
@@ -1980,7 +1980,7 @@ function adminClick(t, ds){
     if (ds.waiveok && !reason){ toast("Укажите основание"); return true; }
     api("PATCH","/api/admin/regs/"+encodeURIComponent(id),{waiver:reason}).then(async r=>{ const i=ADM.REGS.findIndex(x=>x.id===id); if(i>=0) ADM.REGS[i]={...ADM.REGS[i],...r.order}; if (reason && !ADM.WAIVERS.includes(reason)) ADM.WAIVERS.push(reason); adm.wvOpen=null; await loadContent(); render(); toast(reason?`Допущен бесплатно: ${reason}`:"Бесплатное участие отменено — заявка снова ждёт оплаты"); }).catch(err=>toast(err.message)); return true; }
   if (ds.area){ adm.area=ds.area; render(); window.scrollTo(0,0); return true; }
-  if (ds.act==="offopen"){ adm.off={ev:curEv().id, gender:"M"}; render(); return true; }
+  if (ds.act==="offopen"){ adm.off={ev:curEv().id, gender:"M", publish:true}; render(); return true; }
   if (ds.act==="offclose"){ adm.off=null; render(); return true; }
   if (ds.act==="offsave"){
     const g=k=>document.getElementById(k), f=adm.off, ev=curEv();
@@ -2989,7 +2989,7 @@ function offlineForm(ev){
       <label class="f re-note">Комментарий<input class="inp" id="ofNote" value="${esc(f.note||"")}" placeholder="Например: оплата наличными на месте"></label>
     </div>
     <label class="check"><input type="checkbox" id="ofPaid" ${f.paid?"checked":""}><span>Взнос оплачен</span></label>
-    <label class="check"><input type="checkbox" id="ofPub" ${f.publish?"checked":""}><span>Согласие на публикацию имени в лидерборде получено (подписано на бумаге). Без галочки — «Участник №…»</span></label>
+    <label class="check"><input type="checkbox" id="ofPub" ${f.publish?"checked":""}><span>Согласие на публикацию имени в лидерборде получено (подписано на бумаге). Имя в лидерборде показывается всегда — галочка только для учёта согласий</span></label>
     <div class="muted tiny">Согласие на обработку персональных данных (и родителя — для детей) берите на бумаге при записи.</div>
     ${f.msg?`<div class="rule small" style="color:var(--danger)">${esc(f.msg)}</div>`:""}
     <div class="row wrap"><button class="btn sm" data-act="offsave" ${f.busy?"disabled":""}>Записать</button><button class="btn sm ghost" data-act="offclose">Отмена</button></div>

@@ -171,7 +171,8 @@ const dirty = () => { cache = null; };
 
 async function rawContent() { return (await db.query('select data from content where id=1')).rows[0].data; }
 
-const displayName = r => r.publish ? `${r.person.first || ''} ${r.person.last || ''}`.trim() : `Участник ${r.pub.slice(0, 4)}`;
+// the leaderboard always shows the athlete's name: publication of results is a condition of participation
+const displayName = r => `${r.person.first || ''} ${r.person.last || ''}`.trim() || `Участник ${r.pub.slice(0, 4)}`;
 
 /* gyms: free text, suggestions = the most common spellings among athletes; typed variants are folded into them */
 const BASE_GYMS = ['RECORD', 'CF BAZA'];
@@ -632,6 +633,7 @@ route('POST', '/api/register', async (req, res, u, body) => {
   const cons = body.consents || {};
   if (!cons.rules) throw bad('Нужно принять условия участия');
   if (!cons.pd) throw bad('Нужно согласие на обработку персональных данных');
+  if (!cons.publish) throw bad('Нужно согласие на публикацию имени и результатов в лидерборде — без него участие в старте невозможно');
   if (age < 18 && !cons.parent) throw bad('Нужно согласие законного представителя');
   const size = [...ADULT_SIZES, ...KID_SIZES].includes(body.size) ? body.size : null;
   const snap = { ...cleanPerson(person, who !== 'me'), phone: u.profile.phone, emName: u.profile.emName || '', emPhone: u.profile.emPhone || '', affiliate: canonGym(nm(body.affiliate, 80)) || person.affiliate || '' };
