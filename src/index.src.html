@@ -454,11 +454,12 @@ h2.ch{font-family:var(--f-display);font-weight:800;font-size:clamp(24px,7vw,40px
   .clubnav button:hover{color:var(--fg);background:var(--surface)}
   .is-club .cnav-m{display:none}
 }
+@keyframes seoIn{to{opacity:1}}
 </style>
 
 <div id="app">
   <header class="top" id="top"></header>
-  <main id="view" aria-live="polite"><div class="seo-static" style="padding:24px 16px;max-width:760px;margin:0 auto;line-height:1.55">
+  <main id="view" aria-live="polite"><div class="seo-static" style="opacity:0;animation:seoIn .2s 4s forwards;padding:24px 16px;max-width:760px;margin:0 auto;line-height:1.55">
     <h1>Центр спорта «Рекорд» — Иркутский район</h1>
     <p>Спортивный центр в с. Пивовариха (мкр Солнечный-2, ул. Болотная, 10): функциональные тренировки, тяжёлая атлетика, пауэрлифтинг, кикбоксинг, ОФП и детские группы. Тренировки для начинающих и опытных, подготовка к соревнованиям.</p>
     <h2>Направления</h2>
@@ -763,7 +764,28 @@ const S = { route:"club", p:{}, stack:[], lb:{ev:"",tab:"ind",div:"m",w:-1,q:"",
 const view = document.getElementById("view"), topEl = document.getElementById("top");
 /* a new screen opens at the top; "back" returns to the spot you left; re-drawing the same screen keeps your place */
 function go(route, p={}, push=true){ if(push) S.stack.push({route:S.route,p:S.p,y:window.scrollY}); S.route=route; S.p=p; render(); window.scrollTo(0,0); }
-function back(){ const prev=S.stack.pop(); if(prev){ S.route=prev.route; S.p=prev.p; render(); window.scrollTo(0, prev.y||0);} else go("home",{},false); }
+/* browser history: every screen change becomes a history entry, so the phone's Back button walks the same path */
+const HIST = {list:[], cur:-1, restoring:false};
+const histKey = () => S.route+"|"+((S.p&&S.p.ev)||"")+"|"+((S.p&&S.p.t)||"");
+function histSync(){
+  if (!LOADED || HIST.restoring) return;
+  const k = histKey(), here = HIST.list[HIST.cur];
+  if (here && here.k===k){ here.p=S.p; return; }
+  if (here) here.y = HIST.lastY||0;
+  HIST.list = HIST.list.slice(0, HIST.cur+1); HIST.list.push({k, route:S.route, p:S.p, y:0}); HIST.cur = HIST.list.length-1;
+  try { (HIST.cur===0 ? history.replaceState : history.pushState).call(history, {rec:HIST.cur}, ""); } catch(_){}
+}
+window.addEventListener("scroll", ()=>{ HIST.lastY = window.scrollY; }, {passive:true});
+window.addEventListener("popstate", e=>{
+  const i = e.state && typeof e.state.rec==="number" ? e.state.rec : -1, h = HIST.list[i];
+  if (!h) return;
+  const here = HIST.list[HIST.cur]; if (here) here.y = window.scrollY;
+  if (i < HIST.cur) for (let n=HIST.cur-i; n>0; n--) S.stack.pop(); else S.stack.push({route:S.route,p:S.p,y:window.scrollY});
+  HIST.cur = i; S.route = h.route; S.p = h.p; document.querySelectorAll(".cropbg").forEach(x=>x.remove());
+  HIST.restoring = true; try { render(); } finally { HIST.restoring = false; }
+  window.scrollTo(0, h.y||0);
+});
+function back(){ if (HIST.cur>0 && S.stack.length){ history.back(); return; } const prev=S.stack.pop(); if(prev){ S.route=prev.route; S.p=prev.p; render(); window.scrollTo(0, prev.y||0);} else go("home",{},false); }
 let lastDrawn = null;
 function tab(t){ S.stack=[]; go(t,{},false); }
 function toast(msg){ document.querySelectorAll(".toast").forEach(x=>x.remove()); const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2400); }
@@ -1923,6 +1945,25 @@ function adminClick(t, ds){
     if (ds.waiveok && !reason){ toast("Укажите основание"); return true; }
     api("PATCH","/api/admin/regs/"+encodeURIComponent(id),{waiver:reason}).then(async r=>{ const i=ADM.REGS.findIndex(x=>x.id===id); if(i>=0) ADM.REGS[i]={...ADM.REGS[i],...r.order}; if (reason && !ADM.WAIVERS.includes(reason)) ADM.WAIVERS.push(reason); adm.wvOpen=null; await loadContent(); render(); toast(reason?`Допущен бесплатно: ${reason}`:"Бесплатное участие отменено — заявка снова ждёт оплаты"); }).catch(err=>toast(err.message)); return true; }
   if (ds.area){ adm.area=ds.area; render(); window.scrollTo(0,0); return true; }
+  if (ds.act==="offopen"){ adm.off={ev:curEv().id, gender:"M"}; render(); return true; }
+  if (ds.act==="offclose"){ adm.off=null; render(); return true; }
+  if (ds.act==="offsave"){
+    const g=k=>document.getElementById(k), f=adm.off, ev=curEv();
+    Object.assign(f,{div:g("ofDiv").value, last:g("ofLast").value.trim(), first:g("ofFirst").value.trim(), gender:g("ofG").value, dob:g("ofDob").value, affiliate:g("ofClub").value.trim(), phone:g("ofPhone").value.trim(), parent:g("ofParent").value.trim(), size:g("ofSize").value, note:g("ofNote").value.trim(), paid:g("ofPaid").checked, publish:g("ofPub").checked, err:{}, msg:""});
+    if (!f.div) f.msg="Выберите категорию"; else if (!f.last||!f.first) f.msg="Укажите фамилию и имя"; else if (!f.dob){ f.msg="Укажите дату рождения"; f.err.dob=1; }
+    if (f.msg){ render(); return true; }
+    f.busy=true; render();
+    api("POST","/api/admin/regs/offline",{event:ev.id, div:f.div, person:{last:f.last, first:f.first, gender:f.gender, dob:f.dob, affiliate:f.affiliate, phone:f.phone, parent:f.parent}, size:f.size, note:f.note, paid:f.paid, publish:f.publish})
+      .then(r=>{ ADM.REGS.push(r.order); adm.off=null; adm.regOpen=r.order.id; render(); toast(`${f.last} ${f.first} записан(а) · заказ ${r.order.id}`); })
+      .catch(err=>{ f.busy=false; f.msg=err.message; render(); });
+    return true;
+  }
+  if (ds.reglink){
+    const id=ds.reglink, email=document.getElementById("lnEmail_"+id).value.trim(), as=document.getElementById("lnAs_"+id).value;
+    if (!email){ toast("Введите email аккаунта"); return true; }
+    api("POST","/api/admin/regs/link",{reg:id, email, as}).then(r=>{ const i=ADM.REGS.findIndex(x=>x.id===id); if (i>=0) ADM.REGS[i]={...ADM.REGS[i], ...r.order}; render(); toast(r.msg); }).catch(err=>toast(err.message));
+    return true;
+  }
   if (ds.regsave){
     const id=ds.regsave, g=k=>document.getElementById(k+"_"+id);
     const paid=g("rePaid").value.replace(/\s/g,""); if (!/^\d+$/.test(paid)){ toast("Оплачено — целое число рублей"); g("rePaid").focus(); return true; }
@@ -2243,6 +2284,7 @@ adminPeople(){
     </div>
     <div class="row wrap" style="margin:-4px 0 14px"><button class="btn sm ghost" data-adm-res="${ev.id}">Ввод результатов</button><button class="btn sm ghost" data-lbev="${ev.id}">Лидерборд</button></div>`;
   const body = t==="regs" ? `${nNew?`<div class="rule small" style="margin:0 0 4px">Подсвечены заявки, по которым ещё нет оплаты: <b>${nNew}</b>. Когда участник оплатил — выберите «Оплачен» в статусе справа или откройте заявку по фамилии.</div>`:""}
+      ${offlineForm(ev)}
       ${regs.length ? regTable(ev, regs) : '<div class="empty">Заявок пока нет</div>'}
       <div class="row wrap" style="margin-top:12px"><button class="btn sm ghost" data-act="regcsv" ${regs.length?"":"disabled"}>Скачать заявки для Excel</button></div>`
     : t==="crew" ? crewTab(ev, crew) : peopleStats(ev, regs);
@@ -2890,6 +2932,32 @@ const ADULT_SIZES = ["XS","S","M","L","XL","XXL"].map(x=>[x,x]);
 const KID_SIZES = [["104","104 см · 3–4 года"],["110","110 см · 4–5 лет"],["116","116 см · 5–6 лет"],["122","122 см · 6–7 лет"],["128","128 см · 7–8 лет"],["134","134 см · 8–9 лет"],["140","140 см · 9–10 лет"],["146","146 см · 10–11 лет"],["152","152 см · 11–12 лет"],["158","158 см · 12–13 лет"],["164","164 см · 13–14 лет"],["XS","XS · взрослый"],["S","S · взрослый"],["M","M · взрослый"]];
 const kidSizeFor = age => !isFinite(age) ? "128" : age<=3 ? "104" : age>=14 ? "XS" : String(Math.min(164, 104 + (age-3)*6));
 const sizeLabel = sz => /^\d+$/.test(sz||"") ? `${sz} см` : (sz||"");
+/* organizer: athlete registered at the desk, without an account */
+function offlineForm(ev){
+  const f = adm.off && adm.off.ev===ev.id ? adm.off : null;
+  if (!f) return `<div class="row wrap" style="margin:0 0 10px"><button class="btn sm" data-act="offopen">+ Атлет без аккаунта</button><span class="muted tiny">Записать на старт за стойкой; аккаунт можно привязать потом</span></div>`;
+  const divs = ev.divisions.filter(d=>d.type!=="team"), E=f.err||{}, sizes=[["","—"],...ADULT_SIZES,...KID_SIZES.filter(([k])=>/^\d+$/.test(k))];
+  return `<div class="card stack" style="margin-bottom:12px"><b>Атлет без аккаунта</b>
+    <div class="muted tiny">Заявка появится в списке как обычная, с пометкой «без аккаунта». Когда атлет или родитель войдёт на сайт — откройте заявку и привяжите её к его email.</div>
+    <div class="regedit">
+      <label class="f">Категория<select class="inp" id="ofDiv"><option value="">Выберите</option>${divs.map(d=>`<option value="${d.id}" ${f.div===d.id?"selected":""}>${esc(d.name)}</option>`).join("")}</select></label>
+      <label class="f">Фамилия<input class="inp" id="ofLast" value="${esc(f.last||"")}" autocomplete="off"></label>
+      <label class="f">Имя<input class="inp" id="ofFirst" value="${esc(f.first||"")}" autocomplete="off"></label>
+      <label class="f">Пол<select class="inp" id="ofG"><option value="M" ${f.gender!=="F"?"selected":""}>Мужской</option><option value="F" ${f.gender==="F"?"selected":""}>Женский</option></select></label>
+      <label class="f">Дата рождения${dobInput("ofDob", f.dob||"", E.dob)}</label>
+      <label class="f">Клуб<input class="inp" id="ofClub" value="${esc(f.affiliate||"")}" placeholder="Необязательно"></label>
+      <label class="f">Телефон<input class="inp" id="ofPhone" inputmode="tel" value="${esc(f.phone||"")}" placeholder="Атлета или родителя"></label>
+      <label class="f">Родитель (для детей)<input class="inp" id="ofParent" value="${esc(f.parent||"")}" placeholder="ФИО, необязательно"></label>
+      <label class="f">Футболка<select class="inp" id="ofSize">${sizes.map(([k,l])=>`<option value="${k}" ${f.size===k?"selected":""}>${esc(l)}</option>`).join("")}</select></label>
+      <label class="f re-note">Комментарий<input class="inp" id="ofNote" value="${esc(f.note||"")}" placeholder="Например: оплата наличными на месте"></label>
+    </div>
+    <label class="check"><input type="checkbox" id="ofPaid" ${f.paid?"checked":""}><span>Взнос оплачен</span></label>
+    <label class="check"><input type="checkbox" id="ofPub" ${f.publish?"checked":""}><span>Согласие на публикацию имени в лидерборде получено (подписано на бумаге). Без галочки — «Участник №…»</span></label>
+    <div class="muted tiny">Согласие на обработку персональных данных (и родителя — для детей) берите на бумаге при записи.</div>
+    ${f.msg?`<div class="rule small" style="color:var(--danger)">${esc(f.msg)}</div>`:""}
+    <div class="row wrap"><button class="btn sm" data-act="offsave" ${f.busy?"disabled":""}>Записать</button><button class="btn sm ghost" data-act="offclose">Отмена</button></div>
+  </div>`;
+}
 function regTable(ev, regs){
   const {F, list} = regFilter(ev, regs);
   const cnt = k => regs.filter(o=>k==="all"||o.status===k).length;
@@ -2907,7 +2975,7 @@ function regTable(ev, regs){
     ${rows.length?`<div class="card tbl-wrap" style="padding:0 4px"><table class="tbl regs"><thead><tr><th class="ck">${newIn.length?`<input type="checkbox" id="regAll" ${allSel?"checked":""} aria-label="Выбрать всех, кто ждёт оплаты">`:""}</th><th>Участник</th><th class="c-hide">Категория</th><th class="num">Сумма</th><th class="c-hide">Дата</th><th></th></tr></thead><tbody>
     ${rows.map(o=>{ const p=o.person||{}, open=adm.regOpen===o.id;
       return `<tr class="${open?"open":""}${o.status==="new"?" unproc":""}"><td class="ck">${o.status==="new"?`<input type="checkbox" id="regSel_${o.id}" data-sel="${o.id}" ${F.sel[o.id]?"checked":""} aria-label="Выбрать">`:""}</td>
-        <td><button class="linkbtn regname" data-regopen="${o.id}">${esc(p.last||"")} ${esc(p.first||"")}</button><div class="muted tiny">${esc(p.phone||"")}${o.team?` · ${esc(o.team)}`:""}</div>${o.note?`<div class="tiny regnote">Комментарий: ${esc(o.note.length>60?o.note.slice(0,60)+"…":o.note)}</div>`:""}</td>
+        <td><button class="linkbtn regname" data-regopen="${o.id}">${esc(p.last||"")} ${esc(p.first||"")}</button>${o.who==="offline"?' <span class="chip neutral" style="height:18px;font-size:10px">без аккаунта</span>':""}<div class="muted tiny">${esc(p.phone||"")}${o.team?` · ${esc(o.team)}`:""}</div>${o.note?`<div class="tiny regnote">Комментарий: ${esc(o.note.length>60?o.note.slice(0,60)+"…":o.note)}</div>`:""}</td>
         <td class="small c-hide">${esc(divName(o.div))}</td><td class="num mono">${fmtRub(o.status==="paid"?o.paid:o.due)}</td><td class="small mono c-hide">${dShort(o.date)}</td>
         <td class="act">${regStSelect(o)}${["cancelled","blocked","refunded"].includes(o.status)?(adm.regDel===o.id?` <button class="btn sm danger" data-regdelyes="${o.id}">Удалить навсегда</button> <button class="btn sm ghost" data-regdelno="1">Нет</button>`:` <button class="btn sm ghost" data-regdel="${o.id}" title="Удалить заявку из списка навсегда" aria-label="Удалить">✕</button>`):""}</td></tr>
         ${open?`<tr class="detail"><td></td><td colspan="5">${regDetail(ev,o)}</td></tr>`:""}`; }).join("")}
@@ -2923,6 +2991,10 @@ function regDetail(ev, o){
   const team = (ev.divisions.find(d=>d.id===o.div)||{}).type==="team";
   return `<div class="stack regdet">
     <div class="regmeta">${meta.map(([k,v])=>`<div><span>${k}</span><b>${esc(v)}</b></div>`).join("")}</div>
+    ${o.who==="offline"?`<div class="panel stack" style="margin:0"><b class="small">Привязать к аккаунту</b><div class="muted tiny">Атлет (или родитель) входит на сайт со своим email — затем введите этот email здесь. Заявка, результаты и история перейдут в его профиль.</div>
+      <div class="row wrap" style="gap:8px"><input class="inp" style="flex:1;min-width:180px" id="lnEmail_${o.id}" type="email" placeholder="email аккаунта" autocomplete="off">
+      <select class="inp" style="width:auto" id="lnAs_${o.id}"><option value="me">это сам атлет</option><option value="kid" ${p.dob&&ageOn(p.dob,TODAY)<14?"selected":""}>ребёнок этого взрослого</option></select>
+      <button class="btn sm" data-reglink="${o.id}">Привязать</button></div></div>`:""}
     <div class="regedit${team?" r2":""}">
       ${(ev.divisions.find(d=>d.id===o.div)||{}).type==="team"?"":`<label class="f">Категория<select class="inp" id="reDiv_${o.id}">${ev.divisions.filter(d=>d.type!=="team").map(d=>`<option value="${d.id}" ${d.id===o.div?"selected":""}>${esc(d.name)}${d.id!==o.div&&d.limit&&d.taken>=d.limit?" (мест нет)":""}</option>`).join("")}</select></label>`}
       <label class="f">Статус<select class="inp" id="reSt_${o.id}">${[["new","Ждёт оплаты"],["paid","Оплачен"],["refund_requested","Просит возврат"],["refunded","Возврат сделан"],["cancelled","Отменена"],["blocked","Отклонена (не допущен)"]].map(([k,l])=>`<option value="${k}" ${o.status===k?"selected":""}>${l}</option>`).join("")}</select></label>
@@ -2987,6 +3059,7 @@ function render(){
   lastDrawn = S.route;
   if (out.after) out.after();
   mkHit();
+  histSync();
   scheduleSave();
 }
 document.addEventListener("click", e=>{

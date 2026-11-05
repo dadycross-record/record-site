@@ -574,6 +574,9 @@ async function kidDupes() {
 route('POST', '/api/account/delete', async (req, res, u) => {
   need(u);
   await db.tx(async q => {
+    // a child's registration stays with the athlete who took over the profile or with the other adult
+    await q(`update registrations r set user_id = x.uid from (select r2.id, coalesce(nullif(r2.athlete_user, $1), (select g.user_id from kid_guardians g where g.kid_id=r2.who and g.user_id<>$1 order by g.created_at limit 1)) uid
+      from registrations r2 where r2.user_id=$1 and r2.who<>'me') x where r.id=x.id and x.uid is not null`, [u.id]);
     await q(`update registrations set person = jsonb_build_object('first','Удалённый','last','участник','affiliate', person->>'affiliate'), publish=false, user_id=null where user_id=$1`, [u.id]);
     const solo = (await q('select kid_id from kid_guardians g where user_id=$1 and (select count(*) from kid_guardians x where x.kid_id=g.kid_id)=1', [u.id])).rows.map(r => r.kid_id);
     await q('delete from users where id=$1', [u.id]);
@@ -643,6 +646,7 @@ route('POST', '/api/register', async (req, res, u, body) => {
       const od = (ev.divisions || []).find(d => d.id === x.div_id), a = divDaySet(ev, od || {}), b2 = divDaySet(ev, div);
       if (!od || a.some(d => b2.includes(d))) throw bad(`Этот участник уже записан на «${od ? od.name : 'другую категорию'}» в этот день. В один день — одна категория`);
     }
+    if (person.dob && await samePersonReg(q, ev, div, snap.dob ? snap : person)) throw bad(SAME_MSG(snap));
     let team = null, role = null, initial = null, teamRow = null;
     if (div.type === 'team') {
       const t = body.team || {}, size = +div.size || 1;
@@ -706,6 +710,20 @@ route('POST', '/api/register', async (req, res, u, body) => {
   if (out_captain) mailCaptain(out_captain, `Заявка в команду «${out.team}»`, [`${`${snap.first || ''} ${snap.last || ''}`.trim()} хочет в вашу команду «${out.team}» (${ev.name} · ${div.name}).`, '', `Принять или отклонить: ${SITE_URL()}/#orders → карточка старта → «Команда».`]);
   return { order: orderOut(out) };
 });
+
+/* the same person (surname, name, date of birth) already on this start from any account or added by the organizer */
+async function samePersonReg(q, ev, div, person, skip) {
+  const rows = (await q(`select id, div_id from registrations where event_id=$1 and status in ${INTEAM}
+    and translate(lower(trim(coalesce(person->>'last',''))),'ё','е')=$2 and translate(lower(trim(coalesce(person->>'first',''))),'ё','е')=$3 and person->>'dob'=$4`,
+    [ev.id, normName(person.last), normName(person.first), person.dob || ''])).rows.filter(r => !skip || !skip(r));
+  for (const x of rows) {
+    if (x.div_id === div.id) return x;
+    const od = (ev.divisions || []).find(d => d.id === x.div_id), a = divDaySet(ev, od || {}), b = divDaySet(ev, div);
+    if (!od || a.some(d => b.includes(d))) return x;
+  }
+  return null;
+}
+const SAME_MSG = p => `${p.first} ${p.last} уже записан(а) на этот старт — заявку подал другой взрослый, сам участник или организатор. Вторая заявка не нужна; если это ошибка — напишите организатору`;
 
 /* ---------- teams: captain, roster, requests, reserves ---------- */
 const shortName = p => `${(p && p.first) || ''} ${((p && p.last) || '').slice(0, 1)}${p && p.last ? '.' : ''}`.trim();
@@ -1043,6 +1061,81 @@ route('POST', '/api/admin/regs/paid', async (req, res, u, body) => {
   const r = await db.query(`update registrations set status='paid', paid=due where status='new' and id in (select jsonb_array_elements_text($1::jsonb)) returning *`, [JSON.stringify(ids)]);
   dirty();
   return { orders: r.rows.map(orderOut) };
+});
+/* organizer: an athlete without an account (registered at the desk); can be linked to an account later */
+route('POST', '/api/admin/regs/offline', async (req, res, u, body) => {
+  need(u, 'owner', 'admin');
+  const c = await rawContent();
+  const ev = (c.EVENTS || []).find(e => e.id === body.event); if (!ev) throw bad('Старт не найден');
+  const div = (ev.divisions || []).find(d => d.id === body.div); if (!div) throw bad('Выберите категорию');
+  if (div.type === 'team') throw bad('Командные категории — только через сайт: команду собирает капитан');
+  const pin = body.person || {}, person = cleanPerson(pin, false);
+  if (!person.last || !person.first) throw bad('Укажите фамилию и имя');
+  if (!person.dob) throw bad('Укажите дату рождения');
+  const age = ev.ageMode === 'year' ? (+String(ev.date).slice(0, 4) - +person.dob.slice(0, 4)) : ageOn(person.dob, ev.date || today());
+  if ((div.g === 'M' || div.g === 'F') && person.gender !== div.g) throw bad(div.g === 'M' ? 'Категория только для мужчин' : 'Категория только для женщин');
+  if (div.min && age < div.min) throw bad(`Категория с ${div.min} лет, атлету ${age}`);
+  if (div.max && age > div.max) throw bad(`Категория до ${div.max} лет, атлету ${age}`);
+  const size = [...ADULT_SIZES, ...KID_SIZES].includes(body.size) ? body.size : null;
+  const snap = { ...person, size: size || '' };
+  if (age < 18) snap.parent = nm(pin.parent, 80);
+  const out = await db.tx(async q => {
+    await q('select pg_advisory_xact_lock(hashtext($1))', [`${ev.id}:${div.id}`]);
+    if (await samePersonReg(q, ev, div, snap)) throw bad(SAME_MSG(snap));
+    const n = (await q(`select count(*)::int n from registrations where event_id=$1 and div_id=$2 and status in ${ACTIVE}`, [ev.id, div.id])).rows[0].n;
+    if (div.limit && n >= div.limit && !body.overLimit) throw bad('Места в категории закончились');
+    const price = +div.price || 0, paid = body.paid ? price : 0;
+    const id = `RC-${today().slice(5, 7)}${today().slice(8)}-${rnd(5)}`;
+    await q(`insert into registrations(id, pub, user_id, event_id, div_id, who, person, size, price, due, paid, status, publish, photo, note, updated_by)
+      values ($1,$2,null,$3,$4,'offline',$5,$6,$7,$7,$8,$9,$10,false,$11,$12)`,
+      [id, rnd(10), ev.id, div.id, snap, size, price, paid, (body.paid || price === 0) ? 'paid' : 'new', !!body.publish, str(body.note, 500), 'offline:' + u.email]);
+    return (await q('select * from registrations where id=$1', [id])).rows[0];
+  });
+  await logConsent(req, 'offline:' + out.id, 'pd', out.id);
+  if (body.publish) await logConsent(req, 'offline:' + out.id, 'publish', out.id);
+  dirty();
+  return { order: { ...orderOut(out), email: '' } };
+});
+route('POST', '/api/admin/regs/link', async (req, res, u, body) => {
+  need(u, 'owner', 'admin');
+  const email = str(body.email, 254).toLowerCase(), as = body.as === 'kid' ? 'kid' : 'me';
+  if (!isEmail(email)) throw bad('Проверьте email');
+  let msg = '';
+  const out = await db.tx(async q => {
+    await q('select pg_advisory_xact_lock(hashtext($1))', ['kids']);
+    const r = (await q(`select * from registrations where id=$1 and who='offline' and user_id is null`, [str(body.reg, 30)])).rows[0];
+    if (!r) throw bad('Заявка не найдена или уже привязана');
+    const acc = (await q('select * from users where lower(email)=$1', [email])).rows[0];
+    if (!acc) throw bad('Аккаунта с таким email нет. Пусть атлет (или родитель) сначала войдёт на сайт с этим email — потом привяжите');
+    const p = r.person || {};
+    let who = 'me';
+    if (as === 'me') {
+      const has = (await q(`select 1 from registrations where user_id=$1 and who='me' and event_id=$2 and status in ${INTEAM} and id<>$3`, [acc.id, r.event_id, r.id])).rows[0];
+      if (has) throw bad('У этого аккаунта уже есть своя заявка на этот старт — лишнюю отмените');
+      const prof = acc.profile || {};
+      if (!prof.first && !prof.last) await q('update users set profile = profile || $2::jsonb where id=$1', [acc.id, JSON.stringify({ first: p.first, last: p.last, gender: p.gender, dob: p.dob, affiliate: p.affiliate || '', print: p.print || `${p.first} ${p.last}`.toUpperCase(), phone: p.phone || '', ...(r.size && ADULT_SIZES.includes(r.size) ? { size: r.size } : {}) })]);
+      msg = 'Заявка привязана: теперь она в «Мои старты» этого аккаунта';
+    } else {
+      const key = kidKey(p);
+      const mine = (await q('select k.id from kids k join kid_guardians g on g.kid_id=k.id where g.user_id=$1 and k.match_key=$2', [acc.id, key])).rows[0];
+      if (mine) who = mine.id;
+      else {
+        const other = (await q('select id from kids where match_key=$1', [key])).rows[0];
+        if (other) throw bad('Этот ребёнок уже есть в профиле другого взрослого. Пусть тот взрослый пригласит этот аккаунт («Пригласить второго взрослого»), потом привяжите');
+        who = 'kid' + rnd(8, 'abcdefghijklmnopqrstuvwxyz0123456789');
+        const k = cleanPerson({ ...p, size: r.size }, true);
+        await q('insert into kids (id, first, last, gender, dob, affiliate, print, match_key, created_by, size) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)', [who, k.first, k.last, k.gender, k.dob, k.affiliate, k.print, key, acc.id, k.size || null]);
+        await q('insert into kid_guardians (kid_id, user_id) values ($1,$2)', [who, acc.id]);
+      }
+      msg = 'Заявка привязана: ребёнок в профиле этого аккаунта, заявка — в его «Мои старты»';
+    }
+    const ap = acc.profile || {};
+    const person = { ...p, ...(ap.phone && !p.phone ? { phone: ap.phone } : {}), ...(who !== 'me' && !p.parent ? { parent: `${ap.first || ''} ${ap.last || ''}`.trim() } : {}) };
+    await q('update registrations set user_id=$2, who=$3, person=$4, updated_by=$5 where id=$1', [r.id, acc.id, who, person, 'linked:' + u.email]);
+    return (await q('select r.*, u.email from registrations r left join users u on u.id=r.user_id where r.id=$1', [r.id])).rows[0];
+  });
+  dirty();
+  return { order: { ...orderOut(out), email: out.email || '' }, msg };
 });
 route('PATCH', '/api/admin/regs/:id', async (req, res, u, body, p) => {
   need(u, 'owner', 'admin');
