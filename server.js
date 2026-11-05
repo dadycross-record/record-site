@@ -399,7 +399,7 @@ const myOrders = async uid => (await db.query(`select * from registrations where
 const orderOut = r => ({ waiver: r.waiver || '', role: r.team_role || null, note: r.note || '', id: r.id, pub: r.pub, event: r.event_id, div: r.div_id, who: r.who, person: r.person, team: r.team, size: r.size, promo: r.promo,
   price: r.price, due: r.due, paid: r.paid, status: r.status, date: new Date(r.created_at.getTime() + 8 * 3600e3).toISOString().slice(0, 10), publish: r.publish });
 
-route('GET', '/api/challenge', async () => { const t = Date.now(), n = rnd(16); return { t, n, bits: POW_BITS, sig: powSig(t, n) }; });
+route('GET', '/api/challenge', async (req) => { logClientIpShape(req); const t = Date.now(), n = rnd(16); return { t, n, bits: POW_BITS, sig: powSig(t, n) }; });
 route('POST', '/api/auth/code', async (req, res, u, body) => {
   const email = str(body.email, 254).toLowerCase();
   if (!isEmail(email)) throw bad('Проверьте email');
