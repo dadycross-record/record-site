@@ -1643,8 +1643,12 @@ function lbSheets(ev0, month){
   return ev0.divisions.filter(d=>RS[resKey(ev0,d.id,month)]).map(d=>{
     const {ev, rows} = leaderboard(ev0.id, d.id, month), ws=ev.workouts;
     const head=["Место", d.type==="team"?"Команда":"Атлет", "Клуб", ...ws.flatMap(w=>[w.name, "Место", ...(pts?["Баллы"]:[])]), pts?"Итого баллов":"Сумма мест"];
-    const body=rows.map(r=>[r.place, r.n, r.a||"", ...ws.flatMap((w,i)=>{ const v=r.r[i], has=v!==null&&v!==undefined; return [has?(w.type==="time"&&typeof v==="number"?`${Math.floor(v/60)}:${String(Math.floor(v%60)).padStart(2,"0")},${String(Math.round(v*100)%100).padStart(2,"0")}`:typeof v==="object"?`лимит · ${v.cap} повт.`:v):"—", has?r.wr[i]:"", ...(pts?[has?r.wp[i]:0]:[])]; }), r.pts]);
-    return {name:d.name, cols:[7,26,16,...ws.flatMap(()=>[14,7,...(pts?[7]:[])]),12], rows:[[{v:`${ev0.name}${month?" · "+monthTitle(month)+" "+month.slice(0,4):""} · ${d.name}`,b:true}],[],head.map(v=>({v,b:true})),...body]};
+    // the organizer's file carries real names, also for athletes who are «Участник №…» on the public board
+    const reg = r => d.type==="team" ? null : (r.k||[]).map(k=>(ADM.REGS||[]).find(x=>x.pub===k)).find(Boolean);
+    const who = r => { const o=reg(r); return o ? `${(o.person||{}).last||""} ${(o.person||{}).first||""}`.trim()+(o.publish?"":" *") : r.n; };
+    const club = r => { const o=reg(r); return o ? ((o.person||{}).affiliate||r.a||"") : (r.a||""); };
+    const body=rows.map(r=>[r.place, who(r), club(r), ...ws.flatMap((w,i)=>{ const v=r.r[i], has=v!==null&&v!==undefined; return [has?(w.type==="time"&&typeof v==="number"?`${Math.floor(v/60)}:${String(Math.floor(v%60)).padStart(2,"0")},${String(Math.round(v*100)%100).padStart(2,"0")}`:typeof v==="object"?`лимит · ${v.cap} повт.`:v):"—", has?r.wr[i]:"", ...(pts?[has?r.wp[i]:0]:[])]; }), r.pts]);
+    return {name:d.name, cols:[7,26,16,...ws.flatMap(()=>[14,7,...(pts?[7]:[])]),12], rows:[[{v:`${ev0.name}${month?" · "+monthTitle(month)+" "+month.slice(0,4):""} · ${d.name}`,b:true}],[],head.map(v=>({v,b:true})),...body,...(body.some(x=>/ \*$/.test(x[1]))?[[],[{v:"* — не дал(а) согласия на публикацию имени: на сайте показан как «Участник №…». Файл только для организатора."}]]:[])]};
   });
 }
 function downloadCsv(name, rows){
