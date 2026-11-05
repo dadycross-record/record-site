@@ -775,6 +775,27 @@ function histSync(){
   HIST.list = HIST.list.slice(0, HIST.cur+1); HIST.list.push({k, route:S.route, p:S.p, y:0}); HIST.cur = HIST.list.length-1;
   try { (HIST.cur===0 ? history.replaceState : history.pushState).call(history, {rec:HIST.cur}, ""); } catch(_){}
 }
+/* reload keeps the place: the current screen, its history and simple screen settings live in this tab's sessionStorage */
+const NAV_KEY = "rec.nav", NAV_SKIP = ["busy","loading","loaded","err","msg","saved","sending"];
+const flat = o => Object.fromEntries(Object.entries(o||{}).filter(([k,v])=>!NAV_SKIP.includes(k) && (["number","boolean"].includes(typeof v) || (typeof v==="string" && v.length<300))));
+function navSave(){
+  if (!LOADED || HIST.cur<0) return;
+  try { sessionStorage.setItem(NAV_KEY, JSON.stringify({cur:HIST.cur, list:HIST.list.map(h=>({k:h.k, route:h.route, p:flat(h.p), y:h===HIST.list[HIST.cur]?window.scrollY:(h.y||0)})), lb:flat(S.lb), adm:flat(adm), user:USER?USER.email:""})); } catch(_){}
+}
+function navRestore(){
+  let n = null; try { n = JSON.parse(sessionStorage.getItem(NAV_KEY)||"null"); } catch(_){}
+  const st = history.state;
+  if (!n || !st || typeof st.rec!=="number" || st.rec!==n.cur || !n.list || !n.list[n.cur]) return null;
+  if ((n.user||"") !== (USER?USER.email:"")) return null; // other account in this tab — start fresh
+  const FALLBACK = {adminDiv:"adminEvent", adminWod:"adminEvent"};
+  n.list.forEach(h=>{ if (FALLBACK[h.route]) h.route = FALLBACK[h.route]; });
+  HIST.list = n.list; HIST.cur = n.cur;
+  const h = n.list[n.cur];
+  Object.assign(S.lb, n.lb||{}); Object.assign(adm, n.adm||{});
+  S.route = h.route; S.p = {...h.p}; S.stack = n.list.slice(0, n.cur).map(x=>({route:x.route, p:{...x.p}, y:x.y||0}));
+  return h.y||0;
+}
+window.addEventListener("pagehide", navSave);
 window.addEventListener("scroll", ()=>{ HIST.lastY = window.scrollY; }, {passive:true});
 window.addEventListener("popstate", e=>{
   const i = e.state && typeof e.state.rec==="number" ? e.state.rec : -1, h = HIST.list[i];
@@ -3060,6 +3081,7 @@ function render(){
   if (out.after) out.after();
   mkHit();
   histSync();
+  navSave();
   scheduleSave();
 }
 document.addEventListener("click", e=>{
@@ -3278,6 +3300,11 @@ render();
   try { await loadContent(); }
   catch(e){ LOAD_ERR = "Не получилось загрузить сайт. Обновите страницу через минуту"; render(); return; }
   try { await loadSession(); } catch(_){ USER=null; }
-  LOADED = true; render(); cookieBar(); mkStart();
+  LOADED = true;
+  const fresh = /^#(join|kid)=/.test(location.hash) || S.route==="invite" || S.route==="kidInvite";
+  const y = fresh ? null : navRestore();
+  try { render(); } catch(e){ console.error(e); HIST.list=[]; HIST.cur=-1; S.route="club"; S.p={}; S.stack=[]; render(); }
+  if (y) setTimeout(()=>window.scrollTo(0, y), 50);
+  cookieBar(); mkStart();
 })();
 </script>
