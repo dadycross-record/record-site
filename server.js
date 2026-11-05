@@ -716,8 +716,8 @@ route('POST', '/api/register', async (req, res, u, body) => {
 /* the same person (surname, name, date of birth) already on this start from any account or added by the organizer */
 async function samePersonReg(q, ev, div, person, skip) {
   const rows = (await q(`select id, div_id from registrations where event_id=$1 and status in ${INTEAM}
-    and translate(lower(trim(coalesce(person->>'last',''))),'ё','е')=$2 and translate(lower(trim(coalesce(person->>'first',''))),'ё','е')=$3 and person->>'dob'=$4`,
-    [ev.id, normName(person.last), normName(person.first), person.dob || ''])).rows.filter(r => !skip || !skip(r));
+    and translate(lower(trim(coalesce(person->>'last',''))),'ё','е')=$2 and split_part(translate(lower(trim(coalesce(person->>'first',''))),'ё','е'),' ',1)=$3 and person->>'dob'=$4`,
+    [ev.id, normName(person.last), normName(person.first).split(' ')[0], person.dob || ''])).rows.filter(r => !skip || !skip(r));
   for (const x of rows) {
     if (x.div_id === div.id) return x;
     const od = (ev.divisions || []).find(d => d.id === x.div_id), a = divDaySet(ev, od || {}), b = divDaySet(ev, div);
@@ -1119,7 +1119,9 @@ route('POST', '/api/admin/regs/link', async (req, res, u, body) => {
       msg = 'Заявка привязана: теперь она в «Мои старты» этого аккаунта';
     } else {
       const key = kidKey(p);
-      const mine = (await q('select k.id from kids k join kid_guardians g on g.kid_id=k.id where g.user_id=$1 and k.match_key=$2', [acc.id, key])).rows[0];
+      // the same child already in this adult's profile (first name may come without the patronymic)
+      const mine = (await q(`select k.id from kids k join kid_guardians g on g.kid_id=k.id where g.user_id=$1 and (k.match_key=$2 or (split_part(k.match_key,'|',1)=$3 and split_part(split_part(k.match_key,'|',2),' ',1)=$4 and k.dob=$5))`,
+        [acc.id, key, normName(p.last), normName(p.first).split(' ')[0], p.dob || ''])).rows[0];
       if (mine) who = mine.id;
       else {
         const other = (await q('select id from kids where match_key=$1', [key])).rows[0];
