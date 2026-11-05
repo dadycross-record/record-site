@@ -948,7 +948,7 @@ route('POST', '/api/admin/athletes', async (req, res, u, body) => {
   // people known only from registrations (no account any more, or imported results)
   const regHay = `${NORM_SQL("person->>'last'")} || ' ' || ${NORM_SQL("person->>'first'")}`;
   const guests = (await db.query(`select person->>'last' last, person->>'first' first, coalesce(person->>'dob','') dob, count(*)::int regs from registrations
-    where user_id is null and athlete_user is null and who='me' and ${words.map((_, i) => `${regHay} like $${i + 1}`).join(' and ')} group by 1,2,3 order by 1,2 limit 20`, words)).rows;
+    where user_id is null and athlete_user is null and who in ('me','offline') and ${words.map((_, i) => `${regHay} like $${i + 1}`).join(' and ')} group by 1,2,3 order by 1,2 limit 20`, words)).rows;
   return { list: [
     ...users.map(x => ({ type: 'user', id: String(x.id), name: `${x.profile.last || ''} ${x.profile.first || ''}`.trim() || x.email, dob: x.profile.dob || '', email: x.email, kids: x.kids, regs: x.regs })),
     ...kids.map(k => ({ type: 'kid', id: k.id, name: `${k.last} ${k.first}`, dob: k.dob, parents: k.parents, regs: k.regs, moved: !!k.owner_user })),
@@ -985,7 +985,7 @@ route('POST', '/api/admin/athlete', async (req, res, u, body) => {
   }
   if (type === 'guest') {
     let key; try { key = JSON.parse(id); } catch (_) { throw bad('Неверный запрос'); }
-    const regs = (await db.query(`${regSel} where r.user_id is null and r.athlete_user is null and r.who='me' and coalesce(r.person->>'last','')=$1 and coalesce(r.person->>'first','')=$2 and coalesce(r.person->>'dob','')=$3 order by r.created_at desc`, key.slice(0, 3).map(String))).rows;
+    const regs = (await db.query(`${regSel} where r.user_id is null and r.athlete_user is null and r.who in ('me','offline') and coalesce(r.person->>'last','')=$1 and coalesce(r.person->>'first','')=$2 and coalesce(r.person->>'dob','')=$3 order by r.created_at desc`, key.slice(0, 3).map(String))).rows;
     return { type, guest: { last: key[0], first: key[1], dob: key[2] }, regs: regsOut(regs) };
   }
   throw bad('Неверный запрос');
