@@ -81,10 +81,43 @@ function ipLimit(req, name, perIp, siteWide, windowMs = 3600e3) {
   if (ip && !isPrivateIp(ip)) limit(name + ':' + ip, perIp, windowMs);
   limit(name + ':all', siteWide, windowMs);
 }
+/* ---------- bot protection, invisible to people: proof-of-work + minimum fill time + honeypot ---------- */
+const POW_KEY = crypto.randomBytes(32), POW_BITS = 16, POW_MIN_MS = 2000, POW_TTL = 30 * 60e3;
+const powSig = (t, n) => crypto.createHmac('sha256', POW_KEY).update(`${t}.${n}`).digest('hex');
+const powUsed = new Map();
+setInterval(() => { const now = Date.now(); for (const [k, v] of powUsed) if (v < now) powUsed.delete(k); }, 600e3).unref();
+class QuietOk extends Error {}
+const botLog = new Map();
+function botSeen(what, why) {
+  const k = `${what}:${why}`, n = (botLog.get(k) || 0) + 1; botLog.set(k, n);
+  if (n === 1 || n % 50 === 0) console.log(`bot check: ${what} rejected (${why}) x${n}`);
+}
+function zeroBits(buf) { let n = 0; for (const b of buf) { if (b === 0) { n += 8; continue; } n += Math.clz32(b) - 24; break; } return n; }
+function checkHuman(body, what) {
+  if (str(body.hp_field, 200)) { botSeen(what, 'honeypot'); throw new QuietOk(); }
+  const p = body.pow || {}, t = Number(p.t), n = str(p.n, 40), x = str(p.x, 40);
+  if (!t || !n || !x || p.sig !== powSig(t, n)) { botSeen(what, 'no-pow'); throw bad('Обновите страницу и попробуйте ещё раз'); }
+  const age = Date.now() - t;
+  if (age > POW_TTL) throw bad('Страница открыта слишком давно — обновите её и попробуйте ещё раз');
+  if (age < POW_MIN_MS) { botSeen(what, 'fast'); throw bad('Слишком быстро — попробуйте ещё раз через пару секунд'); }
+  if (zeroBits(crypto.createHash('sha256').update(`${n}:${x}`).digest()) < POW_BITS) { botSeen(what, 'bad-pow'); throw bad('Обновите страницу и попробуйте ещё раз'); }
+  if (powUsed.has(n)) { botSeen(what, 'reuse'); throw bad('Обновите страницу и попробуйте ещё раз'); }
+  powUsed.set(n, Date.now() + POW_TTL);
+}
+/* a site-wide ceiling that trips tells the organizers once an hour */
+const tripAt = new Map();
+function siteCap(name, max, what) {
+  try { limit(name + ':all', max, 3600e3); }
+  catch (e) {
+    if (Date.now() - (tripAt.get(name) || 0) > 3600e3) { tripAt.set(name, Date.now()); try { notify(`⚠️ <b>Похоже на атаку ботов</b>\n${what}: больше ${max} за час. Новые запросы временно отклоняются.`, null); } catch (_) {} }
+    throw e;
+  }
+}
 function logClientIpShape(req) {
   if (xffSeen >= 3) return; xffSeen++;
   const chain = String(req.headers['x-forwarded-for'] || '').split(',').map(x => x.trim()).filter(Boolean);
   const kind = a => isPrivateIp(a) ? 'private' : 'public';
+  console.log('client header names: ' + Object.keys(req.headers).join(','));
   console.log(`client ip check: xff=${chain.length} [${chain.map(kind).join(', ')}] x-real-ip=${req.headers['x-real-ip'] ? kind(req.headers['x-real-ip']) : 'none'} socket=${kind(req.socket.remoteAddress || '')} -> using ${kind(ipOf(req))}`);
 }
 
@@ -366,11 +399,14 @@ const myOrders = async uid => (await db.query(`select * from registrations where
 const orderOut = r => ({ waiver: r.waiver || '', role: r.team_role || null, note: r.note || '', id: r.id, pub: r.pub, event: r.event_id, div: r.div_id, who: r.who, person: r.person, team: r.team, size: r.size, promo: r.promo,
   price: r.price, due: r.due, paid: r.paid, status: r.status, date: new Date(r.created_at.getTime() + 8 * 3600e3).toISOString().slice(0, 10), publish: r.publish });
 
+route('GET', '/api/challenge', async () => { const t = Date.now(), n = rnd(16); return { t, n, bits: POW_BITS, sig: powSig(t, n) }; });
 route('POST', '/api/auth/code', async (req, res, u, body) => {
   const email = str(body.email, 254).toLowerCase();
   if (!isEmail(email)) throw bad('Проверьте email');
   if (!body.consent) throw bad('Нужно согласие на обработку персональных данных');
-  ipLimit(req, 'code-ip', 60, 1500);
+  try { checkHuman(body, 'login'); } catch (e) { if (e instanceof QuietOk) return { ok: true }; throw e; }
+  ipLimit(req, 'code-ip', 60, 100000);
+  siteCap('code-site', 200, 'Письма с кодом входа');
   limit('code-mail:' + email, 1, 55e3);
   limit('code-mail-h:' + email, 6, 3600e3);
   limit('code-mail-d:' + email, 20, 86400e3);
@@ -589,7 +625,9 @@ route('POST', '/api/account/delete', async (req, res, u) => {
 });
 
 route('POST', '/api/lead', async (req, res, u, body) => {
-  ipLimit(req, 'lead-ip', 20, 300);
+  try { checkHuman(body, 'lead'); } catch (e) { if (e instanceof QuietOk) return { ok: true }; throw e; }
+  ipLimit(req, 'lead-ip', 20, 100000);
+  siteCap('lead-site', 60, 'Заявки на пробную тренировку');
   limit('lead-phone:' + digits(str(body.phone, 30)), 3, 3600e3);
   const name = nm(body.name, 80), phone = str(body.phone, 30);
   if (!name) throw bad('Как к вам обращаться?');
