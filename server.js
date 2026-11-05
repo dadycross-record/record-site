@@ -1454,7 +1454,7 @@ async function uploadOffsite(id) {
 }
 async function dailyBackup() {
   try {
-    const { rows } = await db.query(`select 1 from backups where created_at > now() - interval '23 hours'`);
+    const { rows } = await db.query(`select 1 from backups where kind='daily' and created_at > now() - interval '23 hours'`);
     if (!rows.length) { const b = await makeBackup('daily'); console.log('backup created', b.id); await uploadOffsite(b.id); }
     else if (offsiteReady() && (!offsite.last || Date.now() - Date.parse(offsite.last) > 25 * 3600e3)) {
       const last = (await db.query('select id from backups order by created_at desc limit 1')).rows[0]; if (last) await uploadOffsite(last.id);
