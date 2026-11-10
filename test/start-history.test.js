@@ -1,0 +1,22 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const vm = require('vm');
+test('January rollover archives finished events but keeps ongoing events accessible', () => {
+  const html=fs.readFileSync(require.resolve('../public/index.html'),'utf8');
+  const helpers=html.slice(html.indexOf('function eventYear('),html.indexOf('function evCard('));
+  const events=[{id:'old',name:'Finished 2026',status:'ended',date:'2026-11-07'}, {id:'ongoing',name:'Ongoing',status:'live',date:'2026-12-31'}, {id:'new',name:'Next',status:'open',date:'2027-02-01'}];
+  const c=vm.createContext({TODAY:'2026-12-31',EVENTS:events,ME:{hiddenStarts:['order:hidden']},esc:String,evCard:e=>`<article>${e.name}</article>`});
+  vm.runInContext(helpers,c);
+  assert.doesNotMatch(c.eventFeed(events),/<details/);
+  c.TODAY='2027-01-01';
+  const feed=c.eventFeed(events);
+  assert.match(feed,/<details[^>]*name="start-archive"[^>]*><summary[^>]*>2026 год/);
+  assert.ok(feed.indexOf('Ongoing')<feed.indexOf('<details'));
+  assert.ok(feed.indexOf('Finished 2026')>feed.indexOf('<details'));
+  assert.equal(c.pastStart('old'),true);
+  assert.equal(c.pastStart('ongoing'),false);
+  assert.equal(c.historyHidden('order','hidden'),true);
+  assert.equal(c.historyHidden('crew','hidden'),false);
+});

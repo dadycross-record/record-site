@@ -390,8 +390,8 @@ route('GET', '/api/session', async (req, res, u) => {
     user: { email: u.email, role: u.role, profile: u.profile, kids: u.kids, avatar: u.avatar || '' },
     orders: orders.map(o => ['blocked', 'cancelled'].includes(o.status) ? o : { ...o, note: '' }), scores,
     teams: await myTeams(u.id),
-    crew: (await db.query('select id, event_id, role, status, avail from crew where user_id=$1 order by created_at', [u.id])).rows
-      .map(c => ({ id: Number(c.id), event: c.event_id, role: c.role, status: c.status, avail: c.avail || [] })),
+    crew: (await db.query('select id, event_id, role, status, avail, info from crew where user_id=$1 order by created_at', [u.id])).rows
+      .map(c => ({ id: Number(c.id), event: c.event_id, role: c.role, status: c.status, withdrawn: c.status==='declined' && !!(c.info||{}).withdrawn, avail: c.avail || [] })),
   };
 });
 const myOrders = async uid => (await db.query(`select * from registrations where user_id=$1 or athlete_user=$1 or (who <> 'me' and who in (select kid_id from kid_guardians where user_id=$1)) order by created_at`, [uid])).rows
@@ -487,7 +487,7 @@ route('PUT', '/api/profile', async (req, res, u, body) => {
       await q('delete from kid_guardians where kid_id=$1 and user_id=$2', [k.id, u.id]);
       await q(`delete from kids where id=$1 and not exists (select 1 from kid_guardians where kid_id=$1) and not exists (select 1 from registrations where who=$1)`, [k.id]);
     }
-    await q('update users set profile=$1 where id=$2', [profile, u.id]);
+    await q("update users set profile=$1::jsonb || jsonb_build_object('hiddenStarts', coalesce(profile->'hiddenStarts','[]'::jsonb)) where id=$2", [profile, u.id]);
     // a size changed in the profile reaches the athlete's current registrations (the ones still in play)
     const ended = JSON.stringify(((await rawContent()).EVENTS || []).filter(e => e.status === 'ended').map(e => e.id));
     const notEnded = `and event_id not in (select jsonb_array_elements_text($3::jsonb))`;
@@ -881,13 +881,17 @@ route('POST', '/api/team/act', async (req, res, u, body) => {
 
 route('POST', '/api/refund', async (req, res, u, body) => {
   need(u);
+  const owned = (await db.query('select event_id from registrations where id=$1 and user_id=$2', [str(body.id,40),u.id])).rows[0];
+  if (!owned) throw bad('Заявка не найдена');
+  const event = ((await rawContent()).EVENTS||[]).find(e=>e.id===owned.event_id);
+  if (!event || event.status==='ended') throw bad('Старт завершён. Заявку можно убрать из своего списка, результаты сохранятся');
   { const w = await db.query(`update registrations set status='cancelled', team_role=null, note='Сам отозвал заявку в команду' where id=$1 and user_id=$2 and status in ('pending','reserve') returning *`, [str(body.id, 40), u.id]);
     if (w.rows.length) { dirty(); return { order: orderOut(w.rows[0]) }; } }
-  const r = await db.query(`update registrations set status='refund_requested' where id=$1 and user_id=$2 and status in ('new','paid') returning *`, [str(body.id, 40), u.id]);
+  const r = await db.query(`update registrations set status=case when paid>0 then 'refund_requested' else 'cancelled' end, team_role=case when paid>0 then team_role else null end where id=$1 and user_id=$2 and status in ('new','paid') returning *`, [str(body.id, 40), u.id]);
   if (!r.rows.length) throw bad('Заказ не найден');
   await fixCaptain(r.rows[0].event_id, r.rows[0].div_id, r.rows[0].team);
   dirty();
-  { const o = r.rows[0]; notify(`↩️ <b>Запрос на возврат</b>\n${tg.esc(await evName(o.event_id))} · ${tg.esc(await divName(o.event_id, o.div_id))}\nОплачено ${rub(o.paid)} · ${o.id}\n${SITE_URL()}/#admin`,
+  if (r.rows[0].status==='refund_requested') { const o = r.rows[0]; notify(`↩️ <b>Запрос на возврат</b>\n${tg.esc(await evName(o.event_id))} · ${tg.esc(await divName(o.event_id, o.div_id))}\nОплачено ${rub(o.paid)} · ${o.id}\n${SITE_URL()}/#admin`,
     { title: 'запрос на возврат взноса', lines: [`Старт: ${await evName(o.event_id)} · ${await divName(o.event_id, o.div_id)}`, `Участник: ${`${o.person.last || ''} ${o.person.first || ''}`.trim()}`, `Телефон: ${o.person.phone || ''}`, `Заказ: ${o.id}`, `Оплачено: ${rub(o.paid)}`] }); }
   return { order: orderOut(r.rows[0]) };
 });
@@ -1345,9 +1349,31 @@ route('POST', '/api/crew/apply', async (req, res, u, body) => {
 });
 route('DELETE', '/api/crew/apply/:id', async (req, res, u, body, p) => {
   need(u);
-  const r = await db.query(`delete from crew where id=$1 and user_id=$2 and status in ('request','declined') returning id`, [Number(p.id) || 0, u.id]);
-  if (!r.rows.length) throw bad('Заявку уже подтвердили — чтобы отказаться, свяжитесь с организатором');
-  return { ok: true };
+  const events=((await rawContent()).EVENTS||[]);
+  await db.tx(async q=>{
+    const c=(await q('select * from crew where id=$1 and user_id=$2 for update',[Number(p.id)||0,u.id])).rows[0];
+    if(!c) throw bad('Заявка не найдена');
+    const ev=events.find(e=>e.id===c.event_id);
+    if(!ev||ev.status==='ended') throw bad('Старт завершён. Заявку можно убрать из своего списка');
+    if(Object.values(c.work||{}).some(v=>Number(v)>0)) throw bad('Уже учтены рабочие смены. Для отказа свяжитесь с организатором');
+    await q("update crew set status='declined', info=jsonb_set(coalesce(info,'{}'::jsonb),'{withdrawn}','true'::jsonb) where id=$1",[c.id]);
+  });
+  return {ok:true};
+});
+
+route('POST', '/api/starts/hide', async (req,res,u,body)=>{
+  need(u);
+  const kind=body.kind,id=str(body.id,60);
+  let item;
+  if(kind==='order') item=(await db.query("select event_id, status from registrations where id=$1 and (user_id=$2 or athlete_user=$2 or who in (select kid_id from kid_guardians where user_id=$2))",[id,u.id])).rows[0];
+  else if(kind==='crew' && /^\d+$/.test(id)) item=(await db.query('select event_id,status from crew where id=$1 and user_id=$2',[id,u.id])).rows[0];
+  if(!item) throw bad('Заявка не найдена');
+  const ev=((await rawContent()).EVENTS||[]).find(e=>e.id===item.event_id);
+  const inactive=kind==='crew'?item.status==='declined':['cancelled','blocked','refunded'].includes(item.status);
+  if(ev&&ev.status!=='ended'&&!inactive) throw bad('Сначала отмените актуальную заявку или оформите возврат');
+  const key=kind+':'+id;
+  const r=await db.query("update users set profile=jsonb_set(profile,'{hiddenStarts}',coalesce(profile->'hiddenStarts','[]'::jsonb)||$2::jsonb) where id=$1 and not coalesce(profile->'hiddenStarts','[]'::jsonb) @> $2::jsonb returning profile->'hiddenStarts' hidden",[u.id,JSON.stringify([key])]);
+  return {hidden:r.rows[0]?.hidden||(await db.query("select profile->'hiddenStarts' hidden from users where id=$1",[u.id])).rows[0]?.hidden||[]};
 });
 
 /* ---------- event crew: judges, volunteers, venue staff; pay per shift ---------- */
