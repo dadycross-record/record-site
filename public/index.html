@@ -836,7 +836,7 @@ function histSync(){
   try { (HIST.cur===0 ? history.replaceState : history.pushState).call(history, {rec:HIST.cur}, ""); } catch(_){}
 }
 /* reload keeps the place: the current screen, its history and simple screen settings live in this tab's sessionStorage */
-const NAV_KEY = "rec.nav", NAV_SKIP = ["busy","loading","loaded","err","msg","saved","sending"];
+const NAV_KEY = "rec.nav", NAV_SKIP = ["busy","loading","loaded","err","msg","saved","sending","crewRequest"];
 const flat = o => Object.fromEntries(Object.entries(o||{}).filter(([k,v])=>!NAV_SKIP.includes(k) && (["number","boolean"].includes(typeof v) || (typeof v==="string" && v.length<300))));
 function navSave(){
   if (!LOADED || HIST.cur<0) return;
@@ -1271,16 +1271,16 @@ me(){
    <div class="pcard"><div class="row">${avatarBox(ini)}<div class="sp"><div style="font-weight:700;font-size:18px">${esc(nm)}</div><div class="muted small">${esc(ME.affiliate||USER.email)}</div></div></div>
    </div>
    <h2 class="sec">Мои выступления</h2>
-   <div class="pills" role="tablist" aria-label="Участник">${groups.map(g=>`<button role="tab" aria-selected="${g.id===selected.id}" data-profile-performer="${esc(g.id)}">${g.id==="self"?"Я":esc(g.name)}</button>`).join("")}</div>
+   <div class="pills" role="tablist" aria-label="Участник">${groups.map(g=>`<button role="tab" aria-selected="${g.id===selected.id}" data-profile-performer="${esc(g.id)}">${g.id==="self"?esc(nm):esc(g.name)}</button>`).join("")}</div>
    ${performanceCard({...selected,name:selected.id==="self"?"Моя статистика":selected.name})}
    ${profileReady()?"":`<div class="rule" style="margin-top:12px">Заполните анкету участника — без неё нельзя записаться на старт. <button class="linkbtn" data-go="profile" data-edit="1">Заполнить</button></div>`}
    ${(USER.headEvents||[]).length&&!["owner","admin","judge"].includes(S.viewAs)?`<button class="btn block" data-go="admin" style="margin-top:12px">Результаты · главный судья</button>`:""}
    <h2 class="sec">Сервис</h2>
    <div class="menu">
     ${["owner","admin","judge"].includes(S.viewAs)?`<button data-go="admin"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span class="sp">${S.viewAs==="judge"?"Панель судьи":"Панель организатора"}</span><span class="chip warn">${ROLE_L[S.viewAs]}</span></button>`:""}
+    ${S.viewAs==="owner"?`<button data-go="adminCrewStats"><span class="sp">Команда старта</span></button>`:MYCREW.some(c=>["judge","head_judge"].includes(c.role)&&["request","confirmed"].includes(c.status)&&EVENTS.some(e=>e.id===c.event&&["open","live"].includes(e.status)))?`<button data-go="crewManage"><span class="sp">Команда старта</span></button>`:""}
     <button data-go="orders"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/></svg><span class="sp">Мои старты</span><span class="chip neutral">${ORDERS.filter(o=>!historyHidden("order",o.id)).length+MYCREW.filter(c=>!historyHidden("crew",c.id)).length}</span></button>
     ${canScore?`<button data-go="score"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M6 9l6-6 6 6M4 21h16"/></svg><span class="sp">Сдать результат</span><span class="chip live">идёт приём</span></button>`:""}
-    ${MYCREW.some(c=>c.role==="head_judge"&&c.status==="confirmed")?`<button data-go="crewManage"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5M17 11l2 2 3-4"/></svg><span class="sp">Команда старта</span><span class="chip neutral">главный судья</span></button>`:""}
     <button data-go="profile"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4zM8 9h8M8 13h8M8 17h5"/></svg><span class="sp">Анкета участника</span></button>
     <button data-act="logout"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg><span class="sp">Выйти</span></button>
    </div>
@@ -1310,13 +1310,11 @@ login(){
 },
 crewManage(){
   const M = S.p.m;
-  if (!M){ if (!S.p.loading){ S.p.loading=true; api("GET","/api/crew/manage").then(r=>{ ADM.CREW=r.crew; ADM.CREW_CFG=r.cfg||{}; S.p={...S.p, m:r, ev:r.events[0]}; adm.evId=r.events[0]; render(); }).catch(err=>{ S.p={...S.p, m:{err:err.message}}; render(); }); }
+  if (!M){ const state=S.p; if (!state.crewRequest){ state.crewRequest=true; api("GET","/api/crew/manage").then(r=>{ state.m=r; state.ev=state.ev||r.events[0]; }).catch(err=>{ state.m={err:err.message}; }).finally(()=>{delete state.crewRequest;if(S.route==="crewManage"&&S.p===state)render();}); }
     return {title:"Команда старта", html:'<div class="muted">Загружаю…</div>'}; }
   if (M.err) return {title:"Команда старта", html:`<div class="empty">${esc(M.err)}</div>`};
-  adm.evId = S.p.ev; const ev = EVENTS.find(e=>e.id===S.p.ev); if (!ev) return {title:"Команда старта", html:'<div class="empty">Старт не найден</div>'};
-  return {title:"Команда старта", html:`${M.events.length>1?`<div class="pills">${M.events.map(id=>{ const e=EVENTS.find(x=>x.id===id); return `<button aria-selected="${id===S.p.ev}" data-mev="${id}">${esc(e?e.name:id)}</button>`; }).join("")}</div>`:""}
-    <div class="muted small" style="margin-bottom:10px">${esc(ev.name)} · вы главный судья: подтверждаете людей и отмечаете отработанные смены. Оплату считает организатор.</div>
-    ${crewTab(ev, ADM.CREW.filter(c=>c.event===ev.id), false)}`};
+  const ev = EVENTS.find(e=>e.id===S.p.ev);
+  return {title:"Команда старта", html:`${M.events.length>1?`<div class="pills">${M.events.map(id=>{const e=EVENTS.find(x=>x.id===id);return `<button aria-selected="${id===S.p.ev}" data-mev="${esc(id)}">${esc(e?e.name:id)}</button>`;}).join("")}</div>`:""}<h2 class="sec">${esc(ev?.name||"Судьи")}</h2><div class="stack">${M.crew.filter(c=>c.event===S.p.ev).map(c=>`<div class="card"><b>${esc(c.name)}</b><div class="muted small">${esc(c.position||(c.role==="head_judge"?"Главный судья":"Судья"))}</div></div>`).join("")||'<div class="empty">Список судей пока пуст</div>'}</div>`};
 },
 crewApply(){
   const ev = EVENTS.find(e=>e.id===S.p.ev); if (!ev) return {title:"Команда старта", html:'<div class="empty">Старт не найден</div>'};

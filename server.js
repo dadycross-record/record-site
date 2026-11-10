@@ -1443,14 +1443,15 @@ async function headJudgeEvents(u) {
 const crewOutNoMoney = c => { const o = crewOut(c); delete o.rate; o.info={...o.info};delete o.info.paidAmount;return o; };
 route('GET', '/api/crew/manage', async (req, res, u) => {
   need(u);
-  const evs = await headJudgeEvents(u);
-  if (!evs.length) throw new HttpError(403, 'Раздел доступен главному судье старта');
-  const crew = (await db.query('select * from crew where event_id in (select jsonb_array_elements_text($1::jsonb)) order by created_at', [JSON.stringify(evs)])).rows.map(crewOutNoMoney);
-  const cfg = Object.fromEntries((await db.query('select event_id, shift_hours from crew_rates where event_id in (select jsonb_array_elements_text($1::jsonb))', [JSON.stringify(evs)])).rows.map(r => [r.event_id, { rates: {}, shift: Number(r.shift_hours) }]));
-  return { events: evs, crew, cfg };
+  const active = ((await rawContent()).EVENTS||[]).filter(e=>['open','live'].includes(e.status)).map(e=>e.id);
+  const mine = (await db.query("select distinct event_id from crew where user_id=$1 and role in ('judge','head_judge') and status in ('request','confirmed')",[u.id])).rows.map(r=>r.event_id);
+  const evs=mine.filter(id=>active.includes(id));
+  if (!evs.length) throw new HttpError(403, 'Раздел доступен судьям с активной заявкой на активный старт');
+  const rows=(await db.query("select event_id,name,role,info from crew where event_id in (select jsonb_array_elements_text($1::jsonb)) and role in ('judge','head_judge') and status in ('request','confirmed') order by name",[JSON.stringify(evs)])).rows;
+  return {events:evs,crew:rows.map(c=>({event:c.event_id,name:c.name,role:c.role,position:c.info?.position||''}))};
 });
 route('PATCH', '/api/crew/manage/:id', async (req, res, u, body, p) => {
-  need(u);
+  need(u, 'owner');
   const cur = (await db.query('select * from crew where id=$1', [Number(p.id) || 0])).rows[0];
   if (!cur || !(await headJudgeEvents(u)).includes(cur.event_id)) throw new HttpError(403, 'Нет доступа');
   const f = crewFields({ status: body.status, work: body.work, role: body.role, note: body.note,position:body.position }, cur);
