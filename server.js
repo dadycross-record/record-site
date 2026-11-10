@@ -1468,11 +1468,11 @@ route('PATCH', '/api/admin/scores/:id', async (req, res, u, body, p) => {
 });
 
 /* ---------- backups: a daily snapshot of every table, kept 14 days; the owner downloads them ---------- */
-const BACKUP_TABLES = ['content', 'users', 'staff', 'leads', 'teams', 'registrations', 'scores', 'consents', 'crew', 'crew_rates', 'tg_chats', 'notify_emails', 'kids', 'kid_guardians'];
+const { snapshot: snapshotBackup } = require('./lib/backup');
 async function makeBackup(kind) {
-  const tables = {}; let rows = 0;
-  for (const t of BACKUP_TABLES) { tables[t] = (await db.query(`select * from ${t}`)).rows; rows += tables[t].length; }
-  const data = zlib.gzipSync(JSON.stringify({ app: 'record-site', version: 1, created: new Date().toISOString(), tables }));
+  const dump = await snapshotBackup(db);
+  const rows = Object.values(dump.tables).reduce((n, table) => n + table.length, 0);
+  const data = zlib.gzipSync(JSON.stringify(dump));
   const r = await db.query('insert into backups(kind, size, rows, data) values ($1,$2,$3,$4) returning id, created_at', [kind, data.length, rows, data]);
   await db.query(`delete from backups where created_at < now() - interval '14 days'`);
   return r.rows[0];
@@ -1582,7 +1582,7 @@ function serveStatic(req, res, pathname) {
 }
 
 const PRIMARY = 'https://recordirk.ru';
-const MIRRORS = new Set(['www.recordirk.ru', 'xn--d1abpqbfcddho.xn--p1ai', 'www.xn--d1abpqbfcddho.xn--p1ai', 'рекордспорт.рф', 'www.рекордспорт.рф']);
+const MIRRORS = new Set(['www.recordirk.ru', 'record-site-5b6fbf.pipecore.io', 'xn--d1abpqbfcddho.xn--p1ai', 'www.xn--d1abpqbfcddho.xn--p1ai', 'рекордспорт.рф', 'www.рекордспорт.рф']);
 /* the main page with search-engine verification tags that the organizer pastes in the panel */
 let indexCache = { key: null };
 async function serveIndex(req, res, status = 200) {
@@ -1609,7 +1609,9 @@ const SECURITY = {
 
 const server = http.createServer(async (req, res) => {
   for (const [k, v] of Object.entries(SECURITY)) res.setHeader(k, v);
-  const url = new URL(req.url, 'http://x');
+  let url;
+  try { url = new URL(req.url, 'http://x'); }
+  catch { return send(res, 400, { error: 'Неверный адрес запроса' }); }
   const pathname = url.pathname;
   try {
     if (pathname.startsWith('/api/')) {

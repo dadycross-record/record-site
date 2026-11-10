@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node server.js",
     "build": "echo 'no build step: public/ is committed'",
-    "tgcheck": "node tools/tgcheck.js"
+    "tgcheck": "node tools/tgcheck.js",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {}
 }
