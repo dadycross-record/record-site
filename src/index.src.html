@@ -1223,7 +1223,7 @@ leaderboard(){
   if (ev.status==="open") return {title:null, html: head + `<div class="empty" style="margin-top:16px">Старт ${dHuman(ev.date)}. Лидерборд заполнится, когда судьи внесут первые результаты.</div>`};
   if (L.tab==="aff") return {title:null, html: head + affBoard(ev)};
   const RS = allResults(), hasRes = d => month==="year" ? (ev0.months||[]).some(m=>RS[resKey(ev0,d.id,m.id)]) : RS[resKey(ev0,d.id,month)];
-  const divs = ev.divisions.filter(d=> L.tab==="team" ? d.type==="team" : d.type==="ind").filter(hasRes);
+  const divs = ev.divisions.filter(d=> L.tab==="team" ? d.type==="team" : d.type==="ind").filter(d=>hasRes(d)||d.id===L.div);
   if (!divs.length && ev0.permanent) return {title:null, html: head + '<div class="empty" style="margin-top:16px">За этот месяц результатов пока нет</div>'};
   if (!divs.length) return {title:null, html: head + '<div class="empty" style="margin-top:16px">В этом старте нет командных категорий с результатами</div>'};
   if (!divs.find(d=>d.id===L.div)) L.div = divs[0].id;
@@ -1449,6 +1449,13 @@ function kidCard(k){
     ${A?"":`<div class="row wrap">${k.shared<2?`<button class="btn sm ghost" data-kidinv="${k.id}">${k.shared?"Пригласить ещё взрослого":"Пригласить второго взрослого"}</button>`:""}${age>=14?`<button class="btn sm ghost" data-kidtr="${k.id}">Передать профиль ${age>=18?"":"ребёнку"}</button>`:""}</div>`}
     ${panel}</div>`;
 }
+function orderLeaderboard(o){
+  const ev=EVENTS.find(e=>e.id===o.event);
+  if (!ev || !ev.divisions.some(d=>d.id===o.div)) return '<span class="muted">Результатов пока нет</span>';
+  const place=myPlace(o);
+  const month=ev.permanent && place ? (ev.months||[]).find(m=>leaderboard(ev.id,o.div,m.id).rows.some(r=>(r.k||[]).includes(o.pub)&&r.place===place))?.id : null;
+  return `${place?`<b>${place}-е место</b>`:'<span class="muted">Результатов пока нет</span>'} · <button class="linkbtn" data-lbopen="${esc(ev.id)}|${esc(o.div)}" data-lb-period="${esc(month||"")}">Открыть категорию</button>`;
+}
 function orderCard(o){
   const ev = EVENTS.find(e=>e.id===o.event) || {name:"Старт удалён",divisions:[],format:"onsite",status:"ended",date:o.date}, d = ev.divisions.find(x=>x.id===o.div) || {name:""};
   const stMap = {new:'<span class="chip warn">Ожидает оплаты</span>',paid:'<span class="chip ok">Зарегистрирован</span>',refund_requested:'<span class="chip warn">Запрошен возврат</span>',refunded:'<span class="chip neutral">Возврат оформлен</span>',cancelled:'<span class="chip neutral">Отменена</span>',blocked:'<span class="chip full">Отклонена</span>',pending:'<span class="chip warn">Ждёт капитана</span>',reserve:'<span class="chip neutral">Запасной</span>'};
@@ -1457,7 +1464,7 @@ function orderCard(o){
   const scoring = scoreTargets().some(t=>t.o.id===o.id);
   return `<div class="order"><div class="hd"><span class="small">${ev.date?dateRange(ev):""} · ${ev.format==="online"?"Онлайн":"Очный"}</span>${stMap[o.status]||""}</div>
    <div class="bd"><div style="font-family:var(--f-display);font-weight:600;font-size:16px;text-transform:uppercase">${esc(ev.name)}</div>
-   <dl class="kv small" style="margin:10px 0 0"><dt>Участник</dt><dd>${esc(p.last||"")} ${esc(p.first||"")}</dd><dt>Категория</dt><dd>${esc(d.name)}${o.team?` · ${esc(o.team)}`:""}</dd><dt>Заказ</dt><dd class="mono">${o.id}</dd><dt>${o.status==="new"?"К оплате":"Взнос"}</dt><dd class="mono">${o.waiver?`бесплатно · ${esc(o.waiver)}`:fmtRub(o.status==="new"?o.due:o.paid)}</dd><dt>Лидерборд</dt><dd>с именем${!o.publish && o.mine!==false?` · <button class="linkbtn" data-pubtoggle="${o.id}">дать согласие на публикацию</button>`:""}</dd></dl></div>
+   <dl class="kv small" style="margin:10px 0 0"><dt>Участник</dt><dd>${esc(p.last||"")} ${esc(p.first||"")}</dd><dt>Категория</dt><dd>${esc(d.name)}${o.team?` · ${esc(o.team)}`:""}</dd><dt>${o.status==="new"?"К оплате":"Взнос"}</dt><dd class="mono">${o.waiver?`бесплатно · ${esc(o.waiver)}`:fmtRub(o.status==="new"?o.due:o.paid)}</dd><dt>Лидерборд</dt><dd>${orderLeaderboard(o)}</dd>${!o.publish && o.mine!==false?`<dt>Публикация</dt><dd><button class="linkbtn" data-pubtoggle="${o.id}">Дать согласие на публикацию</button></dd>`:""}</dl></div>
    ${o.mine===false?`<div class="rule" style="margin-top:10px">Заявку оформил другой взрослый из профиля ребёнка — оплата, отмена и возврат у него.</div>`:""}
    ${["new","paid"].includes(o.status)&&o.mine!==false?`<div class="acts">${scoring?`<button class="btn sm" data-go="score">Сдать результат</button>`:""}<button class="btn sm ghost" data-go="profile">Анкета</button>${ev.status!=="ended"?`<button class="btn sm ghost" data-refund="${o.id}">${o.status==="paid"&&o.paid>0?"Возврат":"Отменить"}</button>`:""}</div>`:""}
    ${o.team?teamBox(o):""}
@@ -3231,7 +3238,7 @@ document.addEventListener("click", e=>{
   if (ds.lbt){ S.lb.tab=ds.lbt; S.lb.w=-1; S.lb.open=null; S.lb.div = ds.lbt==="team"?"pair":"m"; return render(); }
   if (ds.lbw!==undefined){ S.lb.w=+ds.lbw; S.lb.desc=null; return render(); }
   if (ds.rsw){ adm.rs.w=ds.rsw; render(); return; }
-  if (ds.lbopen){ const [e,d]=ds.lbopen.split("|"), dv=(EVENTS.find(x=>x.id===e)||{divisions:[]}).divisions.find(x=>x.id===d); S.lb.ev=e; S.lb.div=d; S.lb.tab=dv&&dv.type==="team"?"team":"ind"; S.lb.w=-1; S.lb.init=true; return tab("leaderboard"); }
+  if (ds.lbopen){ const [e,d]=ds.lbopen.split("|"), dv=(EVENTS.find(x=>x.id===e)||{divisions:[]}).divisions.find(x=>x.id===d); S.lb.ev=e; S.lb.div=d; S.lb.tab=dv&&dv.type==="team"?"team":"ind"; S.lb.month=ds.lbPeriod||undefined; S.lb.q=""; S.searchOpen=false; S.lb.open=null; S.lb.desc=null; S.lb.w=-1; S.lb.init=true; return tab("leaderboard"); }
   if (ds.lbdesc){ S.lb.desc = S.lb.desc===ds.lbdesc ? null : ds.lbdesc; return render(); }
   if (ds.lbm){ S.lb.month=ds.lbm; S.lb.w=-1; S.lb.open=null; return render(); }
   if (ds.lbmonth){ S.lb.ev=ds.lbev; S.lb.month=ds.lbmonth; S.lb.w=-1; S.lb.open=null; S.lb.tab="ind"; S.lb.div="m"; return tab("leaderboard"); }
