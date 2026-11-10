@@ -210,23 +210,25 @@ const displayName = r => `${r.person.first || ''} ${r.person.last || ''}`.trim()
 /* gyms: free text, suggestions = the most common spellings among athletes; typed variants are folded into them */
 const BASE_GYMS = ['RECORD', 'CF BAZA'];
 const GYM_ALIASES = { recordпивовариха: 'RECORD', рекорд: 'RECORD', рекордпивовариха: 'RECORD', центрспортарекорд: 'RECORD' };
-const gymKey = g => String(g || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]/g, '');
+const ClubNames=require('./public/js/clubs');
+const gymKey=ClubNames.key;
 let GYMS = BASE_GYMS.slice();
 async function loadGyms() {
   const rows = (await db.query(`select trim(profile->>'affiliate') a from users where coalesce(trim(profile->>'affiliate'),'') <> ''
-    union all select trim(person->>'affiliate') from registrations where who <> 'me' and coalesce(trim(person->>'affiliate'),'') <> ''`)).rows;
+    union all select trim(person->>'affiliate') from registrations where coalesce(trim(person->>'affiliate'),'') <> ''
+    union all select trim(affiliate) from kids where coalesce(trim(affiliate),'')<>''`)).rows;
   const groups = new Map();
   for (const { a } of rows) {
-    const k = gymKey(a); if (!k || k === 'другойзал') continue;
+    const k = gymKey(GYM_ALIASES[gymKey(a)]||a); if (!k || k === 'другойзал') continue;
     const g = groups.get(k) || { n: 0, spell: new Map() }; g.n++; g.spell.set(a, (g.spell.get(a) || 0) + 1); groups.set(k, g);
   }
   const base = new Map(BASE_GYMS.map(b => [gymKey(b), b]));
-  const list = [...groups.entries()].filter(([k, g]) => g.n >= 2 && !base.has(k)).sort((x, y) => y[1].n - x[1].n).slice(0, 12)
-    .map(([, g]) => [...g.spell.entries()].sort((x, y) => y[1] - x[1])[0][0]);
+  const list = [...groups.entries()].filter(([k, g]) => !base.has(k)).sort((x, y) => y[1].n - x[1].n).slice(0, 1000)
+    .map(([, g]) => [...g.spell.entries()].sort((x, y) => y[1] - x[1])[0][0]).map(ClubNames.clean);
   GYMS = [...BASE_GYMS, ...list];
   return GYMS;
 }
-const canonGym = a => { const k = gymKey(a); if (!k) return ''; if (GYM_ALIASES[k]) return GYM_ALIASES[k]; return GYMS.find(g => gymKey(g) === k) || a; };
+const canonGym=a=>ClubNames.canonical(a,GYMS);
 function evDaysSrv(ev) {
   if (ev.format === 'online' || !ev.date || !ev.dateEnd || ev.dateEnd <= ev.date) return [ev.date].filter(Boolean);
   const out = []; for (let d = new Date(ev.date + 'T00:00:00Z'); out.length < 14; d.setUTCDate(d.getUTCDate() + 1)) { const s = d.toISOString().slice(0, 10); if (s > ev.dateEnd) break; out.push(s); }
@@ -243,7 +245,7 @@ const SEXW = { m: 'мужчин', f: 'женщин' };
 function divDaySet(ev, d) { const days = evDaysSrv(ev); const own = ((d && d.days) || []).filter(x => days.includes(x)); return own.length ? own : days; }
 let lastDraftResults = {};
 async function publicContent() {
-  if (cache) return cache;
+  if (cache&&Date.now()-cache.at<60000) return cache;
   const c = await rawContent();
   const EVENTS = c.EVENTS || [];
   const counts = (await db.query(`select event_id, div_id, count(*)::int n, count(distinct team)::int t from registrations where status in ${ACTIVE} group by 1,2`)).rows;
@@ -254,13 +256,13 @@ async function publicContent() {
     const k = counts.find(x => x.event_id === ev.id && x.div_id === d.id);
     d.taken = !k ? 0 : d.type === 'team' ? (TEAMS[`${ev.id}:${d.id}`] || []).length : k.n;
   }));
+  await loadGyms();
   const ALLRES = await liveResults(EVENTS);
   const drafts = new Set(EVENTS.filter(e => e.status === 'draft').map(e => e.id));
   const RESULTS = Object.fromEntries(Object.entries(ALLRES).filter(([k]) => !drafts.has(k.split(/[:@]/)[0])));
   lastDraftResults = Object.fromEntries(Object.entries(ALLRES).filter(([k]) => drafts.has(k.split(/[:@]/)[0])));
-  await loadGyms();
   const json = JSON.stringify({ EVENTS, SITE: c.SITE || {}, TEAMS, RESULTS, GYMS, today: today() });
-  cache = { json, gz: zlib.gzipSync(json), etag: '"' + sha(json).slice(0, 20) + '"' };
+  cache = { at:Date.now(),json, gz: zlib.gzipSync(json), etag: '"' + sha(json).slice(0, 20) + '"' };
   return cache;
 }
 
@@ -283,9 +285,9 @@ async function liveResults(EVENTS) {
     if (!map.has(rk)) {
       if (isTeam) {
         const ms = members.filter(m => m.event_id === s.event_id && m.div_id === s.div_id && m.team === s.team);
-        map.set(rk, { n: s.team, a: (ms[0] || s).person.affiliate || '', team: ms.map(displayName), k: ms.map(m => m.pub), r: wl.map(() => null) });
+        map.set(rk, { n: s.team, a: canonGym((ms[0] || s).person.affiliate), team: ms.map(displayName), k: ms.map(m => m.pub), r: wl.map(() => null) });
       } else {
-        map.set(rk, { n: displayName(s), a: s.person.affiliate || '', k: [s.pub], r: wl.map(() => null) });
+        map.set(rk, { n: displayName(s), a: canonGym(s.person.affiliate), k: [s.pub], r: wl.map(() => null) });
       }
     }
     map.get(rk).r[idx] = s.value;
@@ -461,6 +463,7 @@ route('POST', '/api/auth/logout', async (req, res) => {
 
 route('PUT', '/api/profile', async (req, res, u, body) => {
   need(u);
+  await loadGyms();
   const profile = cleanPerson(body.profile, false);
   const inc = (Array.isArray(body.kids) ? body.kids : []).slice(0, 8).map(k => ({ ...cleanPerson(k, true), id: String((k || {}).id || '') })).filter(k => k.first && k.last);
   const keys = inc.map(kidKey);
@@ -494,6 +497,7 @@ route('PUT', '/api/profile', async (req, res, u, body) => {
     if (profile.size) await q(`update registrations set size=$2 where user_id=$1 and who='me' and status in ${INTEAM} and coalesce(size,'')<>$2 ${notEnded}`, [u.id, profile.size, ended]);
     for (const k of await kidsOf(u.id, q)) if (k.size) await q(`update registrations set size=$2 where who=$1 and status in ${INTEAM} and coalesce(size,'')<>$2 ${notEnded}`, [k.id, k.size, ended]);
   });
+  dirty();
   return { profile, kids: await kidsOf(u.id) };
 });
 
@@ -1404,6 +1408,9 @@ function crewFields(body, cur) {
   if (body.rate !== undefined) f.rate = money(body.rate, 'Ставка');
   if (body.work !== undefined) f.work = cleanWork(body.work);
   if (body.note !== undefined) f.note = str(body.note, 1000) || null;
+  f.info={...(cur.info||{})};
+  if(body.position!==undefined)f.info.position=nm(body.position,120);
+  if(body.paidAmount!==undefined)f.info.paidAmount=money(body.paidAmount,'Выплачено');
   return f;
 }
 route('POST', '/api/admin/crew', async (req, res, u, body) => {
@@ -1411,8 +1418,8 @@ route('POST', '/api/admin/crew', async (req, res, u, body) => {
   const ev = str(body.event, 60); if (!ev) throw bad('Не выбран старт');
   const f = crewFields({ role: 'judge', status: 'request', ...body }, {});
   if (!f.name) throw bad('Укажите имя');
-  const r = await db.query('insert into crew(event_id, name, phone, contact, role, status, rate, work, note, updated_by) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning *',
-    [ev, f.name, f.phone || null, f.contact || null, f.role, f.status, f.rate ?? null, f.work || {}, f.note || null, u.email]);
+  const r = await db.query('insert into crew(event_id, name, phone, contact, role, status, rate, work, note, updated_by, info) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *',
+    [ev, f.name, f.phone || null, f.contact || null, f.role, f.status, f.rate ?? null, f.work || {}, f.note || null, u.email, f.info]);
   return { crew: crewOut(r.rows[0]) };
 });
 route('PATCH', '/api/admin/crew/:id', async (req, res, u, body, p) => {
@@ -1420,8 +1427,8 @@ route('PATCH', '/api/admin/crew/:id', async (req, res, u, body, p) => {
   const cur = (await db.query('select * from crew where id=$1', [Number(p.id) || 0])).rows[0];
   if (!cur) throw bad('Человек не найден');
   const f = crewFields(body, cur);
-  const r = await db.query('update crew set name=$1, phone=$2, contact=$3, role=$4, status=$5, rate=$6, work=$7, note=$8, updated_by=$9 where id=$10 returning *',
-    [f.name, f.phone, f.contact, f.role, f.status, f.rate, f.work, f.note, u.email, cur.id]);
+  const r = await db.query('update crew set name=$1, phone=$2, contact=$3, role=$4, status=$5, rate=$6, work=$7, note=$8, updated_by=$9,info=$11 where id=$10 returning *',
+    [f.name, f.phone, f.contact, f.role, f.status, f.rate, f.work, f.note, u.email, cur.id, f.info]);
   return { crew: crewOut(r.rows[0]) };
 });
 route('DELETE', '/api/admin/crew/:id', async (req, res, u, body, p) => {
@@ -1433,7 +1440,7 @@ route('DELETE', '/api/admin/crew/:id', async (req, res, u, body, p) => {
 async function headJudgeEvents(u) {
   return (await db.query(`select distinct event_id from crew where user_id=$1 and role='head_judge' and status='confirmed'`, [u.id])).rows.map(r => r.event_id);
 }
-const crewOutNoMoney = c => { const o = crewOut(c); delete o.rate; return o; };
+const crewOutNoMoney = c => { const o = crewOut(c); delete o.rate; o.info={...o.info};delete o.info.paidAmount;return o; };
 route('GET', '/api/crew/manage', async (req, res, u) => {
   need(u);
   const evs = await headJudgeEvents(u);
@@ -1446,8 +1453,8 @@ route('PATCH', '/api/crew/manage/:id', async (req, res, u, body, p) => {
   need(u);
   const cur = (await db.query('select * from crew where id=$1', [Number(p.id) || 0])).rows[0];
   if (!cur || !(await headJudgeEvents(u)).includes(cur.event_id)) throw new HttpError(403, 'Нет доступа');
-  const f = crewFields({ status: body.status, work: body.work, role: body.role, note: body.note }, cur);
-  const r = await db.query('update crew set role=$1, status=$2, work=$3, note=$4, updated_by=$5 where id=$6 returning *', [f.role, f.status, f.work, f.note, u.email, cur.id]);
+  const f = crewFields({ status: body.status, work: body.work, role: body.role, note: body.note,position:body.position }, cur);
+  const r = await db.query('update crew set role=$1, status=$2, work=$3, note=$4, updated_by=$5,info=$7 where id=$6 returning *', [f.role, f.status, f.work, f.note, u.email, cur.id, f.info]);
   return { crew: crewOutNoMoney(r.rows[0]) };
 });
 
@@ -1519,13 +1526,22 @@ route('POST','/api/admin/judging',async(req,res,u,body)=>{
   else await db.query('delete from score_judges where reg_id=$1 and workout_id=$2',[reg.id,w.id]);
   return {ok:true};
 });
+route('GET','/api/admin/crew-statistics',async(req,res,u)=>{
+  need(u,'owner');
+  const crew=(await db.query('select * from crew')).rows;
+  const events=((await rawContent()).EVENTS||[]);
+  const rates=Object.fromEntries((await db.query('select * from crew_rates')).rows.map(r=>[r.event_id,r]));
+  const ready=(await db.query("select to_regclass('public.score_judges') ready")).rows[0].ready;
+  const scores=ready?(await db.query("select s.workout_id,s.value,r.event_id,j.judge_id,j.judge_name from scores s join registrations r on r.id=s.reg_id join score_judges j on j.reg_id=s.reg_id and j.workout_id=s.workout_id where s.state='accepted' and r.status in ('paid','refund_requested')")).rows:[];
+  return {rows:require('./lib/crew-statistics').crewStatistics(crew,scores,events,rates)};
+});
 route('GET','/api/admin/audit',async(req,res,u)=>{
   need(u,'owner');const params=new URL(req.url,'http://local').searchParams, before=Math.max(0,Number(params.get('before'))||0),limit=Math.min(500,Math.max(1,Number(params.get('limit'))||100));
   const rows=(await db.query('select * from audit_log where ($1::bigint=0 or id<$1) order by id desc limit $2',[before,limit])).rows;
   return {rows,next:rows.length===limit?rows[rows.length-1].id:null};
 });
 route('POST','/api/admin/athlete/update',async(req,res,u,body)=>{
-  need(u,'owner');if(body.confirm!==true)throw bad('Подтвердите изменение данных');
+  need(u,'owner');await loadGyms();if(body.confirm!==true)throw bad('Подтвердите изменение данных');
   const type=body.type,id=str(body.id,300),p=cleanPerson(body.profile,type==='kid');
   if(!p.first||!p.last)throw bad('Укажите имя и фамилию');
   if(type==='user'){
@@ -1540,7 +1556,7 @@ route('POST','/api/admin/athlete/update',async(req,res,u,body)=>{
     const r=await db.query("update registrations set person=person||$4::jsonb,updated_by=$5 where user_id is null and athlete_user is null and who in ('me','offline') and coalesce(person->>'last','')=$1 and coalesce(person->>'first','')=$2 and coalesce(person->>'dob','')=$3 returning id",[...key,JSON.stringify(p),u.email]);if(!r.rows.length)throw bad('Участник не найден');dirty();
     return {type,id:JSON.stringify([p.last,p.first,p.dob])};
   }else throw bad('Неверный тип анкеты');
-  return {type,id};
+  dirty();return {type,id};
 });
 
 /* ---------- backups: a daily snapshot of every table, kept 14 days; the owner downloads them ---------- */

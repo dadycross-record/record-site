@@ -456,6 +456,9 @@ h2.ch{font-family:var(--f-display);font-weight:800;font-size:clamp(24px,7vw,40px
 }
 @keyframes seoIn{to{opacity:1}}
 .hpf{position:absolute!important;left:-10000px!important;top:auto;width:1px;height:1px;overflow:hidden;opacity:0}
+.lr.r1 .rk,.lr.r2 .rk,.lr.r3 .rk{font-size:18px}
+.prize-place{font-family:var(--f-mono);font-weight:800;white-space:nowrap}.prize-place>span{font-size:23px}.prize-place>small{font-size:12px;font-weight:600}
+.stats b.prize-1,.prize-1{color:var(--gold)}.stats b.prize-2,.prize-2{color:var(--silver)}.stats b.prize-3,.prize-3{color:var(--bronze)}.stats b.prize-place{font-size:24px}
 </style>
 
 <div id="app">
@@ -484,6 +487,7 @@ h2.ch{font-family:var(--f-display);font-weight:800;font-size:clamp(24px,7vw,40px
   </nav>
 </div>
 
+<script src="/js/clubs.js?v=1"></script>
 <script src="/js/operations.js?v=1"></script>
 <script>
 const HERO = "__HERO__";
@@ -528,7 +532,7 @@ document.addEventListener("input", e=>{ const t=e.target;
   if (t.dataset && t.dataset.dob){ let d=t.value.replace(/\D/g,"").slice(0,8); t.value = d.length>4 ? `${d.slice(0,2)}.${d.slice(2,4)}.${d.slice(4)}` : d.length>2 ? `${d.slice(0,2)}.${d.slice(2)}` : d;
     const iso=dobParse(t.value), h=document.getElementById(t.dataset.dob); if (h) h.value=iso; t.classList.toggle("err", t.value.length===10 && !iso); }
   if (t.classList && t.classList.contains("dobcal")){ const tx=document.getElementById(t.id+"_t"); if (tx){ tx.value=t.value?dShort(t.value):""; tx.classList.remove("err"); } } });
-const gymInput = (id, val) => `<input class="inp" id="${id}" list="gymList_${id}" value="${esc(val||"")}" placeholder="Начните вводить или выберите" autocomplete="off" maxlength="80"><datalist id="gymList_${id}">${GYMS.map(g=>`<option value="${esc(g)}"></option>`).join("")}</datalist><span class="muted tiny" style="margin-top:4px">Нет в списке — впишите свой. Без клуба — оставьте пустым.</span>`;
+const gymInput = (id, val) => `<input class="inp" id="${id}" data-gym-input="1" list="gymList_${id}" value="${esc(val||"")}" placeholder="Начните вводить или выберите" autocomplete="off" maxlength="80"><datalist id="gymList_${id}">${GYMS.map(g=>`<option value="${esc(g)}"></option>`).join("")}</datalist><div id="gymSuggestions_${id}" class="stack" role="listbox" aria-label="Подходящие клубы" style="margin-top:4px;gap:4px"></div><span class="muted tiny" style="margin-top:4px">Выберите клуб из подсказок. Регистр и пробелы не создают новый клуб. Нет подходящего — впишите свой.</span>`;
 
 const EVENTS = [
  { id:"race", name:"Гонка Рекорда", en:"RECORD RACE", format:"onsite", status:"open", city:"Иркутск",
@@ -1249,15 +1253,16 @@ leaderboard(){
 },
 me(){
   if (!USER) return SCREENS.login();
-  const groups = performanceGroups();
+  const groups = performanceGroups(),selected=groups.find(g=>g.id===S.profilePerformer)||groups[0];
   const canScore = scoreTargets().length;
   const nm = ME.first ? `${ME.first} ${ME.last}` : USER.email;
   const ini = ME.first ? (ME.first[0]+(ME.last[0]||"")) : USER.email[0].toUpperCase();
   return {title:null, html:`
    <div class="pcard"><div class="row">${avatarBox(ini)}<div class="sp"><div style="font-weight:700;font-size:18px">${esc(nm)}</div><div class="muted small">${esc(ME.affiliate||USER.email)}</div></div></div>
    </div>
-   ${performanceCard(groups[0])}
-   ${groups.length>1?`<h2 class="sec">Выступления детей и участников</h2>${groups.slice(1).map(performanceCard).join("")}`:""}
+   <h2 class="sec">Мои выступления</h2>
+   <div class="pills" role="tablist" aria-label="Участник">${groups.map(g=>`<button role="tab" aria-selected="${g.id===selected.id}" data-profile-performer="${esc(g.id)}">${g.id==="self"?"Я":esc(g.name)}</button>`).join("")}</div>
+   ${performanceCard({...selected,name:selected.id==="self"?"Моя статистика":selected.name})}
    ${profileReady()?"":`<div class="rule" style="margin-top:12px">Заполните анкету участника — без неё нельзя записаться на старт. <button class="linkbtn" data-go="profile" data-edit="1">Заполнить</button></div>`}
    ${(USER.headEvents||[]).length&&!["owner","admin","judge"].includes(S.viewAs)?`<button class="btn block" data-go="admin" style="margin-top:12px">Результаты · главный судья</button>`:""}
    <h2 class="sec">Сервис</h2>
@@ -1427,7 +1432,7 @@ function wodCard(w, ev0){
 }
 function row(r, ev, wi){
   const place = wi<0 ? r.place : r.wr[wi];
-  const cls = place<=3 && (wi>=0 || r.pts) ? `r${place}` : "";
+  const cls = place>=1&&place<=3 && (wi>=0?r.r[wi]!=null:r.r.some(v=>v!=null)) ? `r${place}` : "";
   const id = `${r.n}`;
   const right = wi<0 ? `<span class="pts">${r.pts}<small>PTS</small></span>` : `<span class="pts mono" style="font-size:16px">${fmtRes(ev.workouts[wi].type, r.r[wi])}</span>`;
   const initials = r.n.split(" ").map(x=>x[0]).slice(0,2).join("");
@@ -1468,7 +1473,7 @@ function orderLeaderboard(o){
   if (!ev || !ev.divisions.some(d=>d.id===o.div)) return '<span class="muted">Результатов пока нет</span>';
   const place=myPlace(o);
   const month=ev.permanent && place ? (ev.months||[]).find(m=>leaderboard(ev.id,o.div,m.id).rows.some(r=>(r.k||[]).includes(o.pub)&&r.place===place))?.id : null;
-  return `${place?`<b>${place}-е место</b>`:'<span class="muted">Результатов пока нет</span>'} · <button class="linkbtn" data-lbopen="${esc(ev.id)}|${esc(o.div)}" data-lb-period="${esc(month||"")}">Открыть категорию</button>`;
+  return `${place?`<b class="${place<=3?`prize-place prize-${place}`:""}"><span>${place}</span><small>-е место</small></b>`:'<span class="muted">Результатов пока нет</span>'} · <button class="linkbtn" data-lbopen="${esc(ev.id)}|${esc(o.div)}" data-lb-period="${esc(month||"")}">Открыть категорию</button>`;
 }
 function orderCard(o){
   const ev = EVENTS.find(e=>e.id===o.event) || {name:"Старт удалён",divisions:[],format:"onsite",status:"ended",date:o.date}, d = ev.divisions.find(x=>x.id===o.div) || {name:""};
@@ -1732,7 +1737,7 @@ function admEvRow(e){
    <div class="row wrap"><button class="btn sm" data-adm-ev="${e.id}">Изменить</button><button class="btn sm ghost" data-adm-people="${e.id}">Участники</button><button class="btn sm ghost" data-adm-res="${e.id}">Результаты</button></div></div>`;
 }
 const ROLE_L = {owner:"Владелец",admin:"Организатор",judge:"Судья",athlete:"Участник"};
-const ADMIN_ROUTES = ["adminClub","admin","adminEvent","adminDiv","adminWod","adminSch","adminPeople","adminPromo","adminResults","adminAthlete","adminAudit"];
+const ADMIN_ROUTES = ["adminClub","admin","adminEvent","adminDiv","adminWod","adminSch","adminPeople","adminPromo","adminResults","adminAthlete","adminAudit","adminCrewStats"];
 const LOGIN_ROUTES = ["me","orders","crewApply","crewManage","score","profile","form","team","teamCreate","teamJoin","done",...ADMIN_ROUTES];
 function allowed(route){
   if (!ADMIN_ROUTES.includes(route)) return true;
@@ -2012,7 +2017,7 @@ function adminClick(t, ds){
       if (k==="h"){ if (!(+h>0)){ toast(`${dayShort(d)}: укажите, сколько часов`); return true; } work[d]={k, h:+h}; } else if (k) work[d]={k}; }
     const cur=ADM.CREW.find(c=>c.id===id); Object.entries(cur.work||{}).forEach(([d,w])=>{ if (!crewDays(ev).includes(d)) work[d]=w; });
     const rate=g("ceRate");
-    api("PATCH",crewApi(id),{role:g("ceRole"), note:g("ceNote"), work, ...(rate!==undefined?{rate:rate.replace(/\s/g,"")}:{})})
+    api("PATCH",crewApi(id),{role:g("ceRole"),position:g("cePosition"), note:g("ceNote"), work, ...(rate!==undefined?{rate:rate.replace(/\s/g,""),paidAmount:g("cePaid")}:{})})
       .then(r=>{ ADM.CREW=ADM.CREW.map(c=>c.id===id?r.crew:c); adm.crewOpen=null; render(); toast("Сохранено"); }).catch(err=>toast(err.message)); return true;
   }
   if (ds.act==="crewrates"){
@@ -2025,7 +2030,7 @@ function adminClick(t, ds){
   if (ds.act==="crewcsv"){
     const ev=curEv(), days=crewDays(ev), crew=ADM.CREW.filter(c=>c.event===ev.id && c.status==="confirmed").sort((a,b)=>CREW_ORDER.indexOf(a.role)-CREW_ORDER.indexOf(b.role)||a.name.localeCompare(b.name,"ru"));
     const head=["Должность","Имя","Телефон","Контакт","Статус",...days.map(dayShort),"Смен","Ставка за смену","К выплате","Комментарий"];
-    const rows=crew.map(c=>[CREW_ROLE[c.role][0],c.name,c.phone,c.contact,CREW_STL[c.status][0],...days.map(d=>workLbl(c.work[d])),fmtShift(crewShifts(ev,c)),crewRate(ev,c),crewPay(ev,c),c.note]);
+    const rows=crew.map(c=>[(c.info?.position||CREW_ROLE[c.role][0]),c.name,c.phone,c.contact,CREW_STL[c.status][0],...days.map(d=>workLbl(c.work[d])),fmtShift(crewShifts(ev,c)),crewRate(ev,c),crewPay(ev,c),c.note]);
     rows.push(["Итого","","","","",...days.map(()=>""),fmtShift(crew.reduce((a,c)=>a+crewShifts(ev,c),0)),"",crew.reduce((a,c)=>a+crewPay(ev,c),0),""]);
     downloadCsv(`komanda-${ev.id}.csv`, [head, ...rows]); return true;
   }
@@ -2168,8 +2173,7 @@ admin(){
    ${backupCard()}<button class="btn block ghost" data-go="adminAudit">Журнал изменений</button>`:""}
 `};
   return {title:"Панель организатора", html: tabs + kidDupesCard() + `
-   <div class="stats flat" style="margin-top:0"><div><b>${act.length}</b><span>Активных стартов</span></div><div><b>${reg}</b><span>Записано</span></div><div><b class="acc" style="font-size:17px">${Math.round(money/1000)} тыс ₽</b><span>Взносы</span></div></div>
-   <div style="margin-top:14px">${dataCard()}</div>
+
    <div class="grid2" style="margin-top:14px;gap:10px"><button class="btn block" data-act="anew">+ Новый старт</button><button class="btn block ghost" data-go="adminAthlete">Проверить атлета</button></div>
    ${pend.length?`<h2 class="sec">Результаты на проверке · ${pend.length}</h2><div class="stack">${pend.map(scoreReview).join("")}</div>`:""}
    <h2 class="sec">Старты</h2>
@@ -2183,6 +2187,8 @@ admin(){
    <h2 class="sec">Промокоды · ${PROMOS.length}</h2>
    <div class="card" style="padding:4px 14px">${PROMOS.map((p,i)=>`<div class="arow"><span class="mono" style="font-weight:700;color:var(--accent);min-width:92px">${esc(p.code)}</span><div class="sp"><b>${promoWhat(p)}</b><div class="muted tiny">Использован ${p.used}${p.limit?` из ${p.limit}`:" раз, без лимита"} · ${p.until?`до ${dShort(p.until)}`:"бессрочно"}${p.note?` · ${esc(p.note)}`:""}</div></div><button class="iconbtn sm" data-apromo="${i}" aria-label="Изменить промокод">${IC.edit}</button><button class="iconbtn sm" data-apromodel="${i}" aria-label="Удалить промокод">${IC.del}</button></div>`).join("") || '<div class="muted small" style="padding:12px 0">Промокодов пока нет</div>'}</div>
    <button class="btn ghost" data-apromo="new" style="margin-top:10px">+ Промокод</button>
+   ${S.viewAs==="owner"?`<h2 class="sec">Статистика команды</h2><button class="btn block ghost" data-go="adminCrewStats">Судьи · статистика и выплаты</button>`:""}
+   <div style="margin-top:24px">${dataCard()}</div>
 `};
 },
 adminEvent(){
@@ -2334,6 +2340,7 @@ adminAthlete(){
   return {title:"Проверить атлета", html: search + list};
 },
 adminAudit(){return operationsAuditScreen();},
+adminCrewStats(){return crewStatisticsScreen();},
 adminResults(){
   const ev=curEv(); if (!ev) return {title:"Результаты", html:'<div class="empty">Старт не найден</div>'};
   const R = adm.rq = adm.rq && adm.rq.ev===ev.id ? adm.rq : {ev:ev.id, q:"", div:"", miss:false};
@@ -2701,7 +2708,7 @@ function performanceStats(orders){
 }
 function performanceCard(group){
   const stats=performanceStats(group.orders);
-  return `<section class="card" style="margin-top:12px" data-performance="${esc(group.id)}"><h2 style="font-size:17px;margin:0">${esc(group.name)}</h2><div class="stats"><div><b>${stats.starts}</b><span>Стартов</span></div><div><b>${stats.upcoming}</b><span>Впереди</span></div><div><b class="acc">${stats.best?"#"+stats.best:"—"}</b><span>Лучшее место</span></div></div><button class="btn sm ghost" style="margin-top:12px" data-performer="${esc(group.id)}">Посмотреть выступления</button></section>`;
+  return `<section class="card" style="margin-top:12px" data-performance="${esc(group.id)}"><h2 style="font-size:17px;margin:0">${esc(group.name)}</h2><div class="stats"><div><b>${stats.starts}</b><span>Стартов</span></div><div><b>${stats.upcoming}</b><span>Впереди</span></div><div><b class="${stats.best&&stats.best<=3?`prize-place prize-${stats.best}`:"acc"}">${stats.best?"#"+stats.best:"—"}</b><span>Лучшее место</span></div></div><button class="btn sm ghost" style="margin-top:12px" data-performer="${esc(group.id)}">Посмотреть выступления</button></section>`;
 }
 function myPlace(o){
   const ev = EVENTS.find(e=>e.id===o.event); if (!ev) return null;
@@ -3032,6 +3039,8 @@ function crewDetail(ev, c, money=true){
     <div class="f">Отработано${crewDays(ev).map(d=>{ const w=c.work[d]||{}; return `<div class="crewday"><span class="small">${dayShort(d)}</span><select class="inp" id="ceW_${c.id}_${d}">${opt([["","не работал"],["full","полная смена"],["half","½ смены"],["h","часы"]], w.k||"")}</select><input class="inp mono" id="ceH_${c.id}_${d}" inputmode="decimal" placeholder="ч" value="${w.k==="h"?String(w.h).replace(".",","):""}" aria-label="Часов"></div>`; }).join("")}</div>
     <div class="regedit">
       <label class="f">Должность<select class="inp" id="ceRole_${c.id}">${opt(CREW_ORDER.map(k=>[k,CREW_ROLE[k][0]]), c.role)}</select></label>
+      <label class="f">Должность для ведомости<input class="inp" id="cePosition_${c.id}" value="${esc(c.info?.position||"")}" placeholder="${esc(CREW_ROLE[c.role]?.[0]||c.role)}" list="crewPositionList" maxlength="120"><datalist id="crewPositionList">${[...new Set(ADM.CREW.map(c=>c.info?.position).filter(Boolean))].map(p=>`<option value="${esc(p)}"></option>`).join("")}</datalist></label>
+      ${money?`<label class="f">Выплачено, ₽<input class="inp mono" id="cePaid_${c.id}" inputmode="numeric" value="${c.info?.paidAmount??""}" placeholder="Не отмечено"></label>`:""}
       ${money?`<label class="f">Ставка за смену, ₽<input class="inp mono" id="ceRate_${c.id}" inputmode="numeric" value="${c.rate??""}" placeholder="${cfg.rates[c.role]!=null?String(cfg.rates[c.role]):"не задана"}"></label>`:""}
       <label class="f">Комментарий<input class="inp" id="ceNote_${c.id}" value="${esc(c.note)}" placeholder="Необязательно"></label>
     </div>
@@ -3222,6 +3231,7 @@ document.addEventListener("click", e=>{
   if (ds.go==="profile" && ds.edit) return go("profile",{edit:true});
   if (ds.startPeriod){ S.p={...S.p,period:ds.startPeriod}; return render(); }
   if (ds.hideStart){ if(!confirm("Убрать заявку из вашего списка? Результаты и история старта сохранятся."))return; const [kind,id]=ds.hideStart.split(":"); api("POST","/api/starts/hide",{kind,id}).then(r=>{ME.hiddenStarts=r.hidden;render();}).catch(err=>toast(err.message));return; }
+  if (ds.profilePerformer){ S.profilePerformer=ds.profilePerformer;return render(); }
   if (ds.performer){ go("orders",{performer:ds.performer}); return; }
   if (ds.go) return go(ds.go,{});
   if (ds.evf){ S.p={f:ds.evf}; return render(); }
