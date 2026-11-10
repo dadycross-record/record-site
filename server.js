@@ -387,7 +387,7 @@ route('GET', '/api/session', async (req, res, u) => {
   const orders = await myOrders(u.id);
   const scores = (await db.query('select reg_id, workout_id, value, video, state from scores where reg_id in (select jsonb_array_elements_text($1::jsonb))', [JSON.stringify(orders.map(o => o.id))])).rows;
   return {
-    user: { email: u.email, role: u.role, profile: u.profile, kids: u.kids, avatar: u.avatar || '' },
+    user: { email: u.email, role: u.role, headEvents:await headJudgeEvents(u), profile: u.profile, kids: u.kids, avatar: u.avatar || '' },
     orders: orders.map(o => ['blocked', 'cancelled'].includes(o.status) ? o : { ...o, note: '' }), scores,
     teams: await myTeams(u.id),
     crew: (await db.query('select id, event_id, role, status, avail, info from crew where user_id=$1 order by created_at', [u.id])).rows
@@ -611,6 +611,7 @@ async function kidDupes() {
 route('POST', '/api/account/delete', async (req, res, u) => {
   need(u);
   await db.tx(async q => {
+    await q("select set_config('app.actor_id',$1,true),set_config('app.actor_email',$2,true),set_config('app.actor_name',$3,true),set_config('app.action','POST /api/account/delete',true)",[String(u.id),u.email,[u.profile.last,u.profile.first].filter(Boolean).join(' ')]);
     // a child's registration stays with the athlete who took over the profile or with the other adult
     await q(`update registrations r set user_id = x.uid from (select r2.id, coalesce(nullif(r2.athlete_user, $1), (select g.user_id from kid_guardians g where g.kid_id=r2.who and g.user_id<>$1 order by g.created_at limit 1)) uid
       from registrations r2 where r2.user_id=$1 and r2.who<>'me') x where r.id=x.id and x.uid is not null`, [u.id]);
@@ -938,16 +939,18 @@ route('POST', '/api/score', async (req, res, u, body) => {
 
 /* ---------- organizer panel ---------- */
 route('GET', '/api/admin/state', async (req, res, u) => {
-  need(u, 'owner', 'admin', 'judge');
+  need(u);
+  const headEvents=await headJudgeEvents(u);
+  if(!['owner','admin','judge'].includes(u.role)&&!headEvents.length)throw new HttpError(403,'Нет доступа');
   const pending = (await db.query(`select s.id, s.workout_id, s.value, s.video, s.state, s.created_at, r.id reg, r.event_id, r.div_id, r.person, r.team
     from scores s join registrations r on r.id=s.reg_id where s.state='pending' order by s.created_at`)).rows
     .map(s => ({ id: s.id, workout: s.workout_id, value: s.value, video: s.video, reg: s.reg, event: s.event_id, div: s.div_id, team: s.team, name: `${s.person.last || ''} ${s.person.first || ''}`.trim() }));
   await publicContent();
   const DRAFT_RESULTS = lastDraftResults;
-  if (u.role === 'judge') {
+  if (u.role === 'judge' || !['owner','admin'].includes(u.role)) {
     const rr = (await db.query(`select id, pub, event_id, div_id, person, team, status, team_role from registrations where status in ${ACTIVE} order by created_at`)).rows;
-    return { role: u.role, PENDING: pending, DRAFT_RESULTS, SCORES: (await db.query('select id, reg_id, workout_id, value, state from scores')).rows.map(scoreOut),
-      REGS: rr.map(r => ({ id: r.id, pub: r.pub, event: r.event_id, div: r.div_id, person: { first: r.person.first, last: r.person.last, gender: r.person.gender }, team: r.team, status: r.status, role: r.team_role })) };
+    return { role: u.role, HEAD_EVENTS:headEvents, PENDING: pending.filter(s=>u.role==='judge'||headEvents.includes(s.event)), DRAFT_RESULTS:Object.fromEntries(Object.entries(DRAFT_RESULTS).filter(([k])=>u.role==='judge'||headEvents.includes(k.split(/[:@]/)[0]))), SCORES: (await db.query('select id, reg_id, workout_id, value, state from scores')).rows.map(scoreOut).filter(s=>u.role==='judge'||rr.some(r=>r.id===s.reg&&headEvents.includes(r.event_id))),
+      REGS: rr.filter(r=>u.role==='judge'||headEvents.includes(r.event_id)).map(r => ({ id: r.id, pub: r.pub, event: r.event_id, div: r.div_id, person: { first: r.person.first, last: r.person.last, gender: r.person.gender }, team: r.team, status: r.status, role: r.team_role })) };
   }
   const c = await rawContent();
   const used = await promoUsed();
@@ -955,7 +958,7 @@ route('GET', '/api/admin/state', async (req, res, u) => {
   const leads = (await db.query('select * from leads order by created_at desc')).rows;
   const regs = (await db.query('select r.*, u.email, (t.id is not null) is_cap from registrations r left join users u on u.id=r.user_id left join teams t on t.captain_reg=r.id order by r.created_at')).rows;
   return {
-    role: u.role,
+    role: u.role, HEAD_EVENTS:headEvents,
     PROMOS: (c.PROMOS || []).map(p => ({ ...p, used: used[p.code] || 0 })),
     ACCESS: [{ email: u.role === 'owner' ? u.email : '', name: 'Владелец', role: 'owner' }, ...staff],
     CLUB_LEADS: leads.map(l => ({ id: l.id, date: new Date(l.created_at.getTime() + 8 * 3600e3).toISOString().slice(0, 10), name: l.name, phone: l.phone, dir: l.dir, who: l.who, age: l.age, time: l.pref_time, status: l.status })),
@@ -1015,7 +1018,7 @@ route('POST', '/api/admin/athlete', async (req, res, u, body) => {
     const regs = (await db.query(`${regSel} where (r.who='me' and r.user_id=$1) or r.athlete_user=$1 order by r.created_at desc`, [x.id])).rows;
     const kidRegs = (await db.query(`${regSel} where r.user_id=$1 and r.who<>'me' order by r.created_at desc`, [x.id])).rows;
     const crew = (await db.query('select * from crew where user_id=$1 order by created_at desc', [x.id])).rows;
-    return { type, user: userCard(x), kids: kids.map(k => ({ id: k.id, first: k.first, last: k.last, dob: k.dob, gender: k.gender, affiliate: k.affiliate, others: k.others })),
+    return { type, user: userCard(x), kids: kids.map(k => ({ id: k.id, first: k.first, last: k.last, dob: k.dob, gender: k.gender, affiliate: k.affiliate, size:k.size, print:k.print, others: k.others })),
       fromKid, regs: regsOut(regs), kidRegs: regsOut(kidRegs), crew: crew.map(c => ({ event: c.event_id, role: c.role, status: c.status })) };
   }
   if (type === 'kid') {
@@ -1024,7 +1027,7 @@ route('POST', '/api/admin/athlete', async (req, res, u, body) => {
     const parents = (await db.query('select y.*, g.created_at linked from kid_guardians g join users y on y.id=g.user_id where g.kid_id=$1 order by g.created_at', [k.id])).rows;
     const owner = k.owner_user ? (await db.query('select * from users where id=$1', [k.owner_user])).rows[0] : null;
     const regs = (await db.query(`${regSel} where r.who=$1 order by r.created_at desc`, [k.id])).rows;
-    return { type, kid: { id: k.id, first: k.first, last: k.last, dob: k.dob, gender: k.gender, affiliate: k.affiliate, created: k.created_at },
+    return { type, kid: { id: k.id, first: k.first, last: k.last, dob: k.dob, gender: k.gender, affiliate: k.affiliate, size:k.size, print:k.print, created: k.created_at },
       parents: parents.map(y => ({ ...userCard(y), linked: y.linked })), owner: owner ? userCard(owner) : null, regs: regsOut(regs) };
   }
   if (type === 'guest') {
@@ -1043,9 +1046,10 @@ route('POST', '/api/admin/penalty', async (req, res, u, body) => {
   return { reg: r.rows[0].id, text };
 });
 route('POST', '/api/admin/score', async (req, res, u, body) => {
-  need(u, 'owner', 'admin', 'judge');
+  need(u);
   const reg = (await db.query('select * from registrations where id=$1', [str(body.reg, 40)])).rows[0];
   if (!reg) throw bad('Регистрация не найдена');
+  if(!['owner','admin','judge'].includes(u.role)&&!(await headJudgeEvents(u)).includes(reg.event_id))throw new HttpError(403,'Нет доступа к результатам этого старта');
   if (reg.status !== 'paid') throw bad('Результат можно внести после оплаты');
   const ev = ((await rawContent()).EVENTS || []).find(e => e.id === reg.event_id);
   const w = ev && (ev.workouts || []).find(x => x.id === body.workout); if (!w) throw bad('Задание не найдено');
@@ -1493,6 +1497,52 @@ route('PATCH', '/api/admin/scores/:id', async (req, res, u, body, p) => {
   return { ok: true };
 });
 
+async function canManageJudging(u,event){return !!u&&(u.role==='owner'||(await headJudgeEvents(u)).includes(event));}
+route('GET','/api/admin/judging',async(req,res,u)=>{
+  need(u);const event=new URL(req.url,'http://local').searchParams.get('event');
+  if(!await canManageJudging(u,event))throw new HttpError(403,'Учёт судейства доступен владельцу и главному судье этого старта');
+  const ev=((await rawContent()).EVENTS||[]).find(e=>e.id===event);if(!ev)throw bad('Старт не найден');
+  const ready=(await db.query("select to_regclass('public.score_judges') ready")).rows[0].ready;if(!ready)return {ready:false};
+  const judges=(await db.query("select id,name from crew where event_id=$1 and role in ('judge','head_judge') and status='confirmed' order by name",[event])).rows.map(j=>({id:'crew:'+j.id,name:j.name}));
+  const assignments=(await db.query('select j.* from score_judges j join registrations r on r.id=j.reg_id where r.event_id=$1',[event])).rows;
+  const scores=(await db.query("select s.reg_id,s.workout_id,s.value,r.div_id,r.person,r.team,j.judge_id,j.judge_name from scores s join registrations r on r.id=s.reg_id join score_judges j on j.reg_id=s.reg_id and j.workout_id=s.workout_id where r.event_id=$1 and s.state='accepted' and r.status in ('paid','refund_requested')",[event])).rows;
+  const rows=scores.map(s=>{const w=(ev.workouts||[]).find(w=>w.id===s.workout_id);if(!w)return null;return {...s,athlete:s.team||[s.person.last,s.person.first].filter(Boolean).join(' '),workout:w.name,category:(ev.divisions||[]).find(d=>d.id===s.div_id)?.name||s.div_id,...require('./lib/judging').duration(w,s.value)};}).filter(Boolean).map(({person,...r})=>r);
+  return {ready:true,judges,assignments,rows,summary:require('./lib/judging').summarize(rows)};
+});
+route('POST','/api/admin/judging',async(req,res,u,body)=>{
+  need(u);const reg=(await db.query('select id,event_id,div_id from registrations where id=$1',[str(body.reg,40)])).rows[0];
+  if(!reg||!await canManageJudging(u,reg.event_id))throw new HttpError(403,'Нет доступа к учёту судейства этого старта');
+  const ev=((await rawContent()).EVENTS||[]).find(e=>e.id===reg.event_id),w=ev?.workouts?.find(w=>w.id===body.workout);
+  if(!w||(w.divs?.length&&!w.divs.includes(reg.div_id)))throw bad('Комплекс не найден в категории');
+  let name=str(body.name,160).replace(/\s+/g,' '),id='';
+  if(name){const judges=(await db.query("select id,name from crew where event_id=$1 and role in ('judge','head_judge') and status='confirmed'",[reg.event_id])).rows;const j=judges.find(j=>j.name.trim().replace(/\s+/g,' ').toLocaleLowerCase('ru')===name.toLocaleLowerCase('ru'));if(j){id='crew:'+j.id;name=j.name;}await db.query('insert into score_judges(reg_id,workout_id,judge_id,judge_name) values ($1,$2,$3,$4) on conflict(reg_id,workout_id) do update set judge_id=excluded.judge_id,judge_name=excluded.judge_name,updated_at=now()',[reg.id,w.id,id,name]);}
+  else await db.query('delete from score_judges where reg_id=$1 and workout_id=$2',[reg.id,w.id]);
+  return {ok:true};
+});
+route('GET','/api/admin/audit',async(req,res,u)=>{
+  need(u,'owner');const params=new URL(req.url,'http://local').searchParams, before=Math.max(0,Number(params.get('before'))||0),limit=Math.min(500,Math.max(1,Number(params.get('limit'))||100));
+  const rows=(await db.query('select * from audit_log where ($1::bigint=0 or id<$1) order by id desc limit $2',[before,limit])).rows;
+  return {rows,next:rows.length===limit?rows[rows.length-1].id:null};
+});
+route('POST','/api/admin/athlete/update',async(req,res,u,body)=>{
+  need(u,'owner');if(body.confirm!==true)throw bad('Подтвердите изменение данных');
+  const type=body.type,id=str(body.id,300),p=cleanPerson(body.profile,type==='kid');
+  if(!p.first||!p.last)throw bad('Укажите имя и фамилию');
+  if(type==='user'){
+    const row=(await db.query('update users set profile=profile||$2::jsonb where id=$1 returning id',[Number(id)||0,JSON.stringify(p)])).rows[0];if(!row)throw bad('Пользователь не найден');
+  }else if(type==='kid'){
+    const key=kidKey(p);await db.query('select pg_advisory_xact_lock(hashtext($1))',['kids']);
+    const clash=(await db.query('select id from kids where match_key=$1 and id<>$2 and owner_user is null',[key,id])).rows[0];if(clash)throw bad('Ребёнок с такими данными уже существует');
+    const row=(await db.query('update kids set first=$2,last=$3,gender=$4,dob=$5,affiliate=$6,print=$7,size=$8,match_key=$9 where id=$1 returning id',[id,p.first,p.last,p.gender,p.dob,p.affiliate,p.print,p.size,key])).rows[0];if(!row)throw bad('Ребёнок не найден');
+  }else if(type==='guest'){
+    let key;try{key=JSON.parse(id)}catch{throw bad('Неверный участник')}
+    if(!Array.isArray(key)||key.length!==3)throw bad('Неверный участник');
+    const r=await db.query("update registrations set person=person||$4::jsonb,updated_by=$5 where user_id is null and athlete_user is null and who in ('me','offline') and coalesce(person->>'last','')=$1 and coalesce(person->>'first','')=$2 and coalesce(person->>'dob','')=$3 returning id",[...key,JSON.stringify(p),u.email]);if(!r.rows.length)throw bad('Участник не найден');dirty();
+    return {type,id:JSON.stringify([p.last,p.first,p.dob])};
+  }else throw bad('Неверный тип анкеты');
+  return {type,id};
+});
+
 /* ---------- backups: a daily snapshot of every table, kept 14 days; the owner downloads them ---------- */
 const { snapshot: snapshotBackup } = require('./lib/backup');
 async function makeBackup(kind) {
@@ -1650,7 +1700,9 @@ const server = http.createServer(async (req, res) => {
       }
       const body = ['POST', 'PUT', 'PATCH'].includes(req.method) ? await readBody(req, pathname === '/api/admin/content' ? 40 * 1048576 : pathname === '/api/profile/avatar' ? 300 * 1024 : 64 * 1024) : {};
       const u = await sessionOf(req);
-      const out = await r.fn(req, res, u, body, pathname.match(r.re).groups || {});
+      const invoke=()=>r.fn(req,res,u,body,pathname.match(r.re).groups||{});
+      const audited=req.method!=='GET'&&!pathname.startsWith('/api/auth/')&&!pathname.startsWith('/api/admin/backups')&&!['/api/admin/athletes','/api/admin/athlete','/api/kids/invite/info','/api/account/delete'].includes(pathname);
+      const out=audited?await db.tx(async q=>{await q("select set_config('app.actor_id',$1,true),set_config('app.actor_email',$2,true),set_config('app.actor_name',$3,true),set_config('app.action',$4,true)",[u?String(u.id):'',u?.email||'Гость',u?[u.profile?.last,u.profile?.first].filter(Boolean).join(' '):'',req.method+' '+pathname]);return invoke();}):await invoke();
       if (out !== undefined) send(res, 200, out);
       return;
     }

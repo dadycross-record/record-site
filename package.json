@@ -11,7 +11,8 @@
     "start": "node server.js",
     "build": "echo 'no build step: public/ is committed'",
     "tgcheck": "node tools/tgcheck.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "migrate:operations": "node tools/migrate-operations.js"
   },
   "dependencies": {}
 }
