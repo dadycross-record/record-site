@@ -395,7 +395,7 @@ route('GET', '/api/session', async (req, res, u) => {
   };
 });
 const myOrders = async uid => (await db.query(`select * from registrations where user_id=$1 or athlete_user=$1 or (who <> 'me' and who in (select kid_id from kid_guardians where user_id=$1)) order by created_at`, [uid])).rows
-  .map(r => ({ ...orderOut(r), mine: Number(r.user_id) === Number(uid) }));
+  .map(r => ({ ...orderOut(r), mine: Number(r.user_id) === Number(uid), self: (r.who === 'me' && Number(r.user_id) === Number(uid)) || Number(r.athlete_user) === Number(uid) }));
 const orderOut = r => ({ waiver: r.waiver || '', role: r.team_role || null, note: r.note || '', id: r.id, pub: r.pub, event: r.event_id, div: r.div_id, who: r.who, person: r.person, team: r.team, size: r.size, promo: r.promo,
   price: r.price, due: r.due, paid: r.paid, status: r.status, date: new Date(r.created_at.getTime() + 8 * 3600e3).toISOString().slice(0, 10), publish: r.publish });
 

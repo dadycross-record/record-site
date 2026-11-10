@@ -1248,14 +1248,15 @@ leaderboard(){
 },
 me(){
   if (!USER) return SCREENS.login();
-  const act = ORDERS.filter(o=>ACTIVE_ST.includes(o.status));
-  const places = act.map(o=>myPlace(o)).filter(Boolean), best = places.length ? Math.min(...places) : null;
+  const groups = performanceGroups();
   const canScore = scoreTargets().length;
   const nm = ME.first ? `${ME.first} ${ME.last}` : USER.email;
   const ini = ME.first ? (ME.first[0]+(ME.last[0]||"")) : USER.email[0].toUpperCase();
   return {title:null, html:`
    <div class="pcard"><div class="row">${avatarBox(ini)}<div class="sp"><div style="font-weight:700;font-size:18px">${esc(nm)}</div><div class="muted small">${esc(ME.affiliate||USER.email)}</div></div></div>
-   <div class="stats"><div><b>${act.length}</b><span>Стартов</span></div><div><b>${act.filter(o=>{const e=EVENTS.find(x=>x.id===o.event); return e&&e.status!=="ended";}).length}</b><span>Впереди</span></div><div><b class="acc">${best?"#"+best:"—"}</b><span>Лучшее место</span></div></div></div>
+   </div>
+   ${performanceCard(groups[0])}
+   ${groups.length>1?`<h2 class="sec">Выступления детей и участников</h2>${groups.slice(1).map(performanceCard).join("")}`:""}
    ${profileReady()?"":`<div class="rule" style="margin-top:12px">Заполните анкету участника — без неё нельзя записаться на старт. <button class="linkbtn" data-go="profile" data-edit="1">Заполнить</button></div>`}
    <h2 class="sec">Сервис</h2>
    <div class="menu">
@@ -1317,9 +1318,11 @@ crewApply(){
   </form>`};
 },
 orders(){
-  if (!ORDERS.length && MYCREW.length) return {title:"Мои старты", html:myCrewList()};
-  if (!ORDERS.length) return {title:"Мои старты", html:'<div class="empty">Вы пока никуда не записаны.<br><button class="btn" data-tab="events" style="margin-top:14px">Выбрать старт</button></div>'};
-  return {title:"Мои старты", html:`<div class="stack cards">${[...ORDERS].reverse().map(orderCard).join("")}</div>${myCrewList()}`};
+  if (!S.p.performer && !ORDERS.length && MYCREW.length) return {title:"Мои старты", html:myCrewList()};
+  if (!S.p.performer && !ORDERS.length) return {title:"Мои старты", html:'<div class="empty">Вы пока никуда не записаны.<br><button class="btn" data-tab="events" style="margin-top:14px">Выбрать старт</button></div>'};
+  const groups=performanceGroups(), selected=S.p.performer;
+  const shown=selected ? groups.filter(g=>g.id===selected) : groups;
+  return {title:selected?(shown[0]?.name||"Выступления"):"Мои старты", html:`${shown.map(g=>`<section data-performance="${esc(g.id)}"><h2 class="sec">${esc(g.name)}</h2><div class="stack cards">${[...g.orders].reverse().map(orderCard).join("")||'<div class="empty">Выступлений пока нет</div>'}</div></section>`).join("")}${selected?"":myCrewList()}`};
 },
 score(){
   const T = scoreTargets();
@@ -2656,6 +2659,25 @@ function scoreTargets(){
     if (ws.length) out.push({o, ev, ws}); });
   return out;
 }
+function performanceGroups(){
+  const self = o => typeof o.self === "boolean" ? o.self : o.who === "me";
+  const groups = [{id:"self", name:"Мои выступления", orders:ORDERS.filter(self)}];
+  const children = new Map((ME.kids||[]).map(k=>[k.id,{id:k.id,name:[k.first,k.last].filter(Boolean).join(" "),orders:[]}]));
+  ORDERS.filter(o=>!self(o)).forEach(o=>{
+    if (!children.has(o.who)) children.set(o.who,{id:o.who,name:[(o.person||{}).first,(o.person||{}).last].filter(Boolean).join(" ")||"Участник",orders:[]});
+    children.get(o.who).orders.push(o);
+  });
+  return groups.concat([...children.values()]);
+}
+function performanceStats(orders){
+  const active = orders.filter(o=>ACTIVE_ST.includes(o.status));
+  const places = active.map(myPlace).filter(p=>Number.isFinite(p)&&p>0);
+  return {starts:active.length, upcoming:active.filter(o=>{const e=EVENTS.find(x=>x.id===o.event);return e&&e.status!=="ended";}).length,best:places.length?Math.min(...places):null};
+}
+function performanceCard(group){
+  const stats=performanceStats(group.orders);
+  return `<section class="card" style="margin-top:12px" data-performance="${esc(group.id)}"><h2 style="font-size:17px;margin:0">${esc(group.name)}</h2><div class="stats"><div><b>${stats.starts}</b><span>Стартов</span></div><div><b>${stats.upcoming}</b><span>Впереди</span></div><div><b class="acc">${stats.best?"#"+stats.best:"—"}</b><span>Лучшее место</span></div></div><button class="btn sm ghost" style="margin-top:12px" data-performer="${esc(group.id)}">Посмотреть выступления</button></section>`;
+}
 function myPlace(o){
   const ev = EVENTS.find(e=>e.id===o.event); if (!ev) return null;
   const months = ev.permanent ? (ev.months||[]).map(m=>m.id) : [undefined];
@@ -3171,6 +3193,7 @@ document.addEventListener("click", e=>{
   }
   if (ds.go==="teamCreate"||ds.go==="teamJoin") return go(ds.go,{});
   if (ds.go==="profile" && ds.edit) return go("profile",{edit:true});
+  if (ds.performer){ go("orders",{performer:ds.performer}); return; }
   if (ds.go) return go(ds.go,{});
   if (ds.evf){ S.p={f:ds.evf}; return render(); }
   if (ds.evt){ S.p={...S.p,t:ds.evt}; return render(); }
