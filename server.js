@@ -1464,8 +1464,13 @@ route('PUT', '/api/admin/crew-rates/:event', async (req, res, u, body, p) => {
   const ev = decodeURIComponent(p.event);
   const rates = {}; for (const k of CREW_ROLES) { const v = money(body.rates && body.rates[k], 'Ставка'); if (v != null) rates[k] = v; }
   const shift = Number(body.shift); if (!(shift >= 1 && shift <= 24)) throw bad('Длина смены: от 1 до 24 часов');
-  await db.query('insert into crew_rates(event_id, rates, shift_hours, updated_by) values ($1,$2,$3,$4) on conflict (event_id) do update set rates=excluded.rates, shift_hours=excluded.shift_hours, updated_by=excluded.updated_by', [ev, rates, shift, u.email]);
-  return { cfg: { rates, shift } };
+  const crew = await db.tx(async q => {
+    await q('insert into crew_rates(event_id, rates, shift_hours, updated_by) values ($1,$2,$3,$4) on conflict (event_id) do update set rates=excluded.rates, shift_hours=excluded.shift_hours, updated_by=excluded.updated_by', [ev, rates, shift, u.email]);
+    // Saving this start's rates replaces previous personal overrides for its team.
+    await q('update crew set rate=null,updated_by=$2 where event_id=$1 and rate is not null', [ev,u.email]);
+    return (await q('select * from crew where event_id=$1 order by created_at',[ev])).rows.map(crewOut);
+  });
+  return { cfg: { rates, shift }, crew };
 });
 
 /* captain left the main roster (refund, cancel, block, delete) -> the earliest main member becomes captain */

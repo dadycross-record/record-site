@@ -2016,12 +2016,12 @@ function adminClick(t, ds){
     const cur=ADM.CREW.find(c=>c.id===id); Object.entries(cur.work||{}).forEach(([d,w])=>{ if (!crewDays(ev).includes(d)) work[d]=w; });
     const rate=g("ceRate");
     api("PATCH",crewApi(id),{role:g("ceRole"),position:g("cePosition"), note:g("ceNote"), work, ...(rate!==undefined?{rate:rate.replace(/\s/g,""),paidAmount:g("cePaid")}:{})})
-      .then(r=>{ ADM.CREW=ADM.CREW.map(c=>c.id===id?r.crew:c); adm.crewOpen=null; render(); toast("Сохранено"); }).catch(err=>toast(err.message)); return true;
+      .then(r=>{ ADM.CREW=ADM.CREW.map(c=>c.id===id?r.crew:c); adm.crewOpen=null; CREW_STATS={rows:null,busy:false,q:""}; render(); toast("Сохранено"); }).catch(err=>toast(err.message)); return true;
   }
   if (ds.act==="crewrates"){
     const ev=curEv(), rates={}; for (const k of CREW_ORDER){ const v=document.getElementById("crR_"+k).value.replace(/\s/g,""); if (v!=="") rates[k]=v; }
     api("PUT","/api/admin/crew-rates/"+encodeURIComponent(ev.id),{rates, shift:document.getElementById("crShift").value.replace(",",".")})
-      .then(r=>{ ADM.CREW_CFG[ev.id]=r.cfg; render(); toast("Ставки сохранены"); }).catch(err=>toast(err.message)); return true;
+      .then(r=>{ ADM.CREW_CFG[ev.id]=r.cfg; ADM.CREW=ADM.CREW.filter(c=>c.event!==ev.id).concat(r.crew); CREW_STATS={rows:null,busy:false,q:""}; render(); toast("Ставки применены к команде этого старта"); }).catch(err=>toast(err.message)); return true;
   }
   if (ds.act==="crewrates-go"){ adm.err={}; adm.delAsk=false; adm.st=curEv().status; go("adminEvent",{}); setTimeout(()=>{ const el=document.getElementById("crewcfg"); if (el) el.scrollIntoView({block:"start"}); },50); return true; }
   if (ds.act==="crewlist"){ adm.ptab="crew"; go("adminPeople",{}); return true; }
@@ -3039,7 +3039,7 @@ function crewDetail(ev, c, money=true){
       <label class="f">Должность<select class="inp" id="ceRole_${c.id}">${opt(CREW_ORDER.map(k=>[k,CREW_ROLE[k][0]]), c.role)}</select></label>
       <label class="f">Должность для ведомости<input class="inp" id="cePosition_${c.id}" value="${esc(c.info?.position||"")}" placeholder="${esc(CREW_ROLE[c.role]?.[0]||c.role)}" list="crewPositionList" maxlength="120"><datalist id="crewPositionList">${[...new Set(ADM.CREW.map(c=>c.info?.position).filter(Boolean))].map(p=>`<option value="${esc(p)}"></option>`).join("")}</datalist></label>
       ${money?`<label class="f">Выплачено, ₽<input class="inp mono" id="cePaid_${c.id}" inputmode="numeric" value="${c.info?.paidAmount??""}" placeholder="Не отмечено"></label>`:""}
-      ${money?`<label class="f">Ставка за смену, ₽<input class="inp mono" id="ceRate_${c.id}" inputmode="numeric" value="${c.rate??""}" placeholder="${cfg.rates[c.role]!=null?String(cfg.rates[c.role]):"не задана"}"></label>`:""}
+      ${money?`<label class="f">Индивидуальная ставка за смену, ₽<input class="inp mono" id="ceRate_${c.id}" inputmode="numeric" value="${c.rate??""}" placeholder="${cfg.rates[c.role]!=null?String(cfg.rates[c.role]):"не задана"}"></label>`:""}
       <label class="f">Комментарий<input class="inp" id="ceNote_${c.id}" value="${esc(c.note)}" placeholder="Необязательно"></label>
     </div>
     <div class="row wrap"><button class="btn sm" data-crewsave="${c.id}">Сохранить</button><span class="sp"></span><button class="btn sm ghost" data-crewno="${c.id}">Убрать из команды</button></div>
@@ -3049,7 +3049,7 @@ function crewPanel(ev){
   const cfg = crewCfg(ev), crew = ADM.CREW.filter(c=>c.event===ev.id && c.status!=="declined");
   return `<h2 class="sec" id="crewcfg">Команда</h2>
     <div class="card stack">
-      <div class="muted small">Ставка — оплата за одну полную смену. Пол смены и часы считаются от неё автоматически.</div>
+      <div class="muted small">Ставки действуют только на этот старт. При сохранении они применяются ко всей его команде, заменяют индивидуальные ставки и пересчитывают отмеченные смены. Полсмены и часы рассчитываются пропорционально. Уже отмеченные выплаты не меняются.</div>
       <label class="f" style="max-width:220px">Длина смены, часов<input class="inp mono" id="crShift" inputmode="decimal" value="${fmtShift(cfg.shift)}"></label>
       ${CREW_ORDER.map(k=>{ const ppl=crew.filter(c=>c.role===k);
         return `<div class="crewrate"><div><b>${CREW_ROLE[k][0]}</b>${CREW_ROLE[k][2]?' <span class="chip neutral">высшее звено</span>':""}<div class="muted tiny">${ppl.length?ppl.map(c=>esc(c.name)+(c.status==="request"?" (запрос)":"")).join(", "):"никого не назначено"}</div></div>
