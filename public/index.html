@@ -2180,7 +2180,7 @@ admin(){
    <h2 class="sec">Резервные копии</h2>
    ${backupCard()}<button class="btn block ghost" data-go="adminAudit">Журнал изменений</button>`:""}
 `};
-  return {title:"Панель организатора", html: tabs + kidDupesCard() + `
+  return {title:"Панель организатора", html: tabs + `<a class="card next" href="/planner/index.html" style="display:block;text-decoration:none;margin-top:14px"><b style="font-size:15px">Новый редактор соревнования</b><div class="muted small">Категории, комплексы, тайминг, заходы, судьи и оборудование</div></a>` + kidDupesCard() + `
 
    <div class="grid2" style="margin-top:14px;gap:10px"><button class="btn block" data-act="anew">+ Новый старт</button><button class="btn block ghost" data-go="adminAthlete">Проверить атлета</button></div>
    ${pend.length?`<h2 class="sec">Результаты на проверке · ${pend.length}</h2><div class="stack">${pend.map(scoreReview).join("")}</div>`:""}
