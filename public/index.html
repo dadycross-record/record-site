@@ -27,7 +27,7 @@ html{color-scheme:dark}body{margin:0;background:#070707}img{max-width:100%}[hidd
 .cfoot .docs{display:flex;flex-wrap:wrap;gap:6px 16px}.cfoot .docs a{color:var(--muted)}
 .check a,.fine a{color:var(--accent)}
 .codebox{font-family:var(--f-mono);font-size:24px;letter-spacing:.3em;text-align:center}
-.regbar{display:grid;grid-template-columns:1fr minmax(0,240px);gap:8px;margin:10px 0}@media(max-width:600px){.regbar{grid-template-columns:1fr}}
+.regbar{display:grid;grid-template-columns:1fr minmax(0,240px);gap:8px;margin:10px 0}@media(max-width:600px){.regbar{grid-template-columns:1fr}@media(max-width:600px){.teambox{padding:10px}.teambox .arow{align-items:flex-start}.teambox .arow .sp{flex:1 1 100%}.teambox .arow .btn,.teambox .arow .inp{max-width:100%;white-space:normal}}}
 .regsel{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:10px 12px;border:1px solid var(--accent);border-radius:12px;margin-bottom:10px}
 .regsel span{flex:1;min-width:160px}
 @media(max-width:600px){.tbl.regs .c-hide{display:none}.tbl.regs .act .btn{padding-inline:10px}}
@@ -255,7 +255,7 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 .cropvp img{position:absolute;left:0;top:0;max-width:none;transform-origin:0 0;pointer-events:none}
 .cropmask{position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 999px rgba(0,0,0,.5);border:2px solid rgba(255,255,255,.85);pointer-events:none}
 #cropZ{accent-color:var(--accent)}
-.teambox{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px}.teambox .arow{gap:8px}.inp.sm{height:34px;padding:0 8px;font-size:13px;width:auto}
+.teambox{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px}.teambox .arow{gap:8px;flex-wrap:wrap}.teambox .arow .sp{min-width:0;overflow-wrap:anywhere}.teambox code{display:block;max-width:100%;overflow-wrap:anywhere;white-space:normal}.teambox .row{flex-wrap:wrap}.inp.sm{height:34px;padding:0 8px;font-size:13px;width:auto}
 .waiver{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.waiver .inp{flex:1;min-width:200px}
 .crq{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--line)}.crq:last-child{border-bottom:0}.crq-act{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .crewadd-box summary{cursor:pointer;list-style:none}.crewadd-box summary::-webkit-details-marker{display:none}.tbl.crew tr.tot td{border-top:2px solid var(--line)}
@@ -1212,6 +1212,7 @@ done(){
    <div class="center"><div class="big-ic" style="background:var(--good-soft);color:var(--good)"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12l5 5 9-10"/></svg></div>
    <div style="font-family:var(--f-display);font-weight:800;font-size:22px;text-transform:uppercase">${o.status==="pending"?"Заявка у капитана":o.status==="reserve"?"Вы в запасе":o.status==="paid"?nm:"Заявка принята"}</div>
    <p class="muted">${esc(ev.name)} · ${esc(d.name)}${o.team?` · ${esc(o.team)}`:""}</p>
+   ${o.team?teamBox(o):""}
    <div class="card kv" style="text-align:left;margin:16px 0"><dt>Заказ</dt><dd class="mono">${o.id}</dd><dt>${o.status==="paid"?"Взнос":"К оплате"}</dt><dd class="mono">${fmtRub(o.status==="paid"?o.paid:o.due)}</dd><dt>Email</dt><dd>${esc(USER?USER.email:"")}</dd></div>
    <p class="muted small">${o.status==="pending"?"Капитан команды получит письмо и подтвердит заявку. Платить взнос нужно после того, как он примет вас в основной состав. Статус — в «Моих стартах».":o.status==="reserve"?"Взнос платить не нужно, пока капитан не переведёт вас в основной состав. Статус — в «Моих стартах».":o.status==="paid"?"Статус и возврат — в разделе «Мои старты».":"Организатор подтвердит заявку и подскажет, как оплатить взнос. Статус видно в разделе «Мои старты»."}${o.team&&o.role==="main"&&S.reg&&S.reg.newTeam?" Ссылка-приглашение для команды — в «Моих стартах», в карточке старта.":""}</p>
    <div class="stack"><button class="btn block" data-tab-go="me" data-sub="orders">Мои старты</button><button class="btn block ghost" data-tab-go="home">На главную</button></div></div>`};
@@ -2738,6 +2739,7 @@ async function submitReg(){
       consents:{rules:!!f.c1,pd:!!f.c2,parent:!!f.c3,publish:!!f.c4,photo:!!f.c5}});
     ORDERS.push(res.order); markMe(); goal("reg_submit");
     await loadContent();
+    await loadSession();
     S.stack=[]; go("done",{},false);
   } catch(err){ f.busy=false; f.err=err.message; render(); }
 }
