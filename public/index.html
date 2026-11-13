@@ -203,7 +203,7 @@ label.f{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--
 .rk{font-family:var(--f-mono);font-weight:700;font-size:15px;text-align:center;color:var(--muted)}
 .r1 .rk{color:var(--gold)} .r2 .rk{color:var(--silver)} .r3 .rk{color:var(--bronze)}
 .av{width:40px;height:40px;border-radius:10px;background:var(--surface-2);display:grid;place-items:center;font-family:var(--f-display);font-weight:600;font-size:15px;color:var(--muted)}
-.nm{min-width:0}
+.nm{overflow-wrap:anywhere;min-width:0}min-width:0}
 .nm b{display:block;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nm span{font-size:12px;color:var(--muted)}
 .pts{font-family:var(--f-mono);font-weight:700;font-size:19px;text-align:right}
@@ -225,7 +225,7 @@ label.f{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--
 .rulesbody{margin-top:10px;font-size:14px;line-height:1.5}.rulesbody h4{margin:14px 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:.04em}.rulesbody p{margin:0 0 8px;color:var(--muted)}.rulesbody p b{color:var(--fg)}.ptgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px;margin:6px 0 4px}.ptgrid span{display:flex;justify-content:space-between;gap:6px;padding:5px 8px;border-radius:8px;background:rgba(255,255,255,.05);font-variant-numeric:tabular-nums;font-size:13px}.ptgrid i{font-style:normal;opacity:.55}
 .dob{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 46px;gap:8px}.dobbtn{display:grid;place-items:center}.dobcal{position:absolute;right:0;top:0;width:46px;height:100%;opacity:0;cursor:pointer;border:0;padding:0}.dobcal::-webkit-calendar-picker-indicator{position:absolute;inset:0;width:100%;height:100%;cursor:pointer}
 .resbar{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,240px);gap:8px}@media(max-width:600px){.resbar{grid-template-columns:1fr}}
-.resgrid{min-width:100%}.resgrid th,.resgrid td{vertical-align:top;white-space:nowrap}.resgrid td .inp{width:104px;padding:8px 10px;min-height:0;height:40px}.resgrid .inp.miss{border-color:rgba(247,177,0,.55)}.resgrid .nm{position:sticky;left:0;z-index:1;background:var(--surface);min-width:150px;white-space:normal}.resgrid .pen .inp{width:220px}.resgrid .rsmeta{margin-top:3px}
+.resgrid{min-width:100%}.resgrid th,.resgrid td{vertical-align:top;white-space:nowrap}.resgrid td .inp{width:104px;padding:8px 10px;min-height:0;height:40px}.resgrid .inp.miss{border-color:rgba(247,177,0,.55)}.resgrid .nm{overflow-wrap:anywhere;min-width:0}position:sticky;left:0;z-index:1;background:var(--surface);min-width:150px;white-space:normal}.resgrid .pen .inp{width:220px}.resgrid .rsmeta{margin-top:3px}
 .linkrow{background:none;border:0;color:inherit;cursor:pointer}.linkrow:hover b{color:var(--accent)}
 .tbl tr.divrow{cursor:pointer}.tbl tr.divrow:hover .divname,.tbl tr.divrow.open .divname{color:var(--accent)}.tbl tr.divlist td{padding:4px 10px 14px}
 .divathlist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;overflow:hidden}.divath{display:flex;align-items:center;gap:12px;padding:10px 14px;border-top:1px solid var(--line)}.divath:first-child{border-top:0}.divath.off{opacity:.55}.divath .stsel{width:160px}
@@ -1099,8 +1099,8 @@ teamCreate(){
   const v = S.p.v || {name:"",aff:ME.affiliate}, e = S.p.e || {};
   return {title:"Новая команда", html:`
    <form class="stack" id="fTeam" novalidate>
-    <label class="f">Название команды<input class="inp ${e.name?"err":""}" id="tName" value="${esc(v.name)}" placeholder="BAIKAL POWER" autocomplete="off"></label>
-    <div class="${e.name?"err-t":"muted tiny"}">${e.name||"Только латиница, до 5 слов и 20 символов. Сохраняется заглавными."}</div>
+    <label class="f">Название команды<input class="inp ${e.name?"err":""}" id="tName" value="${esc(v.name)}" placeholder="BAIKAL POWER" maxlength="30" autocomplete="off"></label>
+    <div class="${e.name?"err-t":"muted tiny"}">${e.name||"Русский или латинский алфавит, 2–30 символов. Сохраняется заглавными."}</div>
     <label class="f">Клуб${gymInput("tAff", v.aff)}</label>
     <div class="muted tiny">После регистрации в «Моих стартах» появится ссылка-приглашение для команды и заявки от желающих вступить.</div>
     <button class="btn block" type="submit">Создать и продолжить</button>
@@ -3406,7 +3406,9 @@ document.addEventListener("submit", e=>{
   if (e.target.id==="fTeam"){
     const v={name:g("tName").value.trim(),aff:g("tAff").value.trim()}, er={};
     const words=v.name.split(/\s+/).filter(Boolean);
-    if (!/^[A-Za-z ]+$/.test(v.name) || v.name.length>20 || words.length>5) er.name="Название: только латинские буквы и пробелы, до 5 слов и 20 символов";
+    const badTeamRoots=['хуй','хуе','хуё','пизд','еба','ебл','бля','бляд','сук','шлюх','мраз','говн','мудак','дебил','fuck','shit','bitch','dick','piss','cunt','whore','asshole','motherfuck']; const cleanName=v.name.toLocaleLowerCase('ru').replace(/ё/g,'е');
+    if (!/^[A-Za-zА-Яа-яЁё0-9][A-Za-zА-Яа-яЁё0-9 ._-]{1,29}$/u.test(v.name) || words.length>5) er.name="Название: 2–30 символов, русские/латинские буквы, цифры, пробел, дефис, точка или _";
+    else if (badTeamRoots.some(x=>cleanName.includes(x.replace(/ё/g,'е')))) er.name="Название содержит недопустимое слово";
     else if ((TEAMS[`${S.reg.ev.id}:${S.reg.div.id}`]||[]).some(t=>t.name===v.name.toUpperCase())) er.name="Команда с таким названием уже есть в этой категории";
     if (er.name){ S.p={v,e:er}; return render(); }
     S.reg.team=v.name.toUpperCase(); S.reg.newTeam=true; S.reg.f.aff=v.aff; S.reg.teamReq={mode:"create",name:S.reg.team}; return go("form",{});
