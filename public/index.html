@@ -1212,6 +1212,7 @@ done(){
    <div class="center"><div class="big-ic" style="background:var(--good-soft);color:var(--good)"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12l5 5 9-10"/></svg></div>
    <div style="font-family:var(--f-display);font-weight:800;font-size:22px;text-transform:uppercase">${o.status==="pending"?"Заявка у капитана":o.status==="reserve"?"Вы в запасе":o.status==="paid"?nm:"Заявка принята"}</div>
    <p class="muted">${esc(ev.name)} · ${esc(d.name)}${o.team?` · ${esc(o.team)}`:""}</p>
+   ${o.team&&["cancelled","refunded"].includes(o.status)&&ev.status!=="ended"?`<div class="acts"><button class="btn sm" data-teamretry="${esc(o.id)}">Снова выбрать команду</button></div>`:""}
    ${o.team?teamBox(o):""}
    <div class="card kv" style="text-align:left;margin:16px 0"><dt>Заказ</dt><dd class="mono">${o.id}</dd><dt>${o.status==="paid"?"Взнос":"К оплате"}</dt><dd class="mono">${fmtRub(o.status==="paid"?o.paid:o.due)}</dd><dt>Email</dt><dd>${esc(USER?USER.email:"")}</dd></div>
    <p class="muted small">${o.status==="pending"?"Капитан команды получит письмо и подтвердит заявку. Платить взнос нужно после того, как он примет вас в основной состав. Статус — в «Моих стартах».":o.status==="reserve"?"Взнос платить не нужно, пока капитан не переведёт вас в основной состав. Статус — в «Моих стартах».":o.status==="paid"?"Статус и возврат — в разделе «Мои старты».":"Организатор подтвердит заявку и подскажет, как оплатить взнос. Статус видно в разделе «Мои старты»."}${o.team&&o.role==="main"&&S.reg&&S.reg.newTeam?" Ссылка-приглашение для команды — в «Моих стартах», в карточке старта.":""}</p>
@@ -3270,6 +3271,7 @@ document.addEventListener("click", e=>{
     if (act==="captain" && S.p.capAsk!==target){ S.p={...S.p,capAsk:target,rmAsk:null}; return render(); }
     S.p={...S.p,rmAsk:null,capAsk:null};
     api("POST","/api/team/act",body).then(r=>{ MYTEAMS=r.teams; ORDERS=r.orders; render(); toast({approve:"Принят в основной состав",reserve:"Взят в запас",reject:"Заявка отклонена",promote:"Переведён в основной состав",remove:"Убран из команды",invite:"Старая ссылка больше не работает — вот новая",captain:"Капитанство передано"}[act]||"Готово"); }).catch(err=>toast(err.message)); return; }
+  if (ds.teamretry){ const o=ORDERS.find(x=>x.id===ds.teamretry), ev=o&&EVENTS.find(e=>e.id===o.event), div=ev&&ev.divisions.find(d=>d.id===o.div); if(!o||!ev||!div){toast("Старт или категория не найдены");return;} S.who=o.who||"me"; S.reg={ev,div,team:null,who:S.who,f:{size:o.size||"L",promo:"",promoOk:false,promoMsg:"",c1:false,c2:false,c3:false}}; return go("team",{}); }
   if (ds.teamwd){ api("POST","/api/refund",{id:ds.teamwd}).then(async()=>{ await loadSession(); render(); toast("Готово"); }).catch(err=>toast(err.message)); return; }
   if (ds.rmno){ S.p={...S.p,rmAsk:null,capAsk:null}; return render(); }
   if (ds.copyinv){ const url=location.origin+"/#join="+ds.copyinv; (navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject()).then(()=>toast("Ссылка скопирована — отправьте её команде")).catch(()=>toast("Скопируйте ссылку из карточки команды")); return; }
