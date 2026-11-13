@@ -902,7 +902,7 @@ const statusChip = s => ({open:'<span class="chip open">Регистрация �
 const isPub = e => e.status!=="draft";
 const isStaffView = () => ["owner","admin","judge"].includes(S.viewAs);
 const lbEvents = () => { const rank = e => e.status==="live"?0:e.status==="open"?1:e.status==="ended"?2:3;
-  return EVENTS.filter(e=>isPub(e) || (isStaffView() && e.status==="draft")).sort((a,b)=>rank(a)-rank(b) || (rank(a)===1 ? (a.date||"").localeCompare(b.date||"") : (b.date||"").localeCompare(a.date||""))); };
+  return EVENTS.filter(e=>isPub(e)).sort((a,b)=>rank(a)-rank(b) || (rank(a)===1 ? (a.date||"").localeCompare(b.date||"") : (b.date||"").localeCompare(a.date||""))); };
 function divState(d){
   if (d.taken>=d.limit) return {k:"full",t:"Мест нет"};
   if (d.taken/d.limit>=0.85) return {k:"warn",t:"Почти заполнена"};
@@ -1235,7 +1235,7 @@ leaderboard(){
   if (ev0.permanent){ if (L.month!=="year" && !(ev0.months||[]).some(m=>m.id===L.month)) L.month = curMonth(ev0).id; month = L.month; }
   let ev = month==="year" ? leagueYear(ev0, L.div).ev : lbEv(ev0, month);
   const mpills = ev0.permanent ? `<div class="pills" role="tablist" style="margin-top:10px">${(ev0.months||[]).map(m=>`<button role="tab" aria-selected="${month===m.id}" data-lbm="${m.id}">${monthTitle(m.id)}${m.done?"":" · идёт"}</button>`).join("")}<button role="tab" aria-selected="${month==="year"}" data-lbm="year">Таблица года</button></div>` : "";
-  const head = `<div class="card" style="padding:12px 14px"><button class="selbtn" data-act="evsheet"><div><div class="row" style="gap:6px;margin-bottom:6px">${statusChip(ev.status)}${ev.status==="draft"?'<span class="chip neutral">видите только вы</span>':""}</div><b>${esc(ev.name)}</b></div><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button></div>
+  const head = `<div class="card" style="padding:12px 14px"><button class="selbtn" data-act="evsheet"><div><div class="row" style="gap:6px;margin-bottom:6px">${statusChip(ev.status)}${ev.status==="draft"?'<span class="chip neutral">видите только вы</span>':""}</div><b>${esc(ev.name)}</b><div class="muted tiny">${ev.date?`${String(ev.date).slice(0,4)} · ${MON_NOM[+String(ev.date).slice(5,7)-1]||""}`:""}</div></div><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button></div>
    <div class="utabs" role="tablist" style="margin-top:10px">${[["ind","Атлеты"],["team","Команды"],["aff","Клубы"]].map(([k,t])=>`<button role="tab" aria-selected="${L.tab===k}" data-lbt="${k}">${t}</button>`).join("")}</div>${L.tab==="aff"?"":mpills}`;
   if (ev.status==="open") return {title:null, html: head + `<div class="empty" style="margin-top:16px">Старт ${dHuman(ev.date)}. Лидерборд заполнится, когда судьи внесут первые результаты.</div>`};
   if (L.tab==="aff") return {title:null, html: head + affBoard(ev)};
@@ -3193,10 +3193,10 @@ function drawQR(){
 
 /* ---------- sheet ---------- */
 function evSheet(){
-  const scrim = document.createElement("div"); scrim.className="scrim";
-  scrim.innerHTML = `<div class="sheet" role="dialog" aria-label="Выбор старта"><div class="grab"></div><div class="muted small" style="text-align:center;margin-bottom:6px">Выберите старт</div>${lbEvents().map(e=>`<button class="opt" data-sel="${e.id}" aria-selected="${S.lb.ev===e.id}"><span>${e.name}</span>${statusChip(e.status)}</button>`).join("")}</div>`;
-  scrim.addEventListener("click", e=>{ const b=e.target.closest("[data-sel]"); if(b){ S.lb.ev=b.dataset.sel; S.lb.w=-1; S.lb.open=null; S.lb.div="m"; scrim.remove(); render(); } else if(e.target===scrim) scrim.remove(); });
-  document.body.appendChild(scrim);
+  const scrim=document.createElement("div");scrim.className="scrim";
+  const years=[...new Set(lbEvents().map(e=>String((e.date||TODAY).slice(0,4))))].sort((a,b)=>b.localeCompare(a));
+  const draw=()=>{const y=S.lb.filterYear||"",m=S.lb.filterMonth||"", list=lbEvents().filter(e=>(!y||String((e.date||TODAY).slice(0,4))===y)&&(!m||String((e.date||TODAY).slice(5,7))===m));scrim.innerHTML=`<div class="sheet" role="dialog" aria-label="Выбор старта"><div class="grab"></div><div class="muted small" style="text-align:center;margin-bottom:6px">Выберите старт</div><div class="grid2" style="margin:8px 0"><label class="f">Год<select class="inp" id="lbYear"><option value="">Все годы</option>${years.map(v=>`<option value="${v}" ${v===y?"selected":""}>${v}</option>`).join("")}</select></label><label class="f">Месяц<select class="inp" id="lbMonth"><option value="">Все месяцы</option>${MON_NOM.map((n,i)=>{const v=String(i+1).padStart(2,"0");return `<option value="${v}" ${v===m?"selected":""}>${cap1(n)}</option>`}).join("")}</select></label></div>${list.map(e=>{const dt=e.date?new Date(e.date+"T00:00:00Z"):null;const label=e.date?`${dt.getUTCFullYear()} · ${MON_NOM[dt.getUTCMonth()]}`:"";return `<button class="opt" data-sel="${e.id}" aria-selected="${S.lb.ev===e.id}"><span><b>${esc(e.name)}</b><small class="muted">${esc(label)}</small></span>${statusChip(e.status)}</button>`}).join("")||'<div class="empty">Стартов по выбранному периоду нет</div>'}</div>`;scrim.querySelector('#lbYear').onchange=e=>{S.lb.filterYear=e.target.value;draw()};scrim.querySelector('#lbMonth').onchange=e=>{S.lb.filterMonth=e.target.value;draw()};};
+  draw();scrim.addEventListener("click",e=>{const b=e.target.closest("[data-sel]");if(b){S.lb.ev=b.dataset.sel;S.lb.w=-1;S.lb.open=null;S.lb.div="m";scrim.remove();render();}else if(e.target===scrim)scrim.remove();});document.body.appendChild(scrim);
 }
 
 /* ---------- render & events ---------- */
