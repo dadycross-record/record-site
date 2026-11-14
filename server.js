@@ -679,7 +679,7 @@ route('POST', '/api/register', async (req, res, u, body) => {
   const person = who === 'me' ? u.profile : (u.kids || []).find(k => k.id === who);
   if (!person || !person.first || !person.last || !person.dob) throw bad('Заполните анкету участника: имя, фамилию и дату рождения');
   if (!u.profile.phone) throw bad('Укажите телефон в анкете');
-  const age = ev.ageMode === 'year' ? (+String(ev.date).slice(0, 4) - +person.dob.slice(0, 4)) : ageOn(person.dob, ev.date || today());
+  const age = ev.ageMode === 'year' ? (+String(ev.date).slice(0, 4) - +person.dob.slice(0, 4)) : ageOn(person.dob, ((div.days || [])[0] || ev.date || today()));
   if ((div.g === 'M' || div.g === 'F') && (person.gender || 'M') !== div.g) throw bad(div.g === 'M' ? 'Категория только для мужчин' : 'Категория только для женщин');
   if (div.mix && !(+div.mix[(person.gender === 'F') ? 'f' : 'm'] > 0)) throw bad(person.gender === 'F' ? 'В этой категории в составе нет мест для женщин' : 'В этой категории в составе нет мест для мужчин');
   if (div.min && age < div.min) throw bad(`Категория с ${div.min} лет`);

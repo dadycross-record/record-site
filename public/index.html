@@ -914,7 +914,7 @@ const regConflict = (ev, d, who="me") => ORDERS.find(o=>o.event===ev.id && [...A
 const hasReg = (evId, who="me") => ORDERS.some(o=>o.event===evId && ACTIVE_ST.includes(o.status) && (o.who||"me")===who);
 const personOf = who => who==="me" ? ME : ME.kids.find(k=>k.id===who);
 const person = () => personOf(S.who);
-const athleteAge = (ev, p=person()) => !p || !p.dob ? NaN : ev.ageMode==="year" ? (+ev.date.slice(0,4) - +p.dob.slice(0,4)) : ageOn(p.dob, ev.date);
+const athleteAge = (ev, p=person(), div=null) => !p || !p.dob ? NaN : ev.ageMode==="year" ? (+ev.date.slice(0,4) - +p.dob.slice(0,4)) : ageOn(p.dob, (div?.days?.[0] || ev.date));
 /* a guest sees every category but can enter none; the profile (and children in it) decides what opens */
 const WHY_LOGIN = "Войдите, чтобы записаться", WHY_PROFILE = "Заполните анкету участника";
 function eligibility(ev, d){
@@ -923,7 +923,7 @@ function eligibility(ev, d){
   const p = person();
   if (!profileReady() || !p || !p.dob || !p.gender) return WHY_PROFILE;
   { const c = regConflict(ev, d, S.who); if (c){ const cd=ev.divisions.find(x=>x.id===c.div); return c.div===d.id ? (S.who==="me"?"Вы уже записаны в эту категорию":`${p.first} уже записан в эту категорию`) : `${S.who==="me"?"Вы уже записаны":p.first+" уже записан"} на «${cd?cd.name:""}» в этот день`; } }
-  const age = athleteAge(ev, p);
+  const age = athleteAge(ev, p, d);
   if (d.g!=="any" && d.g!==p.gender) return d.g==="M" ? "Категория для мужского пола" : "Категория для женского пола";
   if (d.min && age<d.min) return `С ${d.min} ${yGen(d.min)}`;
   if (d.max && age>d.max) return `Для участников до ${d.max} ${yGen(d.max)}`;
