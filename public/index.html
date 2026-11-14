@@ -1111,7 +1111,7 @@ teamCreate(){
   return {title:"Новая команда", html:`
    <form class="stack" id="fTeam" novalidate>
     <label class="f">Название команды<input class="inp ${e.name?"err":""}" id="tName" value="${esc(v.name)}" placeholder="BAIKAL POWER" autocomplete="off"></label>
-    <div class="${e.name?"err-t":"muted tiny"}">${e.name||"Только латиница, до 5 слов и 20 символов. Сохраняется заглавными."}</div>
+    <div class="${e.name?"err-t":"muted tiny"}">${e.name||"До 5 слов и 30 символов. Буквы, цифры, пробелы, +, −, точка и подчёркивание. Сохраняется заглавными."}</div>
     <label class="f">Клуб${gymInput("tAff", v.aff)}</label>
     <div class="muted tiny">После регистрации в «Моих стартах» появится ссылка-приглашение для команды и заявки от желающих вступить.</div>
     <button class="btn block" type="submit">Создать и продолжить</button>
@@ -3456,7 +3456,7 @@ document.addEventListener("submit", e=>{
   if (e.target.id==="fTeam"){
     const v={name:g("tName").value.trim(),aff:g("tAff").value.trim()}, er={};
     const words=v.name.split(/\s+/).filter(Boolean);
-    if (!/^[A-Za-z ]+$/.test(v.name) || v.name.length>20 || words.length>5) er.name="Название: только латинские буквы и пробелы, до 5 слов и 20 символов";
+    if (!/^[A-Za-zА-Яа-яЁё0-9][A-Za-zА-Яа-яЁё0-9 ._+\-]{1,29}$/u.test(v.name) || words.length>5) er.name="Название: 2–30 символов, до 5 слов; буквы, цифры, пробелы, +, -, точка и подчёркивание";
     else if ((TEAMS[`${S.reg.ev.id}:${S.reg.div.id}`]||[]).some(t=>t.name===v.name.toUpperCase())) er.name="Команда с таким названием уже есть в этой категории";
     if (er.name){ S.p={v,e:er}; return render(); }
     S.reg.team=v.name.toUpperCase(); S.reg.newTeam=true; S.reg.f.aff=v.aff; S.reg.teamReq={mode:"create",name:S.reg.team}; return go("form",{});
