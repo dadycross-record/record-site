@@ -189,7 +189,7 @@ create table if not exists consents (id bigserial primary key, created_at timest
 `;
 const ACTIVE = `('new','paid','refund_requested')`;
 const INTEAM = `('new','paid','refund_requested','pending','reserve')`;
-const TEAM_NAME_RE = /^[A-Za-zА-Яа-яЁё0-9][A-Za-zА-Яа-яЁё0-9 ._-]{1,29}$/u;
+const TEAM_NAME_RE = /^[A-Za-zА-Яа-яЁё0-9][A-Za-zА-Яа-яЁё0-9 ._+\-]{1,29}$/u;
 const TEAM_BAD_ROOTS = ['хуй','хуе','хуё','пизд','еба','ебл','бля','бляд','сук','шлюх','мраз','говн','мудак','дебил','fuck','shit','bitch','dick','piss','cunt','whore','asshole','motherfuck'];
 const badTeamName = v => TEAM_BAD_ROOTS.some(x=>String(v||'').toLocaleLowerCase('ru').replace(/ё/g,'е').includes(x.replace(/ё/g,'е')));
 
@@ -709,7 +709,7 @@ route('POST', '/api/register', async (req, res, u, body) => {
       if (t.mode === 'create') {
         const name = nm(t.name, 30).replace(/\s+/g,' ').trim().toUpperCase();
         if (!name) throw bad('Укажите название команды');
-        if (!TEAM_NAME_RE.test(name)) throw bad('Название: 2–30 символов, русские/латинские буквы, цифры, пробел, дефис, точка или подчёркивание');
+        if (!TEAM_NAME_RE.test(name) || name.split(' ').length > 5) throw bad('Название: 2–30 символов, до 5 слов; буквы, цифры, пробелы, +, -, точка и подчёркивание');
         if (badTeamName(name)) throw bad('Название команды содержит недопустимое слово');
         const ex = (await q('select * from teams where event_id=$1 and div_id=$2 and name=$3', [ev.id, div.id, name])).rows[0];
         const live = ex ? (await q(`select count(*)::int n from registrations where event_id=$1 and div_id=$2 and team=$3 and status in ${INTEAM}`, [ev.id, div.id, name])).rows[0].n : 0;
