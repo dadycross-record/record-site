@@ -1278,7 +1278,7 @@ leaderboard(){
    <div class="row" style="gap:8px">${["owner","admin"].includes(S.viewAs)?`<button class="iconbtn" data-act="lbxlsx" aria-label="Скачать в Excel" title="Скачать лидерборд в Excel"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button>`:""}<button class="iconbtn" data-act="lbsearch" aria-label="Поиск"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></button></div></div>
    ${S.searchOpen?`<input class="inp" id="lbq" style="margin-top:8px" placeholder="Имя атлета или команды" value="${esc(L.q)}" autocomplete="off">`:""}
    ${month==="year"?"":`<div class="pills" role="tablist" style="margin-top:12px"><button role="tab" aria-selected="${wi<0}" data-lbw="-1">${ev0.permanent?"Итог месяца":"Общий зачёт"}</button>${ev.workouts.map((w,i)=>`<button role="tab" aria-selected="${wi===i}" data-lbw="${i}">${w.name.split(" · ")[0]}</button>`).join("")}</div>`}
-   ${wi>=0?wodCard(ev.workouts[wi], ev0):""}
+   ${wi>=0 && L.desc===ev.workouts[wi]?.id?wodCard(ev.workouts[wi], ev0):""}
    ${(()=>{ const me=rows.find(r=>r.me); return me && !q ? `<div class="mine"><div class="muted tiny" style="margin:12px 0 6px">ВАШ РЕЗУЛЬТАТ</div><div class="lb">${row(me,ev,wi)}</div></div>` : ""; })()}
    <div class="lb-head" style="margin-top:8px"><span>#</span><span></span><span>${L.tab==="team"?"Команда":"Атлет"}</span><span class="wcols">${wi<0?ev.workouts.map(w=>`<span class="wc">${esc(w.name.split(" · ")[0])}</span>`).join(""):""}</span><span class="hpts">${wi<0?(usesPoints(ev0)?"Баллы":"Очки"):"Результат"}</span><span></span></div>
    <div class="lb">${shown.map(r=>row(r,ev,wi)).join("") || '<div class="empty">Никого не нашли</div>'}</div>
@@ -1486,9 +1486,12 @@ function ptsRules(n){
   </div>`:""}</div>`;
 }
 function wodCard(w, ev0){
-  const open = S.lb.desc===w.id, cap = w.cap ? ` · лимит ${Math.floor(w.cap/60)}:${String(w.cap%60).padStart(2,"0")}` : "";
-  return `<div class="card wodcard" style="margin-top:12px"><button class="wodhead" data-lbdesc="${w.id}" aria-expanded="${open}"><div class="sp" style="text-align:left"><b>${esc(w.name)}</b><div class="muted tiny">${{time:"На время",reps:"На повторения",load:"На вес"}[w.type]||""}${cap}${w.note && !/^(на время|максим|на повтор|на вес|повторени)/i.test(w.note)?` · ${esc(w.note)}`:""}</div></div><span class="small" style="color:var(--accent)">${open?"Скрыть":"Описание"}</span></button>
-    ${open?`<div class="wodbody">${(w.body&&w.body.length)?w.body.map(l=>`<div>${esc(l)}</div>`).join(""):'<div class="muted">Описание комплекса ещё не опубликовано</div>'}</div>`:""}</div>`;
+  const cap = w.cap ? ` · лимит ${Math.floor(w.cap/60)}:${String(w.cap%60).padStart(2,"0")}` : "";
+  return `<section class="card wodcard" id="lbComplexDescription" style="margin-top:12px" aria-label="Описание комплекса ${esc(w.name)}">
+    <div class="wodhead"><div class="sp" style="text-align:left"><b>${esc(w.name)}</b><div class="muted tiny">${{time:"На время",reps:"На повторения",load:"На вес"}[w.type]||""}${cap}${w.note && !/^(на время|максим|на повтор|на вес|повторени)/i.test(w.note)?` · ${esc(w.note)}`:""}</div></div></div>
+    <div class="wodbody">${(w.body&&w.body.length)?w.body.map(l=>`<div>${esc(l)}</div>`).join(""):'<div class="muted">Описание комплекса ещё не опубликовано</div>'}
+      <button type="button" class="btn sm ghost" style="margin-top:14px;width:100%" data-lbcollapse="1">Свернуть</button>
+    </div></section>`;
 }
 function row(r, ev, wi){
   const place = wi<0 ? r.place : r.wr[wi];
@@ -3368,7 +3371,16 @@ document.addEventListener("click", e=>{
       .catch(err=>{ S.reg.f.promoOk=false; S.reg.f.promoOff=0; S.reg.f.promoMsg=err.message; render(); }); return; }
   if (ds.act==="evsheet") return evSheet();
   if (ds.lbt){ S.lb.tab=ds.lbt; S.lb.w=-1; S.lb.open=null; S.lb.div = ds.lbt==="team"?"pair":"m"; return render(); }
-  if (ds.lbw!==undefined){ S.lb.w=+ds.lbw; S.lb.desc=null; return render(); }
+  if (ds.lbw!==undefined){
+    const index=+ds.lbw;
+    S.lb.w=index;
+    const ev0=EVENTS.find(e=>e.id===S.lb.ev);
+    const month=ev0?.permanent ? (S.lb.month==="year" ? null : (S.lb.month||curMonth(ev0).id)) : null;
+    const ev=ev0 ? lbEv(ev0,month) : null;
+    S.lb.desc=index>=0 ? (ev?.workouts?.[index]?.id||null) : null;
+    return render();
+  }
+  if (ds.lbcollapse){ S.lb.desc=null; return render(); }
   if (ds.rsw){ adm.rs.w=ds.rsw; render(); return; }
   if (ds.lbopen){ const [e,d]=ds.lbopen.split("|"), dv=(EVENTS.find(x=>x.id===e)||{divisions:[]}).divisions.find(x=>x.id===d); S.lb.ev=e; S.lb.div=d; S.lb.tab=dv&&dv.type==="team"?"team":"ind"; S.lb.month=ds.lbPeriod||undefined; S.lb.q=""; S.searchOpen=false; S.lb.open=null; S.lb.desc=null; S.lb.w=-1; S.lb.init=true; return tab("leaderboard"); }
   if (ds.lbdesc){ S.lb.desc = S.lb.desc===ds.lbdesc ? null : ds.lbdesc; return render(); }
