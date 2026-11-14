@@ -154,6 +154,13 @@ update teams set invite = substr(md5(random()::text || id::text), 1, 16) where i
 update users set profile = jsonb_set(profile, '{affiliate}', '"RECORD"') where profile->>'affiliate' ilike 'record пивовариха';
 update registrations set person = jsonb_set(person, '{affiliate}', '"RECORD"') where person->>'affiliate' ilike 'record пивовариха';
 create unique index if not exists crew_user_ev on crew(event_id, user_id) where user_id is not null;
+create table if not exists team_messages (
+  id bigserial primary key, team_id bigint not null references teams(id) on delete cascade,
+  sender_id bigint not null references users(id) on delete cascade,
+  receiver_id bigint not null references users(id) on delete cascade,
+  body text not null, created_at timestamptz not null default now()
+);
+create index if not exists team_messages_pair on team_messages(team_id, created_at, id);
 create table if not exists notify_emails (email text primary key, added_by text, created_at timestamptz not null default now());
 create table if not exists tg_chats (chat_id text primary key, email text, name text, created_at timestamptz not null default now());
 create table if not exists tg_links (code text primary key, email text not null, expires_at timestamptz not null);
@@ -789,7 +796,7 @@ async function myTeams(uid) {
     const t = (await db.query('select * from teams where event_id=$1 and div_id=$2 and name=$3', [m.event_id, m.div_id, m.team])).rows[0]; if (!t) continue;
     const roster = await teamRoster(db.query.bind(db), m.event_id, m.div_id, m.team);
     const cap = roster.find(r => r.id === t.captain_reg), isCap = !!cap && Number(cap.user_id) === Number(uid);
-    out.push({ event: m.event_id, div: m.div_id, name: m.team, captain: isCap, captainReg: t.captain_reg, invite: isCap ? t.invite : null,
+    out.push({ id: t.id, event: m.event_id, div: m.div_id, name: m.team, captain: isCap, captainReg: t.captain_reg, invite: isCap ? t.invite : null,
       members: roster.filter(r => isCap || r.status !== 'pending' || Number(r.user_id) === Number(uid)).map(r => ({
         reg: r.id, name: isCap || Number(r.user_id) === Number(uid) ? `${r.person.last || ''} ${r.person.first || ''}`.trim() : shortName(r.person),
         role: r.status === 'pending' ? 'pending' : r.status === 'reserve' ? 'reserve' : 'main', paid: r.status === 'paid', g: sexOf(r), cap: r.id === t.captain_reg, me: Number(r.user_id) === Number(uid) })) });
@@ -804,6 +811,60 @@ async function mailCaptain(capReg, subject, lines) {
   } catch (e) { console.error('captain mail failed:', e.message); }
 }
 async function mailMember(regId, subject, lines) { return mailCaptain(regId, subject, lines); }
+
+/* Private messages between registered main-roster teammates. Access is always checked
+   against the current roster; old conversations are never shared with replacements. */
+async function teamConversation(uid, teamId, peerReg) {
+  if (!Number.isSafeInteger(teamId) || teamId < 1 || !peerReg) throw bad('Команда не найдена');
+  const team = (await db.query('select id, event_id, div_id, name from teams where id=$1', [teamId])).rows[0];
+  if (!team) throw new HttpError(404, 'Команда не найдена');
+  const roster = (await db.query(`select r.id, r.user_id, r.person from registrations r
+    where r.event_id=$1 and r.div_id=$2 and r.team=$3
+      and r.status in ${ACTIVE} and coalesce(r.team_role,'main')='main' and r.user_id is not null`,
+    [team.event_id, team.div_id, team.name])).rows;
+  const mine = roster.find(r => Number(r.user_id) === Number(uid));
+  const peer = roster.find(r => r.id === peerReg);
+  if (!mine || !peer || Number(peer.user_id) === Number(uid))
+    throw new HttpError(403, 'Переписка доступна только действующим партнёрам по команде');
+  return { team, mine, peer };
+}
+route('GET', '/api/team/messages', async (req, res, u) => {
+  need(u);
+  const url = new URL(req.url, 'http://x');
+  const teamId = Number(url.searchParams.get('team'));
+  const peerReg = str(url.searchParams.get('peer'), 80);
+  const c = await teamConversation(u.id, teamId, peerReg);
+  const messages = (await db.query(`select id, sender_id, body, created_at from team_messages
+    where team_id=$1 and ((sender_id=$2 and receiver_id=$3) or (sender_id=$3 and receiver_id=$2))
+    order by created_at desc, id desc limit 100`,
+    [teamId, u.id, c.peer.user_id])).rows.reverse();
+  return { messages: messages.map(m => ({ id: m.id, mine: Number(m.sender_id) === Number(u.id),
+    text: m.body, created: m.created_at })), peer: shortName(c.peer.person) };
+});
+route('POST', '/api/team/messages', async (req, res, u, body) => {
+  need(u);
+  limit('team-message:' + u.id, 12, 60e3);
+  limit('team-message-hour:' + u.id, 60, 3600e3);
+  const teamId = Number(body.team), peerReg = str(body.peer, 80);
+  const message = typeof body.text === 'string' ? body.text.trim() : '';
+  if (!message || message.length > 2000) throw bad('Сообщение должно содержать от 1 до 2000 символов');
+  if (/[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]/.test(message)) throw bad('Недопустимые символы в сообщении');
+  const c = await teamConversation(u.id, teamId, peerReg);
+  const created = (await db.query(`insert into team_messages(team_id, sender_id, receiver_id, body)
+    values ($1,$2,$3,$4) returning id, created_at`,
+    [teamId, u.id, c.peer.user_id, message])).rows[0];
+  const recipient = (await db.query('select email from users where id=$1', [c.peer.user_id])).rows[0];
+  if (recipient?.email && mail.configured()) {
+    const sender = shortName(c.mine.person), teamName = c.team.name;
+    const text = [`Здравствуйте! ${sender} отправил(а) вам сообщение в команде «${teamName}».`,
+      '', message, '', 'Чтобы ответить, войдите на сайт и откройте «Мои старты» → «Связаться»:',
+      SITE_URL() + '/#orders', '', 'Это автоматическое уведомление. Не отвечайте на это письмо.'].join('\\n');
+    mail.send({ to: recipient.email, subject: `Рекорд: сообщение от партнёра по команде «${teamName}»`, text })
+      .catch(e => console.error('team message mail failed:', e.message));
+  }
+  return { id: created.id, mine: true, text: message, created: created.created_at };
+});
+
 // teams of a category for the search screen: short names only, signed-in athletes only
 route('GET', '/api/teams', async (req, res, u, body, p, qs) => {
   need(u);
