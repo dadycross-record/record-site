@@ -848,7 +848,7 @@ route('POST', '/api/team/messages', async (req, res, u, body) => {
   const teamId = Number(body.team), peerReg = str(body.peer, 80);
   const message = typeof body.text === 'string' ? body.text.trim() : '';
   if (!message || message.length > 2000) throw bad('Сообщение должно содержать от 1 до 2000 символов');
-  if (/[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]/.test(message)) throw bad('Недопустимые символы в сообщении');
+  if (/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(message)) throw bad('Недопустимые символы в сообщении');
   const c = await teamConversation(u.id, teamId, peerReg);
   const created = (await db.query(`insert into team_messages(team_id, sender_id, receiver_id, body)
     values ($1,$2,$3,$4) returning id, created_at`,
@@ -858,7 +858,7 @@ route('POST', '/api/team/messages', async (req, res, u, body) => {
     const sender = shortName(c.mine.person), teamName = c.team.name;
     const text = [`Здравствуйте! ${sender} отправил(а) вам сообщение в команде «${teamName}».`,
       '', message, '', 'Чтобы ответить, войдите на сайт и откройте «Мои старты» → «Связаться»:',
-      SITE_URL() + '/#orders', '', 'Это автоматическое уведомление. Не отвечайте на это письмо.'].join('\\n');
+      SITE_URL() + '/#orders', '', 'Это автоматическое уведомление. Не отвечайте на это письмо.'].join('\n');
     mail.send({ to: recipient.email, subject: `Рекорд: сообщение от партнёра по команде «${teamName}»`, text })
       .catch(e => console.error('team message mail failed:', e.message));
   }
