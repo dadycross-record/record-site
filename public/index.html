@@ -3386,7 +3386,7 @@ document.addEventListener("click", e=>{
     S.lb.w=index;
     const ev0=EVENTS.find(e=>e.id===S.lb.ev);
     const month=ev0?.permanent ? (S.lb.month==="year" ? null : (S.lb.month||curMonth(ev0).id)) : null;
-    const ev=ev0 ? lbEv(ev0,month) : null;
+    const ev=ev0 ? lbEv(ev0,month,S.lb.div) : null;
     S.lb.desc=index>=0 ? (ev?.workouts?.[index]?.id||null) : null;
     return render();
   }
