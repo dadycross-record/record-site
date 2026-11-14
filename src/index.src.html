@@ -878,7 +878,7 @@ function cookieBar(force){
   b.innerHTML=`<p>Мы используем cookies: необходимые — чтобы работали формы и вход, и аналитические Яндекс Метрики — чтобы понимать, что на сайте удобно, а что нет. Аналитические включим только с вашего согласия. <a href="/docs/privacy" target="_blank">Подробнее</a></p><div class="row"><button class="btn sm" data-ck="all">Принять</button><button class="btn sm ghost" data-ck="need">Только необходимые</button></div>`;
   document.body.appendChild(b);
 }
-const ROOT_TAB = {kidInvite:"me",crewManage:"me",invite:"events",crewApply:"events",login:"me",home:"home",events:"events",event:"events",divisions:"events",team:"events",teamCreate:"events",teamJoin:"events",form:"events",pay:"events",done:"events",fail:"events",leaderboard:"leaderboard",me:"me",orders:"me",score:"me",qr:"me",profile:"me",admin:"me",adminEvent:"me",adminDiv:"me",adminWod:"me",adminPeople:"me",adminSch:"me",adminPromo:"me",adminClub:"me"};
+const ROOT_TAB = {kidInvite:"me",crewManage:"me",invite:"events",crewApply:"events",login:"me",home:"home",events:"events",event:"events",divisions:"events",team:"events",teamCreate:"events",teamJoin:"events",form:"events",pay:"events",done:"events",fail:"events",leaderboard:"leaderboard",me:"me",orders:"me",messages:"me",score:"me",qr:"me",profile:"me",admin:"me",adminEvent:"me",adminDiv:"me",adminWod:"me",adminPeople:"me",adminSch:"me",adminPromo:"me",adminClub:"me"};
 
 function header(title){
   if (isClub()) return clubHeader();
@@ -887,7 +887,7 @@ function header(title){
 }
 const NAV = [["home","Главная"],["events","Старты"],["leaderboard","Лидерборд"],["me","Профиль"]];
 function topnav(){ const cur = ROOT_TAB[S.route]; return `<nav class="topnav" aria-label="Разделы">${NAV.map(([k,l])=>`<button data-tab="${k}" ${cur===k?'aria-current="page"':""}>${l}</button>`).join("")}</nav>`; }
-const WIDTH = {adminAthlete:"mid",adminResults:"wide",club:"wide",adminClub:"mid",home:"wide",events:"wide",leaderboard:"wide",admin:"wide",adminPeople:"wide",orders:"wide",divisions:"wide",event:"mid",teamJoin:"mid"};
+const WIDTH = {adminAthlete:"mid",adminResults:"wide",club:"wide",adminClub:"mid",home:"wide",events:"wide",leaderboard:"wide",admin:"wide",adminPeople:"wide",orders:"wide",messages:"mid",divisions:"wide",event:"mid",teamJoin:"mid"};
 const statusChip = s => ({open:'<span class="chip open">Регистрация открыта</span>',live:'<span class="chip live">Идёт</span>',ended:'<span class="chip ended">Завершён</span>',draft:'<span class="chip neutral">Черновик</span>'}[s]);
 const isPub = e => e.status!=="draft";
 const isStaffView = () => ["owner","admin","judge"].includes(S.viewAs);
@@ -1322,6 +1322,34 @@ crewApply(){
     <button class="btn block" type="submit" ${f.busy?"disabled":""}>${f.busy?"Отправляю…":"Отправить заявку"}</button>
   </form>`};
 },
+messages(){
+  const P=S.p, T=MYTEAMS.find(t=>String(t.id)===String(P.team));
+  if (!T || !T.members.some(m=>m.reg===P.peer && m.role==="main" && !m.me) ||
+      !T.members.some(m=>m.me && m.role==="main"))
+    return {title:"Связаться",html:'<div class="empty">Переписка доступна только действующим участникам основного состава команды.</div>'};
+  if (!P.loaded && !P.loading){
+    P.loading=true;
+    api("GET","/api/team/messages?team="+encodeURIComponent(T.id)+"&peer="+encodeURIComponent(P.peer))
+      .then(r=>{P.messages=r.messages;P.peerName=r.peer;P.loaded=true;P.loading=false;render();})
+      .catch(err=>{P.error=err.message;P.loading=false;P.loaded=true;render();});
+  }
+  const peer=T.members.find(m=>m.reg===P.peer);
+  const items=(P.messages||[]).map(m=>`<div class="panel" style="margin:8px 0;max-width:90%;${m.mine?"margin-left:auto;":""}">
+    <div class="muted tiny">${m.mine?"Вы":esc(P.peerName||peer.name)} · ${esc(new Date(m.created).toLocaleString("ru-RU"))}</div>
+    <div class="small" style="white-space:pre-wrap;overflow-wrap:anywhere;margin-top:6px">${esc(m.text)}</div>
+  </div>`).join("");
+  return {title:"Связаться",html:`<div class="card stack">
+    <div><b>Команда «${esc(T.name)}»</b><div class="muted small">Переписка с ${esc(peer.name)}. Новые сообщения приходят также на почту.</div></div>
+    ${P.error?`<div class="err">${esc(P.error)}</div>`:""}
+    ${P.loading?'<div class="muted small">Загружаю переписку…</div>':`<div aria-live="polite">${items||'<div class="muted small">Сообщений пока нет. Напишите первым.</div>'}</div>`}
+    <form id="fTeamMessage" class="stack">
+      <label class="f">Ваше сообщение<textarea class="inp" id="teamMessageText" rows="4" maxlength="2000" required placeholder="Напишите партнёру…">${esc(P.draft||"")}</textarea></label>
+      <button class="btn block" type="submit" ${P.sending||P.loading||!P.loaded?"disabled":""}>${P.sending?"Отправляю…":"Отправить сообщение"}</button>
+      <div class="muted tiny">Сообщение увидит только ваш партнёр по команде. Для ответа он сможет войти на сайт.</div>
+    </form>
+    <button class="btn ghost" data-msgrefresh="1" ${P.loading?"disabled":""}>Обновить переписку</button>
+  </div>`};
+},
 orders(){
   const period=S.p.period||"current", selected=S.p.performer;
   const visible=o=>!historyHidden("order",o.id)&&(pastStart(o.event)===(period==="ended"));
@@ -1501,7 +1529,7 @@ function teamBox(o){
   return `<div class="teambox"><div class="row"><b class="sp">Команда «${esc(T.name)}»</b><span class="muted tiny">${main.length} из ${size}${res.length?` · запас ${res.length}`:""}</span></div>
     ${div&&div.mix?`<div class="muted tiny">Состав: ${div.mix.m} муж. + ${div.mix.f} жен.${mixNeed(div,main)?" · "+mixNeed(div,main):""}</div>`:""}
     <div class="slots" style="margin:6px 0">${Array.from({length:size},(_,i)=>`<i class="${i<main.length?"on":""}"></i>`).join("")}</div>
-    ${main.map(m=>`<div class="arow"><div class="sp small">${who(m)}</div>${cap?`<span class="chip ${m.paid?"ok":"warn"}">${m.paid?"оплачен":"ждёт оплаты"}</span>`:""}${S.p.capAsk===m.reg?"":rmBtn(m)}${S.p.rmAsk===m.reg?"":capBtn(m)}</div>`).join("")}
+    ${main.map(m=>`<div class="arow"><div class="sp small">${who(m)}</div>${cap?`<span class="chip ${m.paid?"ok":"warn"}">${m.paid?"оплачен":"ждёт оплаты"}</span>`:""}${!m.me && main.some(x=>x.me)?`<button class="btn sm ghost" data-msgopen="${esc(m.reg)}" data-msgteam="${T.id}">Связаться</button>`:""}${S.p.capAsk===m.reg?"":rmBtn(m)}${S.p.rmAsk===m.reg?"":capBtn(m)}</div>`).join("")}
     ${res.length?`<div class="muted tiny" style="margin-top:8px">ЗАПАСНЫЕ</div>${res.map(m=>`<div class="arow"><div class="sp small">${who(m)}</div>${cap?`<div class="row wrap" style="gap:6px;justify-content:flex-end">
         <select class="inp sm" id="trep_${m.reg}" aria-label="Кого заменить"><option value="">${main.length<size?"на свободное место":"выберите, кого заменить"}</option>${main.filter(x=>!x.cap).map(x=>`<option value="${x.reg}">вместо: ${esc(x.name)}</option>`).join("")}</select>
         <select class="inp sm" id="tfee_${m.reg}" aria-label="Взнос выбывшего"><option value="refund">взнос выбывшему — вернуть</option><option value="transfer">взнос выбывшего — передать</option></select>
@@ -1736,7 +1764,7 @@ function admEvRow(e){
 }
 const ROLE_L = {owner:"Владелец",admin:"Организатор",judge:"Судья",athlete:"Участник"};
 const ADMIN_ROUTES = ["adminClub","admin","adminEvent","adminDiv","adminWod","adminSch","adminPeople","adminPromo","adminResults","adminAthlete","adminAudit","adminCrewStats"];
-const LOGIN_ROUTES = ["me","orders","crewApply","crewManage","score","profile","form","team","teamCreate","teamJoin","done",...ADMIN_ROUTES];
+const LOGIN_ROUTES = ["me","orders","messages","crewApply","crewManage","score","profile","form","team","teamCreate","teamJoin","done",...ADMIN_ROUTES];
 function allowed(route){
   if (!ADMIN_ROUTES.includes(route)) return true;
   if((USER?.headEvents||[]).length&&!["owner","admin","judge"].includes(S.viewAs))return route==="admin"||route==="adminResults";
@@ -3252,6 +3280,8 @@ document.addEventListener("click", e=>{
     if (!profileReady()){ toast("Сначала заполните анкету участника"); return go("profile",{edit:true,then:"invite"}); }
     S.who="me"; const why=eligibility(ev,div); if (why){ toast(why); return; }
     S.reg={ev,div,team:I.name,newTeam:false,teamReq:{mode:"invite",invite:I.token},who:"me",f:{size:"L",promo:"",promoOk:false,promoMsg:"",c1:false,c2:false,c3:false}}; return go("form",{}); }
+  if (ds.msgopen) return go("messages",{team:Number(ds.msgteam),peer:ds.msgopen});
+  if (ds.msgrefresh){ const draft=document.getElementById("teamMessageText"); if(draft) S.p.draft=draft.value; S.p.loaded=false; S.p.loading=false; S.p.error=null; return render(); }
   if (ds.tact){ const [act,target]=ds.tact.split("|"), T=MYTEAMS[+ds.ti]; const body={reg:T.captainReg, action:act, target};
     if (act==="promote"){ const rep=document.getElementById("trep_"+target), fee=document.getElementById("tfee_"+target); if (rep&&rep.value){ body.replace=rep.value; body.fee=fee?fee.value:"refund"; } }
     if (act==="remove" && S.p.rmAsk!==target){ S.p={...S.p,rmAsk:target,capAsk:null}; return render(); }
@@ -3353,6 +3383,15 @@ document.addEventListener("input", e=>{
 document.addEventListener("submit", e=>{
   e.preventDefault();
   const g=id=>document.getElementById(id);
+  if (e.target.id==="fTeamMessage"){
+    const P=S.p, el=g("teamMessageText"), value=(el?.value||"").trim();
+    if(!value||value.length>2000){P.error="Введите сообщение длиной до 2000 символов"; return render();}
+    P.draft=value;P.error=null;P.sending=true;render();
+    api("POST","/api/team/messages",{team:P.team,peer:P.peer,text:value})
+      .then(m=>{P.messages=[...(P.messages||[]),m];P.draft="";P.sending=false;render();toast("Сообщение отправлено");})
+      .catch(err=>{P.sending=false;P.error=err.message;render();});
+    return;
+  }
   if (e.target.id==="fCrew"){
     const f=S.cap, r=document.querySelector('input[name="cRole"]:checked'); f.role=r?r.value:""; f.note=g("cNote").value; f.ok=g("cOk").checked; f.days={};
     document.querySelectorAll('input[name="cDay"]:checked').forEach(x=>{ f.days[x.value]=true; });
