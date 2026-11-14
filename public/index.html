@@ -1219,12 +1219,15 @@ done(){
   const o = ORDERS[ORDERS.length-1]; if (!o) return SCREENS.orders();
   const ev = EVENTS.find(e=>e.id===o.event)||{name:"",divisions:[]}, d = ev.divisions.find(x=>x.id===o.div)||{name:""};
   const nm = o.who==="me" ? "Вы в списке" : `${esc((o.person||{}).first||"")} в списке`;
+  const captainTeam = o.team && o.role==="main" ? MYTEAMS.find(t=>t.event===o.event&&t.div===o.div&&t.name===o.team&&t.captain&&t.invite) : null;
+  const invitation = captainTeam ? location.origin+"/#join="+captainTeam.invite : "";
   return {title:"Готово", html:`
    <div class="center"><div class="big-ic" style="background:var(--good-soft);color:var(--good)"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12l5 5 9-10"/></svg></div>
    <div style="font-family:var(--f-display);font-weight:800;font-size:22px;text-transform:uppercase">${o.status==="pending"?"Заявка у капитана":o.status==="reserve"?"Вы в запасе":o.status==="paid"?nm:"Заявка принята"}</div>
    <p class="muted">${esc(ev.name)} · ${esc(d.name)}${o.team?` · ${esc(o.team)}`:""}</p>
    <div class="card kv" style="text-align:left;margin:16px 0"><dt>Заказ</dt><dd class="mono">${o.id}</dd><dt>${o.status==="paid"?"Взнос":"К оплате"}</dt><dd class="mono">${fmtRub(o.status==="paid"?o.paid:o.due)}</dd><dt>Email</dt><dd>${esc(USER?USER.email:"")}</dd></div>
    <p class="muted small">${o.status==="pending"?"Капитан команды получит письмо и подтвердит заявку. Платить взнос нужно после того, как он примет вас в основной состав. Статус — в «Моих стартах».":o.status==="reserve"?"Взнос платить не нужно, пока капитан не переведёт вас в основной состав. Статус — в «Моих стартах».":o.status==="paid"?"Статус и возврат — в разделе «Мои старты».":"Организатор подтвердит заявку и подскажет, как оплатить взнос. Статус видно в разделе «Мои старты»."}${o.team&&o.role==="main"&&S.reg&&S.reg.newTeam?" Ссылка-приглашение для команды — в «Моих стартах», в карточке старта.":""}</p>
+   ${invitation?`<div class="card stack" style="margin:14px 0;text-align:left"><b>Пригласите партнёра в команду</b><div class="muted small">Отправьте ссылку партнёру, чтобы он присоединился к вашему составу.</div><input class="inp mono" readonly value="${esc(invitation)}" aria-label="Ссылка-приглашение" style="font-size:13px"><button class="btn block" data-copyinv="${esc(captainTeam.invite)}">Скопировать ссылку</button></div>`:""}
    <div class="stack"><button class="btn block" data-tab-go="me" data-sub="orders">Мои старты</button><button class="btn block ghost" data-tab-go="home">На главную</button></div></div>`};
 },
 fail(){
@@ -2776,7 +2779,9 @@ async function submitReg(){
     const res = await api("POST","/api/register",{event:r.ev.id,div:r.div.id,who:r.who,team:r.teamReq||null,size:f.size,affiliate:f.aff||"",promo:f.promoOk?f.promo:"",
       consents:{rules:!!f.c1,pd:!!f.c2,parent:!!f.c3,publish:!!f.c4,photo:!!f.c5}});
     ORDERS.push(res.order); markMe(); goal("reg_submit");
-    await loadContent();
+    // Load newly created team, captain status and invite from the server.
+    try { await loadSession(); } catch(err) { console.warn("Session refresh after registration:",err); }
+    try { await loadContent(); } catch(err) { console.warn("Content refresh after registration:",err); }
     S.stack=[]; go("done",{},false);
   } catch(err){ f.busy=false; f.err=err.message; render(); }
 }
