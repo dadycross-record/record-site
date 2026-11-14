@@ -260,6 +260,15 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 .cropvp{position:relative;overflow:hidden;border-radius:12px;background:#000;touch-action:none;cursor:grab;user-select:none}.cropvp:active{cursor:grabbing}
 .cropvp img{position:absolute;left:0;top:0;max-width:none;transform-origin:0 0;pointer-events:none}
 .cropmask{position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 999px rgba(0,0,0,.5);border:2px solid rgba(255,255,255,.85);pointer-events:none}
+.cover-editor{width:min(720px,100%);max-height:92dvh;overflow-y:auto;align-items:stretch;text-align:left;padding:clamp(12px,3vw,22px)}
+.cover-editor h3{margin:0;font-size:20px;font-family:var(--f-display)}
+.cover-editor .cover-canvas{display:block;width:100%;height:auto;aspect-ratio:16/9;border-radius:10px;border:1px solid var(--line);background:#111;touch-action:none;cursor:grab;user-select:none}
+.cover-editor .cover-canvas:active{cursor:grabbing}
+.cover-editor .cover-controls{width:100%;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.cover-editor .cover-controls input[type="range"]{min-width:120px;flex:1}
+.cover-editor .cover-controls input[type="color"]{width:44px;height:36px;background:transparent;border:1px solid var(--line);border-radius:8px;padding:2px}
+.cover-editor .cover-actions{justify-content:flex-end}
+@media(max-width:480px){.cover-editor .cover-actions .btn{flex:1 1 auto}.cover-editor .cover-controls{gap:7px}}
 #cropZ{accent-color:var(--accent)}
 .teambox{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px}.teambox .arow{gap:8px}.inp.sm{height:34px;padding:0 8px;font-size:13px;width:auto}
 .waiver{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.waiver .inp{flex:1;min-width:200px}
@@ -1857,6 +1866,101 @@ function openCropper(file){
   };
   img.src = url;
 }
+
+/* Event-cover composer: a 16:9 canvas with free drag/zoom.
+   When the photo is smaller than the frame, chosen background fields are visible.
+   Keep a compressed source separately so a later edit can restore the original edges. */
+function editEventCover(source, previous=null){
+  const ev=curEv(); if(!ev || !canEdit()) return;
+  const image=new Image();
+  image.decoding="async";
+  image.onload=()=>{
+    const V=640, H=360, W=image.naturalWidth, I=image.naturalHeight;
+    if(!W || !I) return toast("Картинка пуста");
+    const base=Math.max(V/W,H/I), fit=Math.min(V/W,H/I)/base;
+    let z=previous && Number.isFinite(+previous.z)?Math.max(.05,Math.min(4,+previous.z)):1;
+    let sx=base*z, x=previous && Number.isFinite(+previous.tx)?+previous.tx:(V-W*sx)/2,
+      y=previous && Number.isFinite(+previous.ty)?+previous.ty:(H-I*sx)/2;
+    let bg=/^#[0-9a-f]{6}$/i.test(previous?.bg||"")?previous.bg:"#151515";
+    const modal=document.createElement("div");modal.className="cropbg";modal.setAttribute("role","dialog");
+    modal.setAttribute("aria-modal","true");modal.setAttribute("aria-label","Редактор обложки старта");
+    modal.innerHTML=`<div class="cropcard cover-editor">
+      <h3>Настроить обложку старта</h3>
+      <div class="muted small">Перетащите изображение мышью или пальцем. Измените масштаб ползунком, колёсиком мыши или двумя пальцами. Пустое пространство заполнится выбранным цветом.</div>
+      <canvas class="cover-canvas" width="${V}" height="${H}" aria-label="Предпросмотр обложки 16 на 9"></canvas>
+      <div class="cover-controls">
+        <label for="coverZoom" class="small">Масштаб</label>
+        <span aria-hidden="true">−</span><input id="coverZoom" type="range" min="0.05" max="4" step="0.01" value="${z}" aria-label="Масштаб обложки">
+        <span aria-hidden="true">+</span><output id="coverZoomLabel" class="mono small"></output>
+      </div>
+      <div class="cover-controls"><button type="button" class="btn sm ghost" id="coverFit">Вписать целиком</button>
+        <button type="button" class="btn sm ghost" id="coverFill">Заполнить кадр</button>
+        <label class="small" for="coverBg">Цвет полей</label><input type="color" id="coverBg" value="${bg}" aria-label="Цвет свободных полей"></div>
+      <div class="muted tiny">Сохраняется широкоформатная обложка 16:9. Поля останутся на готовом изображении. Исходное фото сохранится для дальнейшего редактирования.</div>
+      <div class="row wrap cover-actions"><button type="button" class="btn sm ghost" id="coverCancel">Отмена</button>
+        <button type="button" class="btn sm" id="coverApply">Сохранить обложку</button></div>
+    </div>`;
+    document.body.appendChild(modal);
+    const canvas=modal.querySelector("canvas"),ctx=canvas.getContext("2d");
+    const zoom=modal.querySelector("#coverZoom"),label=modal.querySelector("#coverZoomLabel");
+    const clamp=()=>{
+      const sw=W*sx,sh=I*sx, minX=Math.min(60,sw/2),minY=Math.min(50,sh/2);
+      x=Math.max(-sw+minX,Math.min(V-minX,x));
+      y=Math.max(-sh+minY,Math.min(H-minY,y));
+    };
+    const draw=()=>{clamp();ctx.fillStyle=bg;ctx.fillRect(0,0,V,H);ctx.drawImage(image,x,y,W*sx,I*sx);label.textContent=Math.round(z*100)+"%";zoom.value=String(z);};
+    const zoomTo=(newZ,cx=V/2,cy=H/2)=>{
+      newZ=Math.max(.05,Math.min(4,newZ));
+      const ns=base*newZ,scale=ns/sx;
+      x=cx-(cx-x)*scale;y=cy-(cy-y)*scale;z=newZ;sx=ns;draw();
+    };
+    const centerTo=nz=>{z=Math.max(.05,Math.min(4,nz));sx=base*z;x=(V-W*sx)/2;y=(H-I*sx)/2;draw();};
+    const pts=new Map();let last=null,pinch=null;
+    const local=e=>{const r=canvas.getBoundingClientRect();return [(e.clientX-r.left)*V/r.width,(e.clientY-r.top)*H/r.height];};
+    canvas.addEventListener("pointerdown",e=>{
+      e.preventDefault();canvas.setPointerCapture(e.pointerId);
+      pts.set(e.pointerId,local(e));last=local(e);
+      if(pts.size===2){const [a,b]=[...pts.values()];pinch={distance:Math.max(1,Math.hypot(a[0]-b[0],a[1]-b[1])),z};last=null;}
+    });
+    canvas.addEventListener("pointermove",e=>{
+      if(!pts.has(e.pointerId))return;
+      e.preventDefault();const v=local(e);pts.set(e.pointerId,v);
+      if(pts.size===2 && pinch){
+        const [a,b]=[...pts.values()],cx=(a[0]+b[0])/2,cy=(a[1]+b[1])/2;
+        zoomTo(pinch.z*Math.hypot(a[0]-b[0],a[1]-b[1])/pinch.distance,cx,cy);
+      }else if(last){x+=v[0]-last[0];y+=v[1]-last[1];draw();last=v;}
+    });
+    const end=e=>{pts.delete(e.pointerId);pinch=null;last=pts.size===1?[...pts.values()][0]:null;};
+    canvas.addEventListener("pointerup",end);canvas.addEventListener("pointercancel",end);
+    canvas.addEventListener("wheel",e=>{e.preventDefault();const [cx,cy]=local(e);zoomTo(z*(e.deltaY<0?1.08:1/1.08),cx,cy);},{passive:false});
+    zoom.addEventListener("input",()=>zoomTo(+zoom.value));
+    modal.querySelector("#coverFit").onclick=()=>centerTo(fit);
+    modal.querySelector("#coverFill").onclick=()=>centerTo(1);
+    modal.querySelector("#coverBg").oninput=e=>{bg=e.target.value;draw();};
+    const close=()=>{document.removeEventListener("keydown",onKey);modal.remove();};
+    const onKey=e=>{if(e.key==="Escape")close();};
+    document.addEventListener("keydown",onKey);
+    modal.querySelector("#coverCancel").onclick=close;
+    modal.addEventListener("click",e=>{if(e.target===modal)close();});
+    modal.querySelector("#coverApply").onclick=()=>{
+      const button=modal.querySelector("#coverApply");button.disabled=true;button.textContent="Сохраняю…";
+      try{
+        const out=document.createElement("canvas");out.width=1600;out.height=900;
+        const o=out.getContext("2d"),ratio=out.width/V;
+        o.fillStyle=bg;o.fillRect(0,0,out.width,out.height);
+        o.drawImage(image,x*ratio,y*ratio,W*sx*ratio,I*sx*ratio);
+        const data=out.toDataURL("image/jpeg",.86);
+        if(!data.startsWith("data:image/jpeg;base64,"))throw new Error("Не удалось сохранить изображение");
+        ev.cover=data;ev.coverSource=source;ev.coverEdit={z,tx:x,ty:y,bg};
+        close();render();toast("Обложка сохранена. Изменения будут опубликованы автоматически.");
+      }catch(err){button.disabled=false;button.textContent="Сохранить обложку";toast(err.message||"Не получилось сохранить обложку");}
+    };
+    draw();
+  };
+  image.onerror=()=>toast("Не удалось открыть исходное изображение");
+  image.src=source;
+}
+
 async function squareImage(file, size){
   const bm = await createImageBitmap(file), s = Math.min(bm.width, bm.height);
   const c = document.createElement("canvas"); c.width = c.height = size;
@@ -1874,7 +1978,7 @@ async function readImage(file, maxW, quality){
 const IMG_HINT = {
   hero: "Горизонтальное фото зала или старта, от 1920×1080 px (16:9), JPG или PNG. Главное — в центре и в верхней половине кадра: внизу лягут заголовок и кнопки, а на телефоне края обрежутся. Без надписей на самом фото.",
   gallery: "Горизонтальные фото зала, тренировок и стартов, от 1600×1200 px, JPG или PNG до 15 МБ — уменьшу сам. Без надписей и логотипов поверх фото.",
-  cover: "Горизонтальная картинка от 1600×900 px (16:9), JPG или PNG до 15 МБ — уменьшу сам. Главное в центре: в списке стартов видна только средняя полоса. Без мелкого текста — название старта выводится отдельно."
+  cover: "JPG или PNG до 15 МБ. После загрузки настройте масштаб, положение и цвет полей. Для сохранения всей картинки используйте «Вписать целиком». Предпросмотр — 16:9; на карточке старта может отображаться более узкая полоса."
 };
 document.getElementById("avIn").addEventListener("change", async e=>{
   const f = e.target.files[0]; e.target.value=""; if (!f) return;
@@ -1891,8 +1995,13 @@ document.getElementById("imgIn").addEventListener("change", async e=>{
   if (f.size > 15*1048576) return toast(`Файл ${fmtSize(f.size)} — нужно до 15 МБ`);
   try {
     const img = await readImage(f, adm.imgTarget==="gallery"?1600:1920, adm.imgTarget==="gallery"?0.8:0.82);
+    if (adm.imgTarget==="cover"){
+      editEventCover(img.data);
+      if(img.w<1200)toast(`Исходное фото ${img.w}×${img.h}: возможно снижение чёткости`);
+      return;
+    }
     if (adm.imgTarget==="gallery"){ SITE.gallery=SITE.gallery||[]; SITE.gallery.push(img.data); }
-    else if (adm.imgTarget==="hero") SITE.hero = img.data; else { const ev=curEv(); if (ev) ev.cover = img.data; }
+    else if (adm.imgTarget==="hero") SITE.hero = img.data;
     render();
     toast(img.w<1200 ? `Фото ${img.w}×${img.h} — маленькое, на ноутбуке может быть мутным` : "Фото обновлено");
   } catch(_){ toast("Не получилось открыть картинку. Попробуйте JPG"); }
@@ -1910,7 +2019,8 @@ function adminClick(t, ds){
   if (ds.act==="heroimg"){ adm.imgTarget="hero"; document.getElementById("imgIn").click(); return true; }
   if (ds.act==="herodef"){ SITE.hero=null; render(); toast("Вернул стандартное фото"); return true; }
   if (ds.act==="coverimg"){ adm.imgTarget="cover"; document.getElementById("imgIn").click(); return true; }
-  if (ds.act==="coverdel"){ const ev=curEv(); if (ev){ ev.cover=null; render(); } return true; }
+  if (ds.act==="coveredit"){ const ev=curEv(); if (ev?.cover)editEventCover(ev.coverSource||ev.cover,ev.coverEdit||null); return true; }
+  if (ds.act==="coverdel"){ const ev=curEv(); if (ev){ ev.cover=null;delete ev.coverSource;delete ev.coverEdit;render(); } return true; }
   if (ds.who){ S.who=ds.who; render(); return true; }
   if (ds.admEv){ adm.evId=ds.admEv; adm.err={}; adm.delAsk=false; adm.st=curEv().status; go("adminEvent",{}); return true; }
   if (ds.admPeople){ adm.evId=ds.admPeople; go("adminPeople",{}); return true; }
@@ -2305,7 +2415,7 @@ adminEvent(){
     <div class="card stack">
       ${ev.cover?`<div class="imgprev" style="background-image:url(${ev.cover})"></div>`:'<div class="imgprev empty-img">Обложки нет — в списке будет жёлтая полоса</div>'}
       <div class="muted small">${IMG_HINT.cover}</div>
-      <div class="row wrap"><button class="btn sm" data-act="coverimg">${ev.cover?"Заменить картинку":"Загрузить картинку"}</button>${ev.cover?'<button class="btn sm ghost" data-act="coverdel">Убрать</button>':""}</div>
+      <div class="row wrap"><button class="btn sm" data-act="coverimg">${ev.cover?"Заменить картинку":"Загрузить картинку"}</button>${ev.cover?'<button class="btn sm ghost" data-act="coveredit">Настроить кадр</button><button class="btn sm ghost" data-act="coverdel">Убрать</button>':""}</div>
     </div>
     <h2 class="sec">Документы для участников</h2>
     <div class="card" style="padding:4px 14px">${ev.docs.map((d,i)=>`<div class="arow"><span class="chip neutral">${extOf(d.name)}</span><div class="sp"><input class="inp" id="docT${i}" value="${esc(d.title)}" style="height:38px" aria-label="Название документа для участников"><div class="muted tiny" style="margin-top:4px">${esc(d.name)} · ${fmtSize(d.size)}</div></div><button class="iconbtn sm" data-adocdel="${i}" aria-label="Открепить файл">${IC.del}</button></div>`).join("") || '<div class="muted small" style="padding:12px 0">Пока ничего не прикреплено</div>'}</div>
