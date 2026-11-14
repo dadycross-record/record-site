@@ -147,7 +147,10 @@ a.btn{text-decoration:none}
 .refund div{display:flex;gap:10px;align-items:center;font-size:13px}
 .refund .chip{min-width:58px;justify-content:center}
 .timeline{display:flex;flex-direction:column}
-.timeline .it{display:grid;grid-template-columns:56px 1fr;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.timeline .it{display:grid;grid-template-columns:minmax(56px,max-content) minmax(0,1fr);gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.timeline .it > div{min-width:0;overflow-wrap:anywhere}
+.timeline .it > b{overflow-wrap:break-word}
+@media(max-width:420px){.timeline .it{grid-template-columns:minmax(0,1fr);gap:5px}}
 .timeline .it:last-child{border:0}
 .timeline b{font-family:var(--f-mono);color:var(--accent)}
 .wod{border-left:3px solid var(--accent);padding-left:12px}
@@ -396,7 +399,9 @@ h2.ch{font-family:var(--f-display);font-weight:800;font-size:clamp(24px,7vw,40px
 .coach .role{color:var(--accent);font-weight:600;font-size:13.5px}
 .coach ul{margin:0;padding-left:18px;font-size:13.5px;color:#D9D5CB}
 .coach .tags{display:flex;flex-wrap:wrap;gap:6px}
-.sched .it{display:grid;grid-template-columns:96px 1fr;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.sched .it{display:grid;grid-template-columns:minmax(96px,max-content) minmax(0,1fr);gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.sched .it > div{min-width:0;overflow-wrap:anywhere}
+@media(max-width:420px){.sched .it{grid-template-columns:minmax(0,1fr);gap:5px}}
 .sched .it:last-child{border:0}
 .sched .it b{font-family:var(--f-mono);color:var(--accent);font-size:14px}
 .sched .it span{font-size:13px;color:var(--muted)}
