@@ -365,6 +365,12 @@ button.mark{background:none;border:0;padding:0;color:inherit;text-align:left}
 .modesw{display:flex;gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:3px;flex:none}
 .modesw button{border:0;background:none;color:var(--muted);font-weight:700;font-size:12px;letter-spacing:.04em;text-transform:uppercase;height:30px;padding:0 10px;border-radius:7px;white-space:nowrap}
 .modesw button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+@media(max-width:359px){
+  .modesw{gap:0}
+  .modesw button{font-size:10px;letter-spacing:0;padding-inline:5px}
+  .hero .row{flex-wrap:wrap}
+  .hero .row .btn{flex:1 1 100%;min-width:0}
+}
 .top .modesw.inner{display:none}
 .demo-tag{display:none}
 .clubnav{display:none}
