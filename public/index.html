@@ -27,7 +27,7 @@ html{color-scheme:dark}body{margin:0;background:#070707}img{max-width:100%}[hidd
 .cfoot .docs{display:flex;flex-wrap:wrap;gap:6px 16px}.cfoot .docs a{color:var(--muted)}
 .check a,.fine a{color:var(--accent)}
 .codebox{font-family:var(--f-mono);font-size:24px;letter-spacing:.3em;text-align:center}
-.regbar{display:grid;grid-template-columns:1fr minmax(0,240px);gap:8px;margin:10px 0}@media(max-width:600px){.regbar{grid-template-columns:1fr}@media(max-width:600px){.teambox{padding:10px}.teambox .arow{align-items:flex-start}.teambox .arow .sp{flex:1 1 100%}.teambox .arow .btn,.teambox .arow .inp{max-width:100%;white-space:normal}}}
+.regbar{display:grid;grid-template-columns:1fr minmax(0,240px);gap:8px;margin:10px 0}@media(max-width:600px){.regbar{grid-template-columns:1fr}}
 .regsel{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:10px 12px;border:1px solid var(--accent);border-radius:12px;margin-bottom:10px}
 .regsel span{flex:1;min-width:160px}
 @media(max-width:600px){.tbl.regs .c-hide{display:none}.tbl.regs .act .btn{padding-inline:10px}}
@@ -203,7 +203,7 @@ label.f{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--
 .rk{font-family:var(--f-mono);font-weight:700;font-size:15px;text-align:center;color:var(--muted)}
 .r1 .rk{color:var(--gold)} .r2 .rk{color:var(--silver)} .r3 .rk{color:var(--bronze)}
 .av{width:40px;height:40px;border-radius:10px;background:var(--surface-2);display:grid;place-items:center;font-family:var(--f-display);font-weight:600;font-size:15px;color:var(--muted)}
-.nm{overflow-wrap:anywhere;min-width:0}min-width:0}
+.nm{min-width:0}
 .nm b{display:block;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nm span{font-size:12px;color:var(--muted)}
 .pts{font-family:var(--f-mono);font-weight:700;font-size:19px;text-align:right}
@@ -225,7 +225,7 @@ label.f{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--
 .rulesbody{margin-top:10px;font-size:14px;line-height:1.5}.rulesbody h4{margin:14px 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:.04em}.rulesbody p{margin:0 0 8px;color:var(--muted)}.rulesbody p b{color:var(--fg)}.ptgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px;margin:6px 0 4px}.ptgrid span{display:flex;justify-content:space-between;gap:6px;padding:5px 8px;border-radius:8px;background:rgba(255,255,255,.05);font-variant-numeric:tabular-nums;font-size:13px}.ptgrid i{font-style:normal;opacity:.55}
 .dob{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 46px;gap:8px}.dobbtn{display:grid;place-items:center}.dobcal{position:absolute;right:0;top:0;width:46px;height:100%;opacity:0;cursor:pointer;border:0;padding:0}.dobcal::-webkit-calendar-picker-indicator{position:absolute;inset:0;width:100%;height:100%;cursor:pointer}
 .resbar{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,240px);gap:8px}@media(max-width:600px){.resbar{grid-template-columns:1fr}}
-.resgrid{min-width:100%}.resgrid th,.resgrid td{vertical-align:top;white-space:nowrap}.resgrid td .inp{width:104px;padding:8px 10px;min-height:0;height:40px}.resgrid .inp.miss{border-color:rgba(247,177,0,.55)}.resgrid .nm{overflow-wrap:anywhere;min-width:0}position:sticky;left:0;z-index:1;background:var(--surface);min-width:150px;white-space:normal}.resgrid .pen .inp{width:220px}.resgrid .rsmeta{margin-top:3px}
+.resgrid{min-width:100%}.resgrid th,.resgrid td{vertical-align:top;white-space:nowrap}.resgrid td .inp{width:104px;padding:8px 10px;min-height:0;height:40px}.resgrid .inp.miss{border-color:rgba(247,177,0,.55)}.resgrid .nm{position:sticky;left:0;z-index:1;background:var(--surface);min-width:150px;white-space:normal}.resgrid .pen .inp{width:220px}.resgrid .rsmeta{margin-top:3px}
 .linkrow{background:none;border:0;color:inherit;cursor:pointer}.linkrow:hover b{color:var(--accent)}
 .tbl tr.divrow{cursor:pointer}.tbl tr.divrow:hover .divname,.tbl tr.divrow.open .divname{color:var(--accent)}.tbl tr.divlist td{padding:4px 10px 14px}
 .divathlist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;overflow:hidden}.divath{display:flex;align-items:center;gap:12px;padding:10px 14px;border-top:1px solid var(--line)}.divath:first-child{border-top:0}.divath.off{opacity:.55}.divath .stsel{width:160px}
@@ -255,7 +255,7 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 .cropvp img{position:absolute;left:0;top:0;max-width:none;transform-origin:0 0;pointer-events:none}
 .cropmask{position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 999px rgba(0,0,0,.5);border:2px solid rgba(255,255,255,.85);pointer-events:none}
 #cropZ{accent-color:var(--accent)}
-.teambox{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px}.teambox .arow{gap:8px;flex-wrap:wrap}.teambox .arow .sp{min-width:0;overflow-wrap:anywhere}.teambox code{display:block;max-width:100%;overflow-wrap:anywhere;white-space:normal}.teambox .row{flex-wrap:wrap}.inp.sm{height:34px;padding:0 8px;font-size:13px;width:auto}
+.teambox{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px}.teambox .arow{gap:8px}.inp.sm{height:34px;padding:0 8px;font-size:13px;width:auto}
 .waiver{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.waiver .inp{flex:1;min-width:200px}
 .crq{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--line)}.crq:last-child{border-bottom:0}.crq-act{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .crewadd-box summary{cursor:pointer;list-style:none}.crewadd-box summary::-webkit-details-marker{display:none}.tbl.crew tr.tot td{border-top:2px solid var(--line)}
@@ -265,9 +265,9 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 .tbl.resin td{vertical-align:middle}.tbl.resin .inp{max-width:200px;height:38px}.inp.saving{opacity:.6}
 .big-av.xl{width:84px;height:84px;font-size:28px;border-radius:20px;flex:none}
 .big-av{width:60px;height:60px;border-radius:16px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--f-display);font-weight:800;font-size:22px}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:74px;gap:8px;margin-top:14px;align-items:stretch}.stats.s4{grid-template-columns:repeat(4,1fr)}.stats.s2{grid-template-columns:repeat(2,1fr)}@media(max-width:600px){.stats.s4{grid-template-columns:repeat(2,1fr)}}
-.stats div{background:var(--bg);border-radius:10px;padding:10px;text-align:center}
-.stats b{font-family:var(--f-mono);font-size:20px;display:block}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}.stats.s4{grid-template-columns:repeat(4,1fr)}.stats.s2{grid-template-columns:repeat(2,1fr)}@media(max-width:600px){.stats.s4{grid-template-columns:repeat(2,1fr)}}
+.stats div{background:var(--bg);border-radius:10px;padding:10px;text-align:center;min-height:74px;height:74px;display:flex;flex-direction:column;justify-content:center;align-items:center}
+.stats b{font-family:var(--f-mono);font-size:20px;line-height:28px;display:block;height:28px}
 .stats b.acc{color:var(--accent)}
 .stats span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
 .menu{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
@@ -466,7 +466,7 @@ h2.ch{font-family:var(--f-display);font-weight:800;font-size:clamp(24px,7vw,40px
 .hpf{position:absolute!important;left:-10000px!important;top:auto;width:1px;height:1px;overflow:hidden;opacity:0}
 .lr.r1 .rk,.lr.r2 .rk,.lr.r3 .rk{font-size:18px}
 .prize-place{font-family:var(--f-mono);font-weight:800;white-space:nowrap}.prize-place>span{font-size:23px}.prize-place>small{font-size:12px;font-weight:600}
-.stats b.prize-1,.prize-1{color:var(--gold)}.stats b.prize-2,.prize-2{color:var(--silver)}.stats b.prize-3,.prize-3{color:var(--bronze)}.stats b.prize-place{font-size:24px;line-height:28px !important;height:28px !important;overflow:hidden}
+.stats b.prize-1,.prize-1{color:var(--gold)}.stats b.prize-2,.prize-2{color:var(--silver)}.stats b.prize-3,.prize-3{color:var(--bronze)}.stats b.prize-place{font-size:24px}
 </style>
 
 </head>
@@ -888,7 +888,7 @@ function cookieBar(force){
   b.innerHTML=`<p>Мы используем cookies: необходимые — чтобы работали формы и вход, и аналитические Яндекс Метрики — чтобы понимать, что на сайте удобно, а что нет. Аналитические включим только с вашего согласия. <a href="/docs/privacy" target="_blank">Подробнее</a></p><div class="row"><button class="btn sm" data-ck="all">Принять</button><button class="btn sm ghost" data-ck="need">Только необходимые</button></div>`;
   document.body.appendChild(b);
 }
-const ROOT_TAB = {kidInvite:"me",crewManage:"me",invite:"events",crewApply:"events",login:"me",home:"home",events:"events",event:"events",divisions:"events",team:"events",teamCreate:"events",teamJoin:"events",form:"events",pay:"events",done:"events",fail:"events",leaderboard:"leaderboard",me:"me",orders:"me",score:"me",qr:"me",profile:"me",admin:"me",adminEvent:"me",adminDiv:"me",adminWod:"me",adminPeople:"me",adminSch:"me",adminPromo:"me",adminClub:"me"};
+const ROOT_TAB = {kidInvite:"me",crewManage:"me",invite:"events",crewApply:"events",login:"me",home:"home",events:"events",event:"events",divisions:"events",team:"events",teamCreate:"events",teamJoin:"events",form:"events",pay:"events",done:"events",fail:"events",leaderboard:"leaderboard",me:"me",orders:"me",messages:"me",score:"me",qr:"me",profile:"me",admin:"me",adminEvent:"me",adminDiv:"me",adminWod:"me",adminPeople:"me",adminSch:"me",adminPromo:"me",adminClub:"me"};
 
 function header(title){
   if (isClub()) return clubHeader();
@@ -897,12 +897,12 @@ function header(title){
 }
 const NAV = [["home","Главная"],["events","Старты"],["leaderboard","Лидерборд"],["me","Профиль"]];
 function topnav(){ const cur = ROOT_TAB[S.route]; return `<nav class="topnav" aria-label="Разделы">${NAV.map(([k,l])=>`<button data-tab="${k}" ${cur===k?'aria-current="page"':""}>${l}</button>`).join("")}</nav>`; }
-const WIDTH = {adminAthlete:"mid",adminResults:"wide",club:"wide",adminClub:"mid",home:"wide",events:"wide",leaderboard:"wide",admin:"wide",adminPeople:"wide",orders:"wide",divisions:"wide",event:"mid",teamJoin:"mid"};
+const WIDTH = {adminAthlete:"mid",adminResults:"wide",club:"wide",adminClub:"mid",home:"wide",events:"wide",leaderboard:"wide",admin:"wide",adminPeople:"wide",orders:"wide",messages:"mid",divisions:"wide",event:"mid",teamJoin:"mid"};
 const statusChip = s => ({open:'<span class="chip open">Регистрация открыта</span>',live:'<span class="chip live">Идёт</span>',ended:'<span class="chip ended">Завершён</span>',draft:'<span class="chip neutral">Черновик</span>'}[s]);
 const isPub = e => e.status!=="draft";
 const isStaffView = () => ["owner","admin","judge"].includes(S.viewAs);
 const lbEvents = () => { const rank = e => e.status==="live"?0:e.status==="open"?1:e.status==="ended"?2:3;
-  return EVENTS.filter(e=>isPub(e)).sort((a,b)=>rank(a)-rank(b) || (rank(a)===1 ? (a.date||"").localeCompare(b.date||"") : (b.date||"").localeCompare(a.date||""))); };
+  return EVENTS.filter(e=>isPub(e) || (isStaffView() && e.status==="draft")).sort((a,b)=>rank(a)-rank(b) || (rank(a)===1 ? (a.date||"").localeCompare(b.date||"") : (b.date||"").localeCompare(a.date||""))); };
 function divState(d){
   if (d.taken>=d.limit) return {k:"full",t:"Мест нет"};
   if (d.taken/d.limit>=0.85) return {k:"warn",t:"Почти заполнена"};
@@ -1099,8 +1099,8 @@ teamCreate(){
   const v = S.p.v || {name:"",aff:ME.affiliate}, e = S.p.e || {};
   return {title:"Новая команда", html:`
    <form class="stack" id="fTeam" novalidate>
-    <label class="f">Название команды<input class="inp ${e.name?"err":""}" id="tName" value="${esc(v.name)}" placeholder="BAIKAL POWER" maxlength="30" autocomplete="off"></label>
-    <div class="${e.name?"err-t":"muted tiny"}">${e.name||"Русский или латинский алфавит, 2–30 символов. Сохраняется заглавными."}</div>
+    <label class="f">Название команды<input class="inp ${e.name?"err":""}" id="tName" value="${esc(v.name)}" placeholder="BAIKAL POWER" autocomplete="off"></label>
+    <div class="${e.name?"err-t":"muted tiny"}">${e.name||"Только латиница, до 5 слов и 20 символов. Сохраняется заглавными."}</div>
     <label class="f">Клуб${gymInput("tAff", v.aff)}</label>
     <div class="muted tiny">После регистрации в «Моих стартах» появится ссылка-приглашение для команды и заявки от желающих вступить.</div>
     <button class="btn block" type="submit">Создать и продолжить</button>
@@ -1212,8 +1212,6 @@ done(){
    <div class="center"><div class="big-ic" style="background:var(--good-soft);color:var(--good)"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12l5 5 9-10"/></svg></div>
    <div style="font-family:var(--f-display);font-weight:800;font-size:22px;text-transform:uppercase">${o.status==="pending"?"Заявка у капитана":o.status==="reserve"?"Вы в запасе":o.status==="paid"?nm:"Заявка принята"}</div>
    <p class="muted">${esc(ev.name)} · ${esc(d.name)}${o.team?` · ${esc(o.team)}`:""}</p>
-   ${o.team&&["cancelled","refunded"].includes(o.status)&&ev.status!=="ended"?`<div class="acts"><button class="btn sm" data-teamretry="${esc(o.id)}">Снова выбрать команду</button></div>`:""}
-   ${o.team?teamBox(o):""}
    <div class="card kv" style="text-align:left;margin:16px 0"><dt>Заказ</dt><dd class="mono">${o.id}</dd><dt>${o.status==="paid"?"Взнос":"К оплате"}</dt><dd class="mono">${fmtRub(o.status==="paid"?o.paid:o.due)}</dd><dt>Email</dt><dd>${esc(USER?USER.email:"")}</dd></div>
    <p class="muted small">${o.status==="pending"?"Капитан команды получит письмо и подтвердит заявку. Платить взнос нужно после того, как он примет вас в основной состав. Статус — в «Моих стартах».":o.status==="reserve"?"Взнос платить не нужно, пока капитан не переведёт вас в основной состав. Статус — в «Моих стартах».":o.status==="paid"?"Статус и возврат — в разделе «Мои старты».":"Организатор подтвердит заявку и подскажет, как оплатить взнос. Статус видно в разделе «Мои старты»."}${o.team&&o.role==="main"&&S.reg&&S.reg.newTeam?" Ссылка-приглашение для команды — в «Моих стартах», в карточке старта.":""}</p>
    <div class="stack"><button class="btn block" data-tab-go="me" data-sub="orders">Мои старты</button><button class="btn block ghost" data-tab-go="home">На главную</button></div></div>`};
@@ -1235,7 +1233,7 @@ leaderboard(){
   if (ev0.permanent){ if (L.month!=="year" && !(ev0.months||[]).some(m=>m.id===L.month)) L.month = curMonth(ev0).id; month = L.month; }
   let ev = month==="year" ? leagueYear(ev0, L.div).ev : lbEv(ev0, month);
   const mpills = ev0.permanent ? `<div class="pills" role="tablist" style="margin-top:10px">${(ev0.months||[]).map(m=>`<button role="tab" aria-selected="${month===m.id}" data-lbm="${m.id}">${monthTitle(m.id)}${m.done?"":" · идёт"}</button>`).join("")}<button role="tab" aria-selected="${month==="year"}" data-lbm="year">Таблица года</button></div>` : "";
-  const head = `<div class="card" style="padding:12px 14px"><button class="selbtn" data-act="evsheet"><div><div class="row" style="gap:6px;margin-bottom:6px">${statusChip(ev.status)}${ev.status==="draft"?'<span class="chip neutral">видите только вы</span>':""}</div><b>${esc(ev.name)}</b><div class="muted tiny">${ev.date?`${String(ev.date).slice(0,4)} · ${MON_NOM[+String(ev.date).slice(5,7)-1]||""}`:""}</div></div><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button></div>
+  const head = `<div class="card" style="padding:12px 14px"><button class="selbtn" data-act="evsheet"><div><div class="row" style="gap:6px;margin-bottom:6px">${statusChip(ev.status)}${ev.status==="draft"?'<span class="chip neutral">видите только вы</span>':""}</div><b>${esc(ev.name)}</b></div><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button></div>
    <div class="utabs" role="tablist" style="margin-top:10px">${[["ind","Атлеты"],["team","Команды"],["aff","Клубы"]].map(([k,t])=>`<button role="tab" aria-selected="${L.tab===k}" data-lbt="${k}">${t}</button>`).join("")}</div>${L.tab==="aff"?"":mpills}`;
   if (ev.status==="open") return {title:null, html: head + `<div class="empty" style="margin-top:16px">Старт ${dHuman(ev.date)}. Лидерборд заполнится, когда судьи внесут первые результаты.</div>`};
   if (L.tab==="aff") return {title:null, html: head + affBoard(ev)};
@@ -1333,6 +1331,34 @@ crewApply(){
     ${f.err?`<div class="err">${esc(f.err)}</div>`:""}
     <button class="btn block" type="submit" ${f.busy?"disabled":""}>${f.busy?"Отправляю…":"Отправить заявку"}</button>
   </form>`};
+},
+messages(){
+  const P=S.p, T=MYTEAMS.find(t=>String(t.id)===String(P.team));
+  if (!T || !T.members.some(m=>m.reg===P.peer && m.role==="main" && !m.me) ||
+      !T.members.some(m=>m.me && m.role==="main"))
+    return {title:"Связаться",html:'<div class="empty">Переписка доступна только действующим участникам основного состава команды.</div>'};
+  if (!P.loaded && !P.loading){
+    P.loading=true;
+    api("GET","/api/team/messages?team="+encodeURIComponent(T.id)+"&peer="+encodeURIComponent(P.peer))
+      .then(r=>{P.messages=r.messages;P.peerName=r.peer;P.loaded=true;P.loading=false;render();})
+      .catch(err=>{P.error=err.message;P.loading=false;P.loaded=true;render();});
+  }
+  const peer=T.members.find(m=>m.reg===P.peer);
+  const items=(P.messages||[]).map(m=>`<div class="panel" style="margin:8px 0;max-width:90%;${m.mine?"margin-left:auto;":""}">
+    <div class="muted tiny">${m.mine?"Вы":esc(P.peerName||peer.name)} · ${esc(new Date(m.created).toLocaleString("ru-RU"))}</div>
+    <div class="small" style="white-space:pre-wrap;overflow-wrap:anywhere;margin-top:6px">${esc(m.text)}</div>
+  </div>`).join("");
+  return {title:"Связаться",html:`<div class="card stack">
+    <div><b>Команда «${esc(T.name)}»</b><div class="muted small">Переписка с ${esc(peer.name)}. Новые сообщения приходят также на почту.</div></div>
+    ${P.error?`<div class="err">${esc(P.error)}</div>`:""}
+    ${P.loading?'<div class="muted small">Загружаю переписку…</div>':`<div aria-live="polite">${items||'<div class="muted small">Сообщений пока нет. Напишите первым.</div>'}</div>`}
+    <form id="fTeamMessage" class="stack">
+      <label class="f">Ваше сообщение<textarea class="inp" id="teamMessageText" rows="4" maxlength="2000" required placeholder="Напишите партнёру…">${esc(P.draft||"")}</textarea></label>
+      <button class="btn block" type="submit" ${P.sending||P.loading||!P.loaded?"disabled":""}>${P.sending?"Отправляю…":"Отправить сообщение"}</button>
+      <div class="muted tiny">Сообщение увидит только ваш партнёр по команде. Для ответа он сможет войти на сайт.</div>
+    </form>
+    <button class="btn ghost" data-msgrefresh="1" ${P.loading?"disabled":""}>Обновить переписку</button>
+  </div>`};
 },
 orders(){
   const period=S.p.period||"current", selected=S.p.performer;
@@ -1513,7 +1539,7 @@ function teamBox(o){
   return `<div class="teambox"><div class="row"><b class="sp">Команда «${esc(T.name)}»</b><span class="muted tiny">${main.length} из ${size}${res.length?` · запас ${res.length}`:""}</span></div>
     ${div&&div.mix?`<div class="muted tiny">Состав: ${div.mix.m} муж. + ${div.mix.f} жен.${mixNeed(div,main)?" · "+mixNeed(div,main):""}</div>`:""}
     <div class="slots" style="margin:6px 0">${Array.from({length:size},(_,i)=>`<i class="${i<main.length?"on":""}"></i>`).join("")}</div>
-    ${main.map(m=>`<div class="arow"><div class="sp small">${who(m)}</div>${cap?`<span class="chip ${m.paid?"ok":"warn"}">${m.paid?"оплачен":"ждёт оплаты"}</span>`:""}${S.p.capAsk===m.reg?"":rmBtn(m)}${S.p.rmAsk===m.reg?"":capBtn(m)}</div>`).join("")}
+    ${main.map(m=>`<div class="arow"><div class="sp small">${who(m)}</div>${cap?`<span class="chip ${m.paid?"ok":"warn"}">${m.paid?"оплачен":"ждёт оплаты"}</span>`:""}${!m.me && main.some(x=>x.me)?`<button class="btn sm ghost" data-msgopen="${esc(m.reg)}" data-msgteam="${T.id}">Связаться</button>`:""}${S.p.capAsk===m.reg?"":rmBtn(m)}${S.p.rmAsk===m.reg?"":capBtn(m)}</div>`).join("")}
     ${res.length?`<div class="muted tiny" style="margin-top:8px">ЗАПАСНЫЕ</div>${res.map(m=>`<div class="arow"><div class="sp small">${who(m)}</div>${cap?`<div class="row wrap" style="gap:6px;justify-content:flex-end">
         <select class="inp sm" id="trep_${m.reg}" aria-label="Кого заменить"><option value="">${main.length<size?"на свободное место":"выберите, кого заменить"}</option>${main.filter(x=>!x.cap).map(x=>`<option value="${x.reg}">вместо: ${esc(x.name)}</option>`).join("")}</select>
         <select class="inp sm" id="tfee_${m.reg}" aria-label="Взнос выбывшего"><option value="refund">взнос выбывшему — вернуть</option><option value="transfer">взнос выбывшего — передать</option></select>
@@ -1748,7 +1774,7 @@ function admEvRow(e){
 }
 const ROLE_L = {owner:"Владелец",admin:"Организатор",judge:"Судья",athlete:"Участник"};
 const ADMIN_ROUTES = ["adminClub","admin","adminEvent","adminDiv","adminWod","adminSch","adminPeople","adminPromo","adminResults","adminAthlete","adminAudit","adminCrewStats"];
-const LOGIN_ROUTES = ["me","orders","crewApply","crewManage","score","profile","form","team","teamCreate","teamJoin","done",...ADMIN_ROUTES];
+const LOGIN_ROUTES = ["me","orders","messages","crewApply","crewManage","score","profile","form","team","teamCreate","teamJoin","done",...ADMIN_ROUTES];
 function allowed(route){
   if (!ADMIN_ROUTES.includes(route)) return true;
   if((USER?.headEvents||[]).length&&!["owner","admin","judge"].includes(S.viewAs))return route==="admin"||route==="adminResults";
@@ -2182,7 +2208,7 @@ admin(){
    <h2 class="sec">Резервные копии</h2>
    ${backupCard()}<button class="btn block ghost" data-go="adminAudit">Журнал изменений</button>`:""}
 `};
-  return {title:"Панель организатора", html: tabs + `<a class="card next" href="/planner/index.html" style="display:block;text-decoration:none;margin-top:14px"><b style="font-size:15px">Новый редактор соревнования</b><div class="muted small">Категории, комплексы, тайминг, заходы, судьи и оборудование</div></a>` + kidDupesCard() + `
+  return {title:"Панель организатора", html: tabs + kidDupesCard() + `
 
    <div class="grid2" style="margin-top:14px;gap:10px"><button class="btn block" data-act="anew">+ Новый старт</button><button class="btn block ghost" data-go="adminAthlete">Проверить атлета</button></div>
    ${pend.length?`<h2 class="sec">Результаты на проверке · ${pend.length}</h2><div class="stack">${pend.map(scoreReview).join("")}</div>`:""}
@@ -2740,7 +2766,6 @@ async function submitReg(){
       consents:{rules:!!f.c1,pd:!!f.c2,parent:!!f.c3,publish:!!f.c4,photo:!!f.c5}});
     ORDERS.push(res.order); markMe(); goal("reg_submit");
     await loadContent();
-    await loadSession();
     S.stack=[]; go("done",{},false);
   } catch(err){ f.busy=false; f.err=err.message; render(); }
 }
@@ -3193,10 +3218,10 @@ function drawQR(){
 
 /* ---------- sheet ---------- */
 function evSheet(){
-  const scrim=document.createElement("div");scrim.className="scrim";
-  const years=[...new Set(lbEvents().map(e=>String((e.date||TODAY).slice(0,4))))].sort((a,b)=>b.localeCompare(a));
-  const draw=()=>{const y=S.lb.filterYear||"",m=S.lb.filterMonth||"", list=lbEvents().filter(e=>(!y||String((e.date||TODAY).slice(0,4))===y)&&(!m||String((e.date||TODAY).slice(5,7))===m));scrim.innerHTML=`<div class="sheet" role="dialog" aria-label="Выбор старта"><div class="grab"></div><div class="muted small" style="text-align:center;margin-bottom:6px">Выберите старт</div><div class="grid2" style="margin:8px 0"><label class="f">Год<select class="inp" id="lbYear"><option value="">Все годы</option>${years.map(v=>`<option value="${v}" ${v===y?"selected":""}>${v}</option>`).join("")}</select></label><label class="f">Месяц<select class="inp" id="lbMonth"><option value="">Все месяцы</option>${MON_NOM.map((n,i)=>{const v=String(i+1).padStart(2,"0");return `<option value="${v}" ${v===m?"selected":""}>${cap1(n)}</option>`}).join("")}</select></label></div>${list.map(e=>{const dt=e.date?new Date(e.date+"T00:00:00Z"):null;const label=e.date?`${dt.getUTCFullYear()} · ${MON_NOM[dt.getUTCMonth()]}`:"";return `<button class="opt" data-sel="${e.id}" aria-selected="${S.lb.ev===e.id}"><span><b>${esc(e.name)}</b><small class="muted">${esc(label)}</small></span>${statusChip(e.status)}</button>`}).join("")||'<div class="empty">Стартов по выбранному периоду нет</div>'}</div>`;scrim.querySelector('#lbYear').onchange=e=>{S.lb.filterYear=e.target.value;draw()};scrim.querySelector('#lbMonth').onchange=e=>{S.lb.filterMonth=e.target.value;draw()};};
-  draw();scrim.addEventListener("click",e=>{const b=e.target.closest("[data-sel]");if(b){S.lb.ev=b.dataset.sel;S.lb.w=-1;S.lb.open=null;S.lb.div="m";scrim.remove();render();}else if(e.target===scrim)scrim.remove();});document.body.appendChild(scrim);
+  const scrim = document.createElement("div"); scrim.className="scrim";
+  scrim.innerHTML = `<div class="sheet" role="dialog" aria-label="Выбор старта"><div class="grab"></div><div class="muted small" style="text-align:center;margin-bottom:6px">Выберите старт</div>${lbEvents().map(e=>`<button class="opt" data-sel="${e.id}" aria-selected="${S.lb.ev===e.id}"><span>${e.name}</span>${statusChip(e.status)}</button>`).join("")}</div>`;
+  scrim.addEventListener("click", e=>{ const b=e.target.closest("[data-sel]"); if(b){ S.lb.ev=b.dataset.sel; S.lb.w=-1; S.lb.open=null; S.lb.div="m"; scrim.remove(); render(); } else if(e.target===scrim) scrim.remove(); });
+  document.body.appendChild(scrim);
 }
 
 /* ---------- render & events ---------- */
@@ -3265,13 +3290,14 @@ document.addEventListener("click", e=>{
     if (!profileReady()){ toast("Сначала заполните анкету участника"); return go("profile",{edit:true,then:"invite"}); }
     S.who="me"; const why=eligibility(ev,div); if (why){ toast(why); return; }
     S.reg={ev,div,team:I.name,newTeam:false,teamReq:{mode:"invite",invite:I.token},who:"me",f:{size:"L",promo:"",promoOk:false,promoMsg:"",c1:false,c2:false,c3:false}}; return go("form",{}); }
+  if (ds.msgopen) return go("messages",{team:Number(ds.msgteam),peer:ds.msgopen});
+  if (ds.msgrefresh){ const draft=document.getElementById("teamMessageText"); if(draft) S.p.draft=draft.value; S.p.loaded=false; S.p.loading=false; S.p.error=null; return render(); }
   if (ds.tact){ const [act,target]=ds.tact.split("|"), T=MYTEAMS[+ds.ti]; const body={reg:T.captainReg, action:act, target};
     if (act==="promote"){ const rep=document.getElementById("trep_"+target), fee=document.getElementById("tfee_"+target); if (rep&&rep.value){ body.replace=rep.value; body.fee=fee?fee.value:"refund"; } }
     if (act==="remove" && S.p.rmAsk!==target){ S.p={...S.p,rmAsk:target,capAsk:null}; return render(); }
     if (act==="captain" && S.p.capAsk!==target){ S.p={...S.p,capAsk:target,rmAsk:null}; return render(); }
     S.p={...S.p,rmAsk:null,capAsk:null};
     api("POST","/api/team/act",body).then(r=>{ MYTEAMS=r.teams; ORDERS=r.orders; render(); toast({approve:"Принят в основной состав",reserve:"Взят в запас",reject:"Заявка отклонена",promote:"Переведён в основной состав",remove:"Убран из команды",invite:"Старая ссылка больше не работает — вот новая",captain:"Капитанство передано"}[act]||"Готово"); }).catch(err=>toast(err.message)); return; }
-  if (ds.teamretry){ const o=ORDERS.find(x=>x.id===ds.teamretry), ev=o&&EVENTS.find(e=>e.id===o.event), div=ev&&ev.divisions.find(d=>d.id===o.div); if(!o||!ev||!div){toast("Старт или категория не найдены");return;} S.who=o.who||"me"; S.reg={ev,div,team:null,who:S.who,f:{size:o.size||"L",promo:"",promoOk:false,promoMsg:"",c1:false,c2:false,c3:false}}; return go("team",{}); }
   if (ds.teamwd){ api("POST","/api/refund",{id:ds.teamwd}).then(async()=>{ await loadSession(); render(); toast("Готово"); }).catch(err=>toast(err.message)); return; }
   if (ds.rmno){ S.p={...S.p,rmAsk:null,capAsk:null}; return render(); }
   if (ds.copyinv){ const url=location.origin+"/#join="+ds.copyinv; (navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject()).then(()=>toast("Ссылка скопирована — отправьте её команде")).catch(()=>toast("Скопируйте ссылку из карточки команды")); return; }
@@ -3367,6 +3393,15 @@ document.addEventListener("input", e=>{
 document.addEventListener("submit", e=>{
   e.preventDefault();
   const g=id=>document.getElementById(id);
+  if (e.target.id==="fTeamMessage"){
+    const P=S.p, el=g("teamMessageText"), value=(el?.value||"").trim();
+    if(!value||value.length>2000){P.error="Введите сообщение длиной до 2000 символов"; return render();}
+    P.draft=value;P.error=null;P.sending=true;render();
+    api("POST","/api/team/messages",{team:P.team,peer:P.peer,text:value})
+      .then(m=>{P.messages=[...(P.messages||[]),m];P.draft="";P.sending=false;render();toast("Сообщение отправлено");})
+      .catch(err=>{P.sending=false;P.error=err.message;render();});
+    return;
+  }
   if (e.target.id==="fCrew"){
     const f=S.cap, r=document.querySelector('input[name="cRole"]:checked'); f.role=r?r.value:""; f.note=g("cNote").value; f.ok=g("cOk").checked; f.days={};
     document.querySelectorAll('input[name="cDay"]:checked').forEach(x=>{ f.days[x.value]=true; });
@@ -3410,9 +3445,7 @@ document.addEventListener("submit", e=>{
   if (e.target.id==="fTeam"){
     const v={name:g("tName").value.trim(),aff:g("tAff").value.trim()}, er={};
     const words=v.name.split(/\s+/).filter(Boolean);
-    const badTeamRoots=['хуй','хуе','хуё','пизд','еба','ебл','бля','бляд','сук','шлюх','мраз','говн','мудак','дебил','fuck','shit','bitch','dick','piss','cunt','whore','asshole','motherfuck']; const cleanName=v.name.toLocaleLowerCase('ru').replace(/ё/g,'е');
-    if (!/^[A-Za-zА-Яа-яЁё0-9][A-Za-zА-Яа-яЁё0-9 ._-]{1,29}$/u.test(v.name) || words.length>5) er.name="Название: 2–30 символов, русские/латинские буквы, цифры, пробел, дефис, точка или _";
-    else if (badTeamRoots.some(x=>cleanName.includes(x.replace(/ё/g,'е')))) er.name="Название содержит недопустимое слово";
+    if (!/^[A-Za-z ]+$/.test(v.name) || v.name.length>20 || words.length>5) er.name="Название: только латинские буквы и пробелы, до 5 слов и 20 символов";
     else if ((TEAMS[`${S.reg.ev.id}:${S.reg.div.id}`]||[]).some(t=>t.name===v.name.toUpperCase())) er.name="Команда с таким названием уже есть в этой категории";
     if (er.name){ S.p={v,e:er}; return render(); }
     S.reg.team=v.name.toUpperCase(); S.reg.newTeam=true; S.reg.f.aff=v.aff; S.reg.teamReq={mode:"create",name:S.reg.team}; return go("form",{});
