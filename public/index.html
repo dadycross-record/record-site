@@ -912,8 +912,17 @@ const WIDTH = {adminAthlete:"mid",adminResults:"wide",club:"wide",adminClub:"mid
 const statusChip = s => ({open:'<span class="chip open">Регистрация открыта</span>',live:'<span class="chip live">Идёт</span>',ended:'<span class="chip ended">Завершён</span>',draft:'<span class="chip neutral">Черновик</span>'}[s]);
 const isPub = e => e.status!=="draft";
 const isStaffView = () => ["owner","admin","judge"].includes(S.viewAs);
-const lbEvents = () => { const rank = e => e.status==="live"?0:e.status==="open"?1:e.status==="ended"?2:3;
-  return EVENTS.filter(e=>isPub(e) || (isStaffView() && e.status==="draft")).sort((a,b)=>rank(a)-rank(b) || (rank(a)===1 ? (a.date||"").localeCompare(b.date||"") : (b.date||"").localeCompare(a.date||""))); };
+const lbEvents = () => {
+  const rank = e => e.status==="live"?0:e.status==="open"?1:2;
+  // The leaderboard is public even when opened by a judge/administrator.
+  // Drafts, unnamed records and demonstration competitions do not belong here.
+  return EVENTS.filter(e => ["open","live","ended"].includes(e.status)
+    && typeof e.name==="string" && e.name.trim()
+    && !/\(пример\)|\(демо\)|\bdemo\b/i.test(e.name)
+    && /^\d{4}-\d{2}-\d{2}$/.test(e.date||""))
+    .sort((a,b)=>rank(a)-rank(b) || (rank(a)===1 ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date)));
+};
+const lbMonthLabel = m => MON_NOM[Number(m)-1] ? cap1(MON_NOM[Number(m)-1]) : m;
 function divState(d){
   if (d.taken>=d.limit) return {k:"full",t:"Мест нет"};
   if (d.taken/d.limit>=0.85) return {k:"warn",t:"Почти заполнена"};
@@ -1241,7 +1250,7 @@ leaderboard(){
   const LE = lbEvents();
   if (!L.init && USER){ L.init = true; const mineEv = LE.find(e=>e.status!=="open" && ORDERS.some(o=>o.event===e.id && ACTIVE_ST.includes(o.status)));
     if (mineEv){ const o=ORDERS.filter(o=>o.event===mineEv.id && ACTIVE_ST.includes(o.status)).pop(), d=mineEv.divisions.find(x=>x.id===o.div); L.ev=mineEv.id; L.div=o.div; L.tab=d&&d.type==="team"?"team":"ind"; L.w=-1; } }
-  if (!LE.some(e=>e.id===L.ev)){ const f = LE[0]; if (!f) return {title:null, html:'<div class="empty">Стартов пока нет</div>'}; L.ev=f.id; L.div="m"; L.w=-1; }
+  if (!LE.some(e=>e.id===L.ev)){ const f = LE[0]; if (!f) return {title:null, html:'<div class="empty">Пока нет опубликованных стартов</div>'}; L.ev=f.id; L.div="m"; L.w=-1; L.month=null; }
   const ev0 = EVENTS.find(e=>e.id===L.ev);
   let month = null;
   if (ev0.permanent){ if (L.month!=="year" && !(ev0.months||[]).some(m=>m.id===L.month)) L.month = curMonth(ev0).id; month = L.month; }
@@ -3234,10 +3243,46 @@ function drawQR(){
 
 /* ---------- sheet ---------- */
 function evSheet(){
-  const scrim = document.createElement("div"); scrim.className="scrim";
-  scrim.innerHTML = `<div class="sheet" role="dialog" aria-label="Выбор старта"><div class="grab"></div><div class="muted small" style="text-align:center;margin-bottom:6px">Выберите старт</div>${lbEvents().map(e=>`<button class="opt" data-sel="${e.id}" aria-selected="${S.lb.ev===e.id}"><span>${e.name}</span>${statusChip(e.status)}</button>`).join("")}</div>`;
-  scrim.addEventListener("click", e=>{ const b=e.target.closest("[data-sel]"); if(b){ S.lb.ev=b.dataset.sel; S.lb.w=-1; S.lb.open=null; S.lb.div="m"; scrim.remove(); render(); } else if(e.target===scrim) scrim.remove(); });
-  document.body.appendChild(scrim);
+  const scrim = document.createElement("div");
+  scrim.className="scrim";
+  const events = lbEvents();
+  const years = [...new Set(events.map(e=>e.date.slice(0,4)))].sort((a,b)=>b.localeCompare(a));
+  let year = years.includes(S.lb.filterYear) ? S.lb.filterYear : "all";
+  let month = /^(0[1-9]|1[0-2])$/.test(S.lb.filterMonth||"") ? S.lb.filterMonth : "all";
+  const options = (values, selected) => values.map(([v,label])=>`<option value="${v}" ${v===selected?"selected":""}>${esc(label)}</option>`).join("");
+  const draw = () => {
+    const available = events.filter(e=>year==="all"||e.date.startsWith(year+"-"));
+    const months = [...new Set(available.map(e=>e.date.slice(5,7)))].sort((a,b)=>+a-+b);
+    if (month!=="all" && !months.includes(month)) month="all";
+    const filtered=available.filter(e=>month==="all"||e.date.slice(5,7)===month);
+    const future=filtered.filter(e=>e.status!=="ended"), past=filtered.filter(e=>e.status==="ended");
+    const card=e=>`<button class="opt" data-sel="${esc(e.id)}" aria-selected="${S.lb.ev===e.id}"><span style="text-align:left"><b>${esc(e.name)}</b><span class="muted tiny" style="display:block;margin-top:3px">${esc(dateRange(e))} ${esc(e.date.slice(0,4))}</span></span>${statusChip(e.status)}</button>`;
+    scrim.innerHTML=`<div class="sheet" role="dialog" aria-label="Выбор старта" style="max-height:min(85vh,700px);overflow-y:auto">
+      <div class="grab"></div><div style="font-weight:700;text-align:center;margin-bottom:12px">Выберите соревнование</div>
+      <div class="grid2" style="margin-bottom:12px">
+        <label class="f">Год<select class="inp" id="lbEventYear">${options([["all","Все годы"],...years.map(y=>[y,y])],year)}</select></label>
+        <label class="f">Месяц<select class="inp" id="lbEventMonth">${options([["all","Все месяцы"],...months.map(m=>[m,lbMonthLabel(m)])],month)}</select></label>
+      </div>
+      ${future.length?`<div class="muted tiny" style="margin:8px 0">АКТУАЛЬНЫЕ</div>${future.map(card).join("")}`:""}
+      ${past.length?`<div class="muted tiny" style="margin:12px 0 8px">ПРОШЕДШИЕ</div>${past.map(card).join("")}`:""}
+      ${!filtered.length?'<div class="empty">В выбранном месяце соревнований нет</div>':""}
+    </div>`;
+  };
+  scrim.addEventListener("change", e=>{
+    if(e.target.id==="lbEventYear"){year=e.target.value;month="all";S.lb.filterYear=year;S.lb.filterMonth=month;draw();}
+    if(e.target.id==="lbEventMonth"){month=e.target.value;S.lb.filterMonth=month;draw();}
+  });
+  scrim.addEventListener("click", e=>{
+    const b=e.target.closest("[data-sel]");
+    if(b){
+      const ev=events.find(x=>x.id===b.dataset.sel);if(!ev)return;
+      S.lb.ev=ev.id;S.lb.w=-1;S.lb.open=null;S.lb.q="";S.lb.month=null;
+      const div=ev.divisions.find(d=>d.type===S.lb.tab)||ev.divisions[0];
+      S.lb.div=div?.id||"";S.lb.tab=div?.type==="team"?"team":"ind";
+      scrim.remove();render();
+    }else if(e.target===scrim)scrim.remove();
+  });
+  draw();document.body.appendChild(scrim);
 }
 
 /* ---------- render & events ---------- */
