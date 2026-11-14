@@ -908,12 +908,11 @@ const lbEvents = () => {
   // Drafts, unnamed records and demonstration competitions do not belong here.
   return EVENTS.filter(e => ["open","live","ended"].includes(e.status)
     && typeof e.name==="string" && e.name.trim()
-    && !/\\(пример\\)|\\(демо\\)|\\bdemo\\b/i.test(e.name)
-    && /^\\d{4}-\\d{2}-\\d{2}$/.test(e.date||""))
+    && !/\(пример\)|\(демо\)|\bdemo\b/i.test(e.name)
+    && /^\d{4}-\d{2}-\d{2}$/.test(e.date||""))
     .sort((a,b)=>rank(a)-rank(b) || (rank(a)===1 ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date)));
 };
 const lbMonthLabel = m => MON_NOM[Number(m)-1] ? cap1(MON_NOM[Number(m)-1]) : m;
-const lbEventPeriod = e => (e.date||"").slice(0,7);
 function divState(d){
   if (d.taken>=d.limit) return {k:"full",t:"Мест нет"};
   if (d.taken/d.limit>=0.85) return {k:"warn",t:"Почти заполнена"};
