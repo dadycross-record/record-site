@@ -863,7 +863,21 @@ async function humanProof(){ // the solved puzzle; waits out the 2-second minimu
   return p;
 }
 document.addEventListener("focusin", e=>{ if (e.target && (e.target.closest("#fLogin") || e.target.closest("#fTrial"))) humanPrep(); });
-function go(route, p={}, push=true){ if(push) S.stack.push({route:S.route,p:S.p,y:window.scrollY}); S.route=route; S.p=p; render(); window.scrollTo(0,0); }
+let eventRefreshSeq = 0;
+function refreshEventsOnEntry(){
+  const seq = ++eventRefreshSeq;
+  loadContent().then(()=>{
+    if (seq===eventRefreshSeq && S.route==="events") render();
+  }).catch(()=>{
+    if (seq===eventRefreshSeq && S.route==="events") toast("Не удалось обновить список стартов. Проверьте соединение.");
+  });
+}
+function go(route, p={}, push=true){
+  const enteringEvents = route==="events" && S.route!=="events";
+  if(push) S.stack.push({route:S.route,p:S.p,y:window.scrollY});
+  S.route=route; S.p=p; render(); window.scrollTo(0,0);
+  if (enteringEvents && LOADED) refreshEventsOnEntry();
+}
 /* browser history: every screen change becomes a history entry, so the phone's Back button walks the same path */
 const HIST = {list:[], cur:-1, restoring:false};
 const histKey = () => S.route+"|"+((S.p&&S.p.ev)||"")+"|"+((S.p&&S.p.t)||"");
@@ -902,11 +916,13 @@ window.addEventListener("popstate", e=>{
   if (!h) return;
   const here = HIST.list[HIST.cur]; if (here) here.y = window.scrollY;
   if (i < HIST.cur) for (let n=HIST.cur-i; n>0; n--) S.stack.pop(); else S.stack.push({route:S.route,p:S.p,y:window.scrollY});
+  const enteringEvents = h.route==="events" && S.route!=="events";
   HIST.cur = i; S.route = h.route; S.p = h.p; document.querySelectorAll(".cropbg").forEach(x=>x.remove());
   HIST.restoring = true; try { render(); } finally { HIST.restoring = false; }
   window.scrollTo(0, h.y||0);
+  if (enteringEvents && LOADED) refreshEventsOnEntry();
 });
-function back(){ if (HIST.cur>0 && S.stack.length){ history.back(); return; } const prev=S.stack.pop(); if(prev){ S.route=prev.route; S.p=prev.p; render(); window.scrollTo(0, prev.y||0);} else go("home",{},false); }
+function back(){ if (HIST.cur>0 && S.stack.length){ history.back(); return; } const prev=S.stack.pop(); if(prev){ const enteringEvents=prev.route==="events"&&S.route!=="events"; S.route=prev.route; S.p=prev.p; render(); window.scrollTo(0, prev.y||0); if(enteringEvents&&LOADED)refreshEventsOnEntry();} else go("home",{},false); }
 let lastDrawn = null;
 function tab(t){ S.stack=[]; go(t,{},false); }
 function toast(msg){ document.querySelectorAll(".toast").forEach(x=>x.remove()); const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2400); }
