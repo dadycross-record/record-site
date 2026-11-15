@@ -1723,7 +1723,8 @@ const backupPullAuth = req => {
 route('GET', '/api/private/backup', async (req,res) => {
   if(!backupPullAuth(req))throw new HttpError(404,'Не найдено');
   limit('backup-pull',12,3600e3);
-  const b=(await db.query('select id, created_at, data from backups order by created_at desc limit 1')).rows[0];
+  const fresh=await makeBackup('manual');
+  const b=(await db.query('select id, created_at, data from backups where id=$1',[fresh.id])).rows[0];
   if(!b)throw new HttpError(503,'Резервная копия ещё не создана');
   const raw=typeof b.data==='string'?Buffer.from(b.data.replace(/^\\x/,''),'hex'):b.data;
   if(!raw || raw.length<50)throw new HttpError(503,'Резервная копия пуста');
