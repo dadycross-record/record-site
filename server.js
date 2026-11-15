@@ -1850,7 +1850,7 @@ const server = http.createServer(async (req, res) => {
           req.headers['x-backup-pre-restore-saved'] !== 'yes')) {
         throw new HttpError(400, 'Для восстановления требуется подтверждение и локальная копия текущей базы');
       }
-      if (!/^application\\/gzip(?:;|$)/i.test(req.headers['content-type'] || '')) {
+      if (!/^application\/gzip(?:;|$)/i.test(req.headers['content-type'] || '')) {
         throw new HttpError(415, 'Ожидается gzip-архив JSON');
       }
       limit(applying ? 'private-db-restore-apply' : 'private-db-restore-test', applying ? 2 : 6, 3600e3);
