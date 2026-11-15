@@ -1856,9 +1856,9 @@ const server = http.createServer(async (req, res) => {
       const raw = await readRawBody(req);
       if (raw.length < 50 || raw[0] !== 31 || raw[1] !== 139) throw bad('Файл не является gzip-копией');
       let dump;
-      try { dump = JSON.parse(zlib.gunzipSync(raw).toString('utf8')); }
+      try { dump = JSON.parse(zlib.gunzipSync(raw, { maxOutputLength: 256 * 1024 * 1024 }).toString('utf8')); }
       catch (_) { throw bad('Не удалось прочитать JSON внутри архива'); }
-      validateBackup(dump);
+      try { validateBackup(dump); } catch (err) { throw bad(err.message || 'Архив не прошёл проверку'); }
       const rowCounts = Object.fromEntries(Object.entries(dump.tables).map(([name, rows]) => [name, rows.length]));
       if (!applying) {
         const rollbackMarker = new Error('RECOVERY_PREVIEW_ROLLBACK');
