@@ -1844,7 +1844,6 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/private/restore/test' || pathname === '/api/private/restore/apply') {
       if (req.method !== 'POST') throw new HttpError(405, 'Метод не поддерживается');
       if (!backupPullAuth(req)) throw new HttpError(404, 'Не найдено');
-      if (db.kind !== 'pg') throw new HttpError(503, 'Восстановление доступно только для PostgreSQL');
       const applying = pathname.endsWith('/apply');
       if (applying && (req.headers['x-backup-restore-confirm'] !== 'RESTORE RECORD DATABASE' ||
           req.headers['x-backup-pre-restore-saved'] !== 'yes')) {
