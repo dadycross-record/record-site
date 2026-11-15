@@ -127,6 +127,12 @@ a.btn{text-decoration:none}
 .ev.dim .band{background:repeating-linear-gradient(-45deg,var(--surface-2) 0 10px,var(--bg) 10px 20px)}
 .ev .in{padding:14px}
 .ev h3{font-family:var(--f-display);font-weight:600;font-size:17px;margin:6px 0 4px;text-transform:uppercase;letter-spacing:.01em}
+.ev.archive .band,.ev.archive .cover{display:none}
+.ev.archive .in{padding:10px 14px}
+.ev.archive h3{font-size:15px;margin:4px 0}
+.archive-year{padding:12px 14px}
+.archive-year>summary{cursor:pointer;font-weight:700;list-style:none}
+.archive-year>summary::-webkit-details-marker{display:none}
 .meta{display:flex;flex-wrap:wrap;gap:4px 14px;color:var(--muted);font-size:13px}
 
 /* tabs */
@@ -1015,7 +1021,7 @@ events(){
   const list = EVENTS.filter(e=>isPub(e) && (f==="all"||e.format===f));
   return {title:null, html:`
   <div class="tabs" role="tablist">${[["all","Все"],["onsite","Очные"],["online","Онлайн"]].map(([k,t])=>`<button role="tab" aria-selected="${f===k}" data-evf="${k}">${t}</button>`).join("")}</div>
-  ${eventFeed(list)}`};
+  ${competitionFeed(list)}`};
 },
 event(){
   const ev = EVENTS.find(e=>e.id===S.p.ev);
@@ -1476,10 +1482,27 @@ function datedFeed(items, draw, eventOf){
   return cards(current)+[...archives.keys()].sort().reverse().map(y=>`<details class="card" name="start-archive" style="margin-top:14px"><summary style="cursor:pointer;font-weight:700">${esc(y)} год · ${archives.get(y).length}</summary>${cards(archives.get(y))}</details>`).join("");
 }
 function eventFeed(list){ return list.length?datedFeed(list,evCard,e=>e):'<div class="empty">Стартов пока нет</div>'; }
-function evCard(ev){
-  return `<button class="ev ${ev.status==="ended"?"dim":""}" data-go="event" data-ev="${ev.id}">${ev.cover?`<div class="cover" style="background-image:url(${ev.cover})"></div>`:'<div class="band"></div>'}<div class="in">
+function evCard(ev, archived=false){
+  const media=archived?"":ev.cover?`<div class="cover" style="background-image:url(${ev.cover})"></div>`:'<div class="band"></div>';
+  return `<button class="ev ${ev.status==="ended"?"dim":""} ${archived?"archive":""}" data-go="event" data-ev="${ev.id}">${media}<div class="in">
    <div class="row">${statusChip(ev.status)}<span class="sp"></span><span class="muted tiny">${ev.format==="online"?"Онлайн":"Очный"}</span></div>
    <h3>${esc(ev.name)}</h3><div class="meta"><span>${dateRange(ev)}${durTxt(ev)}</span><span>${ev.city}</span><span>${ev.divisions.length} категорий</span></div></div></button>`;
+}
+function eventDateKey(ev){ return String(ev?.dateEnd||ev?.dateTo||ev?.date||"9999-12-31").slice(0,10); }
+function isArchivedEvent(ev){ return ev.status==="ended" || (!ev.permanent && ev.status!=="live" && eventDateKey(ev)<TODAY); }
+function competitionFeed(list){
+  const sorted=(xs)=>[...xs].sort((a,b)=>eventDateKey(a).localeCompare(eventDateKey(b)));
+  const live=sorted(list.filter(e=>e.status==="live"&&!isArchivedEvent(e)));
+  const upcoming=sorted(list.filter(e=>e.status==="open"&&!isArchivedEvent(e)));
+  const featured=live[0]||upcoming[0]||null;
+  const archive=sorted(list.filter(isArchivedEvent)).sort((a,b)=>eventDateKey(b).localeCompare(eventDateKey(a)));
+  const others=sorted(list.filter(e=>!isArchivedEvent(e)&&e.id!==featured?.id));
+  const years=new Map();
+  archive.forEach(ev=>{const y=eventYear(ev);if(!years.has(y))years.set(y,[]);years.get(y).push(ev);});
+  const currentBlock=featured?`<h2 class="sec">${featured.status==="live"?"Сейчас проходит":"Ближайший старт · регистрация открыта"}</h2><div class="stack">${evCard(featured)}</div>`:'<div class="card muted small">Сейчас нет стартов с открытой регистрацией.</div>';
+  const othersBlock=others.length?`<h2 class="sec">Другие актуальные старты</h2><div class="stack">${others.map(ev=>evCard(ev)).join("")}</div>`:"";
+  const archiveBlock=archive.length?`<h2 class="sec">Прошедшие старты</h2><div class="stack archive-list">${[...years.entries()].sort((a,b)=>b[0].localeCompare(a[0])).map(([year,items],i)=>`<details class="card archive-year" ${i===0?"open":""}><summary>${esc(year)} год <span class="muted tiny">· ${items.length}</span></summary><div class="stack" style="margin-top:10px">${items.map(ev=>evCard(ev,true)).join("")}</div></details>`).join("")}</div>`:'<h2 class="sec">Прошедшие старты</h2><div class="empty">Пока нет прошедших стартов</div>';
+  return currentBlock+othersBlock+archiveBlock;
 }
 /* how points work — for athletes, under the overall leaderboard */
 function ptsRules(n){
@@ -2417,10 +2440,10 @@ adminEvent(){
       ${its.map(({s,i})=>`<div class="arow"><span class="mono" style="color:var(--accent);min-width:46px">${esc(s[0])}</span><div class="sp"><b>${esc(s[1])}</b>${s[2]?`<div class="muted tiny">${esc(s[2])}</div>`:""}</div><button class="iconbtn sm" data-asch="${i}" aria-label="Изменить пункт">${IC.edit}</button><button class="iconbtn sm" data-aschdel="${i}" aria-label="Удалить пункт">${IC.del}</button></div>`).join("")}
       <div class="arow"><button class="btn sm ghost" data-asch="new" data-day="${d}">+ Пункт${multi?" в этот день":""}</button></div></div>`; }).join('<div style="height:8px"></div>')}
     ${fErr(E.days)}`}
-    <h2 class="sec">Обложка старта</h2>
+    <h2 class="sec">Баннер старта</h2>
     <div class="card stack">
-      ${ev.cover?`<div class="imgprev" style="background-image:url(${ev.cover})"></div>`:'<div class="imgprev empty-img">Обложки нет — в списке будет жёлтая полоса</div>'}
-      <div class="muted small">${IMG_HINT.cover}</div>
+      ${ev.cover?`<div class="imgprev" style="background-image:url(${ev.cover})"></div>`:'<div class="imgprev empty-img">Баннер не добавлен</div>'}
+      <div class="muted small">${IMG_HINT.cover} Баннер можно добавить и для прошедшего старта: в архивном списке он скрыт, но остаётся на странице самого соревнования.</div>
       <div class="row wrap"><button class="btn sm" data-act="coverimg">${ev.cover?"Заменить картинку":"Загрузить картинку"}</button>${ev.cover?'<button class="btn sm ghost" data-act="coveredit">Настроить кадр</button><button class="btn sm ghost" data-act="coverdel">Убрать</button>':""}</div>
     </div>
     <h2 class="sec">Документы для участников</h2>
