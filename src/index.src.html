@@ -1528,9 +1528,9 @@ function datedFeed(items, draw, eventOf){
 }
 function eventFeed(list){ return list.length?datedFeed(list,evCard,e=>e):'<div class="empty">Стартов пока нет</div>'; }
 function eventDateBox(ev){
-  if (ev.permanent || !/^\\d{4}-\\d{2}-\\d{2}$/.test(ev.date||"")) return "";
+  if (ev.permanent || !/^\d{4}-\d{2}-\d{2}$/.test(ev.date||"")) return "";
   const start=ev.date, end=ev.format==="online"?(ev.dateTo||ev.dateEnd):(ev.dateEnd||ev.dateTo);
-  const isRange=/^\\d{4}-\\d{2}-\\d{2}$/.test(end||"") && end>start;
+  const isRange=/^\d{4}-\d{2}-\d{2}$/.test(end||"") && end>start;
   const month=MONS[+start.slice(5,7)-1]||"";
   if (!isRange) return `<span class="ev-date" aria-label="Дата: ${esc(dHuman(start))}"><b>${+start.slice(8)}</b><span>${esc(month)}</span></span>`;
   const sameMonth=start.slice(0,7)===end.slice(0,7);
