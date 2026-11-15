@@ -940,7 +940,7 @@ function divState(d){
 }
 /* one registration per day: categories on other days of the same start stay open */
 const divDaySet = (ev,d) => { const days=evDays(ev).filter(Boolean); const own=(d.days||[]).filter(x=>days.includes(x)); return own.length?own:days; };
-const regConflict = (ev, d, who="me") => ORDERS.find(o=>o.event===ev.id && [...ACTIVE_ST,"pending","reserve"].includes(o.status) && (o.who||"me")===who && (o.div===d.id || (()=>{ const od=ev.divisions.find(x=>x.id===o.div); if (!od) return true; const a=divDaySet(ev,od), b=divDaySet(ev,d); if (od.type==="team" && d.type==="team") return false; return a.some(x=>b.includes(x)); })()));
+const regConflict = (ev, d, who="me") => ORDERS.find(o=>o.event===ev.id && [...ACTIVE_ST,"pending","reserve"].includes(o.status) && (o.who||"me")===who && (()=>{ const od=ev.divisions.find(x=>x.id===o.div); if (od?.type==="team" && d.type==="team") return false; if (o.div===d.id) return true; if (!od) return true; const a=divDaySet(ev,od), b=divDaySet(ev,d); return a.some(x=>b.includes(x)); })());
 const hasReg = (evId, who="me") => ORDERS.some(o=>o.event===evId && ACTIVE_ST.includes(o.status) && (o.who||"me")===who);
 const personOf = who => who==="me" ? ME : ME.kids.find(k=>k.id===who);
 const person = () => personOf(S.who);
