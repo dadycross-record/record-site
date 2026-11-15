@@ -1104,7 +1104,11 @@ divisions(){
       ${why===WHY_LOGIN?`<button class="btn sm ghost" data-act="divlogin">Войти и записаться</button>`:why===WHY_PROFILE?`<button class="btn sm ghost" data-act="divprofile">Заполнить анкету</button>`:why?`<button class="btn sm" disabled>${esc(why)}</button>`:`<button class="btn sm" data-pick="${d.id}">${label} →</button>`}
       ${why?"":(d.type==="team"&&s.k==="full"?'<div class="why">Новых команд создать нельзя, но можно вступить в уже созданную по коду капитана.</div>':"")}
     </div>`; };
-  const whoSw = ME.kids.length ? `<div class="f" style="margin-bottom:12px">Кого записываете<div class="tabs" role="radiogroup">${[["me",`Себя${ME.dob?` · ${athleteAge(ev,ME)} ${yNom(athleteAge(ev,ME))}`:""}`],...ME.kids.map(k=>[k.id,`${k.first} · ${athleteAge(ev,k)} ${yNom(athleteAge(ev,k))}`])].map(([k,l])=>`<button type="button" role="radio" aria-selected="${S.who===k}" data-who="${k}">${esc(l)}</button>`).join("")}</div></div>` : "";
+  const whoSw = `<div class="card stack" style="margin-bottom:12px;padding:12px 14px">
+      <div><b>Кого записываете на старт?</b><div class="muted tiny" style="margin-top:3px">Можно записать себя и каждого ребёнка отдельно из одного родительского аккаунта.</div></div>
+      <div class="tabs" role="radiogroup">${[["me",`Себя${ME.dob?` · ${athleteAge(ev,ME)} ${yNom(athleteAge(ev,ME))}`:""}`],...ME.kids.map(k=>[k.id,`${k.first} · ${athleteAge(ev,k)} ${yNom(athleteAge(ev,k))}`])].map(([k,l])=>`<button type="button" role="radio" aria-selected="${S.who===k}" data-who="${k}">${esc(l)}</button>`).join("")}</div>
+      <button type="button" class="linkbtn" data-act="divprofile">+${ME.kids.length?" Добавить ещё одного ребёнка":" Добавить ребёнка для регистрации"}</button>
+    </div>`;
   return {title:"Категории", html:`
     <div class="muted small" style="margin-bottom:10px">${esc(ev.name)} · ${dHuman(ev.date)}${ev.ageMode==="year"?" · возраст по году рождения":""}</div>${whoSw}
     <div class="tabs" role="tablist">${[["ind","Индивидуальные"],["team","Командные"]].map(([k,t])=>`<button role="tab" aria-selected="${type===k}" data-dtype="${k}">${t}</button>`).join("")}</div>
