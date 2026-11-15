@@ -700,6 +700,7 @@ route('POST', '/api/register', async (req, res, u, body) => {
     for (const x of dup) {
       if (x.div_id === div.id) throw bad('Этот участник уже записан в эту категорию');
       const od = (ev.divisions || []).find(d => d.id === x.div_id), a = divDaySet(ev, od || {}), b2 = divDaySet(ev, div);
+      if (od?.type === 'team' && div.type === 'team') continue; // allow second same-day team entry after explicit warning
       if (!od || a.some(d => b2.includes(d))) throw bad(`Этот участник уже записан на «${od ? od.name : 'другую категорию'}» в этот день. В один день — одна категория`);
     }
     if (person.dob && await samePersonReg(q, ev, div, snap.dob ? snap : person)) throw bad(SAME_MSG(snap));
