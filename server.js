@@ -1843,12 +1843,19 @@ const server = http.createServer(async (req, res) => {
   try {
     if (pathname === '/api/private/restore/test' || pathname === '/api/private/restore/apply') {
       if (req.method !== 'POST') throw new HttpError(405, 'Метод не поддерживается');
-      if (!backupPullAuth(req)) throw new HttpError(404, 'Не найдено');
       const applying = pathname.endsWith('/apply');
-      if (applying && (req.headers['x-backup-restore-confirm'] !== 'RESTORE RECORD DATABASE' ||
-          req.headers['x-backup-pre-restore-saved'] !== 'yes')) {
-        throw new HttpError(400, 'Для восстановления требуется подтверждение и локальная копия текущей базы');
-      }
+      // Production restore is disabled by default. It needs a separate restore-only token.
+      if (applying) {
+        if (process.env.BACKUP_RESTORE_ENABLED !== '1') throw new HttpError(404, 'Не найдено');
+        const expected = String(process.env.BACKUP_RESTORE_TOKEN || '');
+        const received = /^Bearer (\S+)$/.exec(String(req.headers.authorization || ''))?.[1] || '';
+        if (expected.length < 48 || received.length !== expected.length ||
+            !crypto.timingSafeEqual(Buffer.from(received), Buffer.from(expected))) {
+          throw new HttpError(404, 'Не найдено');
+        }
+        if (req.headers['x-backup-restore-confirm'] !== 'RESTORE RECORD DATABASE' ||
+            req.headers['x-backup-pre-restore-saved'] !== 'yes') throw bad('Требуется подтверждение и сохранённая копия');
+      } else if (!backupPullAuth(req)) throw new HttpError(404, 'Не найдено');
       if (!/^application\/gzip(?:;|$)/i.test(req.headers['content-type'] || '')) {
         throw new HttpError(415, 'Ожидается gzip-архив JSON');
       }
@@ -1860,17 +1867,27 @@ const server = http.createServer(async (req, res) => {
       catch (_) { throw bad('Не удалось прочитать JSON внутри архива'); }
       try { validateBackup(dump); } catch (err) { throw bad(err.message || 'Архив не прошёл проверку'); }
       const rowCounts = Object.fromEntries(Object.entries(dump.tables).map(([name, rows]) => [name, rows.length]));
+
       if (!applying) {
-        const rollbackMarker = new Error('RECOVERY_PREVIEW_ROLLBACK');
-        try {
-          await db.tx(async () => {
-            await restoreBackup(db, dump);
-            throw rollbackMarker;
-          });
-        } catch (err) {
-          if (err !== rollbackMarker) throw err;
+        // A rollback after TRUNCATE is not a safe preview: PostgreSQL setval() is not
+        // transactional, and table locks can block users. Use strictly READ ONLY queries.
+        const schema = (await db.query(
+          "select table_name, column_name from information_schema.columns where table_schema='public'"
+        )).rows;
+        const byTable = new Map();
+        for (const c of schema) {
+          if (!byTable.has(c.table_name)) byTable.set(c.table_name, new Set());
+          byTable.get(c.table_name).add(c.column_name);
         }
-        send(res, 200, { ok: true, app: 'record-site', mode: 'test', created: dump.created || null, rowCounts });
+        for (const [name, rows] of Object.entries(dump.tables)) {
+          const columns = byTable.get(name);
+          if (!columns) throw bad('Отсутствует таблица на сервере: ' + name);
+          for (const row of rows) for (const col of Object.keys(row)) {
+            if (!columns.has(col)) throw bad('Нет столбца ' + name + '.' + col);
+          }
+        }
+        send(res, 200, { ok: true, app: 'record-site', mode: 'test', verification: 'read-only-schema',
+          created: dump.created || null, rowCounts });
         return;
       }
       await makeBackup('pre-restore');
