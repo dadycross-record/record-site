@@ -1712,6 +1712,27 @@ async function dailyBackup() {
 }
 const backupOut = b => ({ id: b.id, created: b.created_at, kind: b.kind, size: b.size, rows: b.rows });
 
+/* Owner's Windows backup agent: disabled until BACKUP_PULL_TOKEN is configured.
+   A random 256-bit token is sent only via HTTPS Authorization header, never in the URL. */
+const backupPullAuth = req => {
+  const expected = String(process.env.BACKUP_PULL_TOKEN || '');
+  const sent = /^Bearer (\S+)$/.exec(String(req.headers.authorization||''))?.[1]||'';
+  if(expected.length<40 || sent.length!==expected.length)return false;
+  return crypto.timingSafeEqual(Buffer.from(sent),Buffer.from(expected));
+};
+route('GET', '/api/private/backup', async (req,res) => {
+  if(!backupPullAuth(req))throw new HttpError(404,'Не найдено');
+  limit('backup-pull',12,3600e3);
+  const b=(await db.query('select id, created_at, data from backups order by created_at desc limit 1')).rows[0];
+  if(!b)throw new HttpError(503,'Резервная копия ещё не создана');
+  const raw=typeof b.data==='string'?Buffer.from(b.data.replace(/^\\x/,''),'hex'):b.data;
+  if(!raw || raw.length<50)throw new HttpError(503,'Резервная копия пуста');
+  const stamp=new Date(b.created_at).toISOString().slice(0,10);
+  res.writeHead(200,{'Content-Type':'application/gzip','Content-Disposition':'attachment; filename="record-db-'+stamp+'.json.gz"','Content-Length':raw.length,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
+  res.end(raw);
+  return undefined;
+});
+
 route('GET', '/api/admin/backups', async (req, res, u) => {
   need(u, 'owner');
   return { backups: (await db.query('select id, created_at, kind, size, rows from backups order by created_at desc')).rows.map(backupOut),
