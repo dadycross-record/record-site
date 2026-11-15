@@ -698,12 +698,11 @@ route('POST', '/api/register', async (req, res, u, body) => {
     // one registration per day: a second category is allowed only on other days of the start
     const dup = (await q(`select div_id from registrations where who=$2 and (who <> 'me' or user_id=$1) and event_id=$3 and status in ${INTEAM}`, [u.id, who, ev.id])).rows;
     for (const x of dup) {
-      if (x.div_id === div.id) throw bad('Этот участник уже записан в эту категорию');
       const od = (ev.divisions || []).find(d => d.id === x.div_id), a = divDaySet(ev, od || {}), b2 = divDaySet(ev, div);
-      if (od?.type === 'team' && div.type === 'team') continue; // allow second same-day team entry after explicit warning
-      if (!od || a.some(d => b2.includes(d))) throw bad(`Этот участник уже записан на «${od ? od.name : 'другую категорию'}» в этот день. В один день — одна категория`);
+      if (od?.type === 'team' && div.type === 'team') continue; // allow multiple team registrations, including within one category
+      if (x.div_id === div.id || !od || a.some(d => b2.includes(d))) throw bad(`Этот участник уже записан на «${od ? od.name : 'другую категорию'}» в этот день. В один день — одна категория`);
     }
-    if (person.dob && await samePersonReg(q, ev, div, snap.dob ? snap : person)) throw bad(SAME_MSG(snap));
+    if (div.type !== 'team' && person.dob && await samePersonReg(q, ev, div, snap.dob ? snap : person)) throw bad(SAME_MSG(snap));
     let team = null, role = null, initial = null, teamRow = null;
     if (div.type === 'team') {
       const t = body.team || {}, size = +div.size || 1;
@@ -735,6 +734,8 @@ route('POST', '/api/register', async (req, res, u, body) => {
         const sx = person.gender === 'F' ? 'f' : 'm';
         if (t.mode === 'invite') { if (main < size && mixRoom(div, mainRows, sx)) role = 'main'; else { role = 'reserve'; initial = 'reserve'; } }
         else initial = 'pending';
+        const alreadyInTeam = (await q(`select 1 from registrations where event_id=$1 and div_id=$2 and team=$3 and status in ${INTEAM} and translate(lower(trim(coalesce(person->>'last',''))),'ё','е')=$4 and split_part(translate(lower(trim(coalesce(person->>'first',''))),'ё','е'),' ',1)=$5 and person->>'dob'=$6 limit 1`, [ev.id, div.id, team, normName(snap.last), normName(snap.first).split(' ')[0], snap.dob || ''])).rows[0];
+        if (alreadyInTeam) throw bad('Вы уже зарегистрированы в этой команде');
       }
         } else {
       const n = (await q(`select count(*)::int n from registrations where event_id=$1 and div_id=$2 and status in ${ACTIVE}`, [ev.id, div.id])).rows[0].n;
@@ -776,8 +777,10 @@ async function samePersonReg(q, ev, div, person, skip) {
     and translate(lower(trim(coalesce(person->>'last',''))),'ё','е')=$2 and split_part(translate(lower(trim(coalesce(person->>'first',''))),'ё','е'),' ',1)=$3 and person->>'dob'=$4`,
     [ev.id, normName(person.last), normName(person.first).split(' ')[0], person.dob || ''])).rows.filter(r => !skip || !skip(r));
   for (const x of rows) {
+    const od = (ev.divisions || []).find(d => d.id === x.div_id);
+    if (od?.type === 'team' && div.type === 'team') continue;
     if (x.div_id === div.id) return x;
-    const od = (ev.divisions || []).find(d => d.id === x.div_id), a = divDaySet(ev, od || {}), b = divDaySet(ev, div);
+    const a = divDaySet(ev, od || {}), b = divDaySet(ev, div);
     if (!od || a.some(d => b.includes(d))) return x;
   }
   return null;
