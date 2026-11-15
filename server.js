@@ -40,6 +40,22 @@ function send(res, status, body, headers = {}) {
   res.end(data);
 }
 
+function readRawBody(req, maxBytes = 128 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', chunk => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        reject(new HttpError(413, 'Архив слишком большой (максимум 128 МБ)'));
+        req.destroy();
+      } else chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
 function readBody(req, limit) {
   return new Promise((resolve, reject) => {
     let size = 0; const chunks = [];
@@ -1657,7 +1673,7 @@ route('POST','/api/admin/athlete/update',async(req,res,u,body)=>{
 });
 
 /* ---------- backups: a daily snapshot of every table, kept 14 days; the owner downloads them ---------- */
-const { snapshot: snapshotBackup } = require('./lib/backup');
+const { snapshot: snapshotBackup, validate: validateBackup, restore: restoreBackup } = require('./lib/backup');
 async function makeBackup(kind) {
   const dump = await snapshotBackup(db);
   const rows = Object.values(dump.tables).reduce((n, table) => n + table.length, 0);
@@ -1825,6 +1841,60 @@ const server = http.createServer(async (req, res) => {
   catch { return send(res, 400, { error: 'Неверный адрес запроса' }); }
   const pathname = url.pathname;
   try {
+    if (pathname === '/api/private/restore/test' || pathname === '/api/private/restore/apply') {
+      if (req.method !== 'POST') throw new HttpError(405, 'Метод не поддерживается');
+      const applying = pathname.endsWith('/apply');
+      // Production restore is disabled by default. It needs a separate restore-only token.
+      if (applying) {
+        if (process.env.BACKUP_RESTORE_ENABLED !== '1') throw new HttpError(404, 'Не найдено');
+        const expected = String(process.env.BACKUP_RESTORE_TOKEN || '');
+        const received = /^Bearer (\S+)$/.exec(String(req.headers.authorization || ''))?.[1] || '';
+        if (expected.length < 48 || received.length !== expected.length ||
+            !crypto.timingSafeEqual(Buffer.from(received), Buffer.from(expected))) {
+          throw new HttpError(404, 'Не найдено');
+        }
+        if (req.headers['x-backup-restore-confirm'] !== 'RESTORE RECORD DATABASE' ||
+            req.headers['x-backup-pre-restore-saved'] !== 'yes') throw bad('Требуется подтверждение и сохранённая копия');
+      } else if (!backupPullAuth(req)) throw new HttpError(404, 'Не найдено');
+      if (!/^application\/gzip(?:;|$)/i.test(req.headers['content-type'] || '')) {
+        throw new HttpError(415, 'Ожидается gzip-архив JSON');
+      }
+      limit(applying ? 'private-db-restore-apply' : 'private-db-restore-test', applying ? 2 : 6, 3600e3);
+      const raw = await readRawBody(req);
+      if (raw.length < 50 || raw[0] !== 31 || raw[1] !== 139) throw bad('Файл не является gzip-копией');
+      let dump;
+      try { dump = JSON.parse(zlib.gunzipSync(raw, { maxOutputLength: 256 * 1024 * 1024 }).toString('utf8')); }
+      catch (_) { throw bad('Не удалось прочитать JSON внутри архива'); }
+      try { validateBackup(dump); } catch (err) { throw bad(err.message || 'Архив не прошёл проверку'); }
+      const rowCounts = Object.fromEntries(Object.entries(dump.tables).map(([name, rows]) => [name, rows.length]));
+
+      if (!applying) {
+        // A rollback after TRUNCATE is not a safe preview: PostgreSQL setval() is not
+        // transactional, and table locks can block users. Use strictly READ ONLY queries.
+        const schema = (await db.query(
+          "select table_name, column_name from information_schema.columns where table_schema='public'"
+        )).rows;
+        const byTable = new Map();
+        for (const c of schema) {
+          if (!byTable.has(c.table_name)) byTable.set(c.table_name, new Set());
+          byTable.get(c.table_name).add(c.column_name);
+        }
+        for (const [name, rows] of Object.entries(dump.tables)) {
+          const columns = byTable.get(name);
+          if (!columns) throw bad('Отсутствует таблица на сервере: ' + name);
+          for (const row of rows) for (const col of Object.keys(row)) {
+            if (!columns.has(col)) throw bad('Нет столбца ' + name + '.' + col);
+          }
+        }
+        send(res, 200, { ok: true, app: 'record-site', mode: 'test', verification: 'read-only-schema',
+          created: dump.created || null, rowCounts });
+        return;
+      }
+      await makeBackup('pre-restore');
+      await restoreBackup(db, dump);
+      send(res, 200, { ok: true, app: 'record-site', mode: 'restore', created: dump.created || null, rowCounts });
+      return;
+    }
     if (pathname.startsWith('/api/')) {
       const r = routes.find(r => r.method === req.method && r.re.test(pathname));
       if (!r) throw new HttpError(404, 'Не найдено');
