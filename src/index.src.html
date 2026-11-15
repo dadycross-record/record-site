@@ -122,17 +122,43 @@ a.btn{text-decoration:none}
 .quick svg{color:var(--accent)}
 
 /* event cards */
-.ev{display:block;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:0;overflow:hidden}
+.ev{display:block;width:100%;min-width:0;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:0;overflow:hidden}
 .ev .band{height:6px;background:repeating-linear-gradient(-45deg,var(--accent) 0 10px,var(--accent-ink) 10px 20px)}
 .ev.dim .band{background:repeating-linear-gradient(-45deg,var(--surface-2) 0 10px,var(--bg) 10px 20px)}
-.ev .in{padding:14px}
-.ev h3{font-family:var(--f-display);font-weight:600;font-size:17px;margin:6px 0 4px;text-transform:uppercase;letter-spacing:.01em}
-.ev.archive{min-height:0;border-radius:10px}
+.ev .in{padding:14px;min-width:0}
+.ev .ev-main{display:grid;grid-template-columns:68px minmax(0,1fr);gap:12px;align-items:center;min-width:0}
+.ev .ev-main.no-date{grid-template-columns:minmax(0,1fr)}
+.ev .ev-details{min-width:0}
+.ev .ev-status{display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-width:0}
+.ev h3{font-family:var(--f-display);font-weight:600;font-size:17px;margin:6px 0 4px;text-transform:uppercase;letter-spacing:.01em;overflow-wrap:anywhere}
+.ev .ev-date{width:68px;min-height:68px;border-radius:9px;background:var(--accent);color:var(--accent-ink);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 3px;box-sizing:border-box;text-align:center;font-variant-numeric:tabular-nums;overflow:hidden}
+.ev .ev-date b{font-family:var(--f-display);font-size:20px;line-height:1.05;max-width:100%;overflow-wrap:anywhere}
+.ev .ev-date span{font-size:11px;font-weight:750;line-height:1.2;margin-top:4px;text-transform:uppercase}
+.ev .ev-date.range b{font-size:15px}
+.ev .ev-date.cross-month b{font-size:12px;line-height:1.3}
+.ev.archive{min-height:0;border-radius:10px;border:1mm solid var(--accent)}
 .ev.archive .band,.ev.archive .cover,.ev.archive .archive-cover{display:none}
-.ev.archive .in{padding:10px 14px}
-.ev.archive .row{gap:8px}
-.ev.archive h3{font-size:15px;margin:0;font-weight:600}
-.ev.archive .meta{display:none}
+.ev.archive .in{padding:10px 12px}
+.ev.archive .ev-main{grid-template-columns:68px minmax(0,1fr)}
+.ev.archive .ev-main.no-date{grid-template-columns:minmax(0,1fr)}
+.ev.archive .ev-date{min-height:58px}
+.ev.archive .ev-status .chip.ended{background:var(--accent);color:var(--accent-ink);font-weight:750}
+.ev.archive h3{font-size:15px;margin:5px 0 0}
+.ev.archive .meta,.ev.archive .ev-format{display:none}
+@media(max-width:420px){
+ .ev .in{padding:11px}
+ .ev .ev-main,.ev.archive .ev-main{grid-template-columns:56px minmax(0,1fr);gap:9px}
+ .ev .ev-date{width:56px;min-height:58px;padding:4px 2px}
+ .ev .ev-date b{font-size:18px}
+ .ev .ev-date.range b{font-size:13px}
+ .ev .ev-date.cross-month b{font-size:11px}
+ .ev .ev-date span{font-size:10px}
+ .ev h3{font-size:15px}
+ .ev.archive h3{font-size:14px}
+ .ev.archive .in{padding:8px}
+ .ev .ev-status{gap:5px}
+ .ev .ev-status .chip{max-width:100%;white-space:normal;text-align:left;line-height:1.2}
+}
 .archive-year{padding:12px 14px}
 .archive-year>summary{cursor:pointer;font-weight:700;list-style:none}
 .archive-year>summary::-webkit-details-marker{display:none}
@@ -1501,11 +1527,26 @@ function datedFeed(items, draw, eventOf){
   return cards(current)+[...archives.keys()].sort().reverse().map(y=>`<details class="card" name="start-archive" style="margin-top:14px"><summary style="cursor:pointer;font-weight:700">${esc(y)} год · ${archives.get(y).length}</summary>${cards(archives.get(y))}</details>`).join("");
 }
 function eventFeed(list){ return list.length?datedFeed(list,evCard,e=>e):'<div class="empty">Стартов пока нет</div>'; }
+function eventDateBox(ev){
+  if (ev.permanent || !/^\\d{4}-\\d{2}-\\d{2}$/.test(ev.date||"")) return "";
+  const start=ev.date, end=ev.format==="online"?(ev.dateTo||ev.dateEnd):(ev.dateEnd||ev.dateTo);
+  const isRange=/^\\d{4}-\\d{2}-\\d{2}$/.test(end||"") && end>start;
+  const month=MONS[+start.slice(5,7)-1]||"";
+  if (!isRange) return `<span class="ev-date" aria-label="Дата: ${esc(dHuman(start))}"><b>${+start.slice(8)}</b><span>${esc(month)}</span></span>`;
+  const sameMonth=start.slice(0,7)===end.slice(0,7);
+  const dateText=sameMonth?`${+start.slice(8)}–${+end.slice(8)}`:`${+start.slice(8)}.${start.slice(5,7)}`;
+  const dateSub=sameMonth?month:`${+end.slice(8)}.${end.slice(5,7)}`;
+  return `<span class="ev-date range ${sameMonth?"":"cross-month"}" aria-label="Даты: ${esc(dateRange(ev))}"><b>${esc(dateText)}</b><span>${esc(dateSub)}</span></span>`;
+}
 function evCard(ev, archived=false){
+  const ended=archived||isArchivedEvent(ev);
   const media=archived?"":ev.cover?`<div class="cover" style="background-image:url(${ev.cover})"></div>`:'<div class="band"></div>';
-  return `<button class="ev ${ev.status==="ended"?"dim":""} ${archived?"archive":""}" data-go="event" data-ev="${ev.id}">${media}<div class="in">
-   <div class="row">${statusChip(ev.status)}<span class="sp"></span><span class="muted tiny">${ev.format==="online"?"Онлайн":"Очный"}</span></div>
-   <h3>${esc(ev.name)}</h3><div class="meta"><span>${dateRange(ev)}${durTxt(ev)}</span><span>${ev.city}</span><span>${ev.divisions.length} категорий</span></div></div></button>`;
+  const date=eventDateBox(ev);
+  const status=ended?'<span class="chip ended">Завершён</span>':statusChip(ev.status);
+  return `<button class="ev ${ended?"dim":""} ${archived?"archive":""}" data-go="event" data-ev="${ev.id}">${media}<div class="in">
+   <div class="ev-main ${date?"":"no-date"}">${date}<div class="ev-details">
+   <div class="ev-status">${status}<span class="sp"></span>${archived?"":`<span class="muted tiny ev-format">${ev.format==="online"?"Онлайн":"Очный"}</span>`}</div>
+   <h3>${esc(ev.name)}</h3>${archived?"":`<div class="meta"><span>${dateRange(ev)}${durTxt(ev)}</span><span>${esc(ev.city||"")}</span><span>${ev.divisions.length} категорий</span></div>`}</div></div></div></button>`;
 }
 function eventDateKey(ev){ return String(ev?.dateEnd||ev?.dateTo||ev?.date||"9999-12-31").slice(0,10); }
 function isArchivedEvent(ev){ return ev.status==="ended" || (!ev.permanent && ev.status!=="live" && eventDateKey(ev)<TODAY); }
