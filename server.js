@@ -298,7 +298,7 @@ async function liveResults(EVENTS) {
     const wl=divWorkoutsSrv(ev,div.id);
     if (isTeam) {
       const ms=members.filter(m=>m.event_id===r.event_id && m.div_id===r.div_id && m.team===r.team);
-      map.set(rk,{n:r.team,a:canonGym(r.person.affiliate),team:ms.map(displayName),k:ms.map(m=>m.pub),r:wl.map(()=>null)});
+      map.set(rk,{n:r.team,a:canonGym(r.person.affiliate),team:ms.map(displayName),memberClubs:ms.map(m=>canonGym(m.person.affiliate)||"Без клуба"),k:ms.map(m=>m.pub),r:wl.map(()=>null)});
     } else {
       map.set(rk,{n:displayName(r),a:canonGym(r.person.affiliate),k:[r.pub],r:wl.map(()=>null)});
     }
@@ -316,7 +316,7 @@ async function liveResults(EVENTS) {
     if (!map.has(rk)) {
       if (isTeam) {
         const ms = members.filter(m => m.event_id === s.event_id && m.div_id === s.div_id && m.team === s.team);
-        map.set(rk, { n: s.team, a: canonGym((ms[0] || s).person.affiliate), team: ms.map(displayName), k: ms.map(m => m.pub), r: wl.map(() => null) });
+        map.set(rk, { n: s.team, a: canonGym((ms[0] || s).person.affiliate), team: ms.map(displayName), memberClubs: ms.map(m=>canonGym(m.person.affiliate)||"Без клуба"), k: ms.map(m => m.pub), r: wl.map(() => null) });
       } else {
         map.set(rk, { n: displayName(s), a: canonGym(s.person.affiliate), k: [s.pub], r: wl.map(() => null) });
       }
