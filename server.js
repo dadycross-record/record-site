@@ -40,6 +40,22 @@ function send(res, status, body, headers = {}) {
   res.end(data);
 }
 
+function readRawBody(req, maxBytes = 128 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', chunk => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        reject(new HttpError(413, 'Архив слишком большой (максимум 128 МБ)'));
+        req.destroy();
+      } else chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
 function readBody(req, limit) {
   return new Promise((resolve, reject) => {
     let size = 0; const chunks = [];
@@ -1657,7 +1673,7 @@ route('POST','/api/admin/athlete/update',async(req,res,u,body)=>{
 });
 
 /* ---------- backups: a daily snapshot of every table, kept 14 days; the owner downloads them ---------- */
-const { snapshot: snapshotBackup } = require('./lib/backup');
+const { snapshot: snapshotBackup, validate: validateBackup, restore: restoreBackup } = require('./lib/backup');
 async function makeBackup(kind) {
   const dump = await snapshotBackup(db);
   const rows = Object.values(dump.tables).reduce((n, table) => n + table.length, 0);
@@ -1825,6 +1841,44 @@ const server = http.createServer(async (req, res) => {
   catch { return send(res, 400, { error: 'Неверный адрес запроса' }); }
   const pathname = url.pathname;
   try {
+    if (pathname === '/api/private/restore/test' || pathname === '/api/private/restore/apply') {
+      if (req.method !== 'POST') throw new HttpError(405, 'Метод не поддерживается');
+      if (!backupPullAuth(req)) throw new HttpError(404, 'Не найдено');
+      if (db.kind !== 'pg') throw new HttpError(503, 'Восстановление доступно только для PostgreSQL');
+      const applying = pathname.endsWith('/apply');
+      if (applying && (req.headers['x-backup-restore-confirm'] !== 'RESTORE RECORD DATABASE' ||
+          req.headers['x-backup-pre-restore-saved'] !== 'yes')) {
+        throw new HttpError(400, 'Для восстановления требуется подтверждение и локальная копия текущей базы');
+      }
+      if (!/^application\\/gzip(?:;|$)/i.test(req.headers['content-type'] || '')) {
+        throw new HttpError(415, 'Ожидается gzip-архив JSON');
+      }
+      limit(applying ? 'private-db-restore-apply' : 'private-db-restore-test', applying ? 2 : 6, 3600e3);
+      const raw = await readRawBody(req);
+      if (raw.length < 50 || raw[0] !== 31 || raw[1] !== 139) throw bad('Файл не является gzip-копией');
+      let dump;
+      try { dump = JSON.parse(zlib.gunzipSync(raw).toString('utf8')); }
+      catch (_) { throw bad('Не удалось прочитать JSON внутри архива'); }
+      validateBackup(dump);
+      const rowCounts = Object.fromEntries(Object.entries(dump.tables).map(([name, rows]) => [name, rows.length]));
+      if (!applying) {
+        const rollbackMarker = new Error('RECOVERY_PREVIEW_ROLLBACK');
+        try {
+          await db.tx(async () => {
+            await restoreBackup(db, dump);
+            throw rollbackMarker;
+          });
+        } catch (err) {
+          if (err !== rollbackMarker) throw err;
+        }
+        send(res, 200, { ok: true, app: 'record-site', mode: 'test', created: dump.created || null, rowCounts });
+        return;
+      }
+      await makeBackup('pre-restore');
+      await restoreBackup(db, dump);
+      send(res, 200, { ok: true, app: 'record-site', mode: 'restore', created: dump.created || null, rowCounts });
+      return;
+    }
     if (pathname.startsWith('/api/')) {
       const r = routes.find(r => r.method === req.method && r.re.test(pathname));
       if (!r) throw new HttpError(404, 'Не найдено');
