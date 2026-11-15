@@ -812,9 +812,11 @@ function leaderboard(evId, divId, month){
   rows.forEach((r,i)=>{ r.wr = ranks.map(x=>x[i]); r.wp = r.wr.map((pl,k)=>r.r[k]==null ? 0 : ptsFor(pl,n)); r.pts = pts ? r.wp.reduce((a,b)=>a+b,0) : r.wr.reduce((a,b)=>a+b,0); r.sorted=[...r.wr].sort((a,b)=>a-b); });
   // tie on total: best single placings first, then the last complex, the one before it, and so on
   const rev = (a,b) => { for (let k=a.wr.length-1;k>=0;k--) if (a.wr[k]!==b.wr[k]) return a.wr[k]-b.wr[k]; return 0; };
-  const cmp = pts ? (a,b) => b.pts-a.pts || cmpArr(a.sorted,b.sorted) || rev(a,b) : (a,b) => a.pts-b.pts || cmpArr(a.sorted,b.sorted) || a.wr[a.wr.length-1]-b.wr[b.wr.length-1];
+  const hasScore = r => r.r.some(v=>v!==null && v!==undefined);
+  const rankedCmp = pts ? (a,b) => b.pts-a.pts || cmpArr(a.sorted,b.sorted) || rev(a,b) : (a,b) => a.pts-b.pts || cmpArr(a.sorted,b.sorted) || (a.wr[a.wr.length-1]||0)-(b.wr[b.wr.length-1]||0);
+  const cmp = (a,b) => Number(hasScore(b))-Number(hasScore(a)) || (hasScore(a)?rankedCmp(a,b):a.n.localeCompare(b.n,"ru"));
   rows.sort(cmp);
-  rows.forEach((r,j)=>{ r.place = (j>0 && cmp(rows[j-1],r)===0) ? rows[j-1].place : j+1; });
+  rows.forEach((r,j)=>{ r.place = !hasScore(r)?null: (j>0 && hasScore(rows[j-1]) && cmp(rows[j-1],r)===0) ? rows[j-1].place : j+1; });
   return {ev, rows};
 }
 function cmpArr(a,b){ for(let i=0;i<a.length;i++){ if(a[i]!==b[i]) return a[i]-b[i]; } return 0; }
@@ -950,7 +952,14 @@ window.addEventListener("popstate", e=>{
 });
 function back(){ if (HIST.cur>0 && S.stack.length){ history.back(); return; } const prev=S.stack.pop(); if(prev){ const enteringEvents=prev.route==="events"&&S.route!=="events"; S.route=prev.route; S.p=prev.p; render(); window.scrollTo(0, prev.y||0); if(enteringEvents&&LOADED)refreshEventsOnEntry();} else go("home",{},false); }
 let lastDrawn = null;
-function tab(t){ S.stack=[]; go(t,{},false); }
+function tab(t, keepLeaderboard=false){
+  if (t==="leaderboard" && !keepLeaderboard){
+    S.lb.ev=""; S.lb.w=-1; S.lb.open=null; S.lb.desc=null;
+    S.lb.month=null; S.lb.q=""; S.searchOpen=false;
+    S.lb.filterYear="all"; S.lb.filterMonth="all";
+  }
+  S.stack=[]; go(t,{},false);
+}
 function toast(msg){ document.querySelectorAll(".toast").forEach(x=>x.remove()); const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2400); }
 const MK_KEY="rcrd-cookies"; let MK_ON=false, mkLast="";
 function mkChoice(){ try{ const v=JSON.parse(localStorage.getItem(MK_KEY)||"null"); return v && Date.now()-v.t<365*864e5 ? v.c : null; }catch(_){ return null; } }
@@ -1325,9 +1334,10 @@ fail(){
 leaderboard(){
   const L = S.lb;
   const LE = lbEvents();
-  if (!L.init && USER){ L.init = true; const mineEv = LE.find(e=>e.status!=="open" && ORDERS.some(o=>o.event===e.id && ACTIVE_ST.includes(o.status)));
-    if (mineEv){ const o=ORDERS.filter(o=>o.event===mineEv.id && ACTIVE_ST.includes(o.status)).pop(), d=mineEv.divisions.find(x=>x.id===o.div); L.ev=mineEv.id; L.div=o.div; L.tab=d&&d.type==="team"?"team":"ind"; L.w=-1; } }
-  if (!LE.some(e=>e.id===L.ev)){ const f = LE[0]; if (!f) return {title:null, html:'<div class="empty">Пока нет опубликованных стартов</div>'}; L.ev=f.id; L.div="m"; L.w=-1; L.month=null; }
+  if (!LE.length) return {title:null, html:'<div class="empty">Пока нет опубликованных стартов</div>'};
+  // Opening Leaderboard from the navigation must never reuse the previous event.
+  if (!L.ev || !LE.some(e=>e.id===L.ev))
+    return {title:null,html:'<div class="card stack" style="margin-top:12px"><h2>Выберите соревнование</h2><p class="muted small">Выберите старт, чтобы посмотреть зарегистрированных атлетов, команды и результаты.</p><button class="btn block" data-act="evsheet">Выбрать старт</button></div>',after:()=>setTimeout(()=>{if(S.route==="leaderboard"&&!S.lb.ev)evSheet();},0)};
   const ev0 = EVENTS.find(e=>e.id===L.ev);
   let month = null;
   if (ev0.permanent){ if (L.month!=="year" && !(ev0.months||[]).some(m=>m.id===L.month)) L.month = curMonth(ev0).id; month = L.month; }
@@ -1335,10 +1345,10 @@ leaderboard(){
   const mpills = ev0.permanent ? `<div class="pills" role="tablist" style="margin-top:10px">${(ev0.months||[]).map(m=>`<button role="tab" aria-selected="${month===m.id}" data-lbm="${m.id}">${monthTitle(m.id)}${m.done?"":" · идёт"}</button>`).join("")}<button role="tab" aria-selected="${month==="year"}" data-lbm="year">Таблица года</button></div>` : "";
   const head = `<div class="card" style="padding:12px 14px"><button class="selbtn" data-act="evsheet"><div><div class="row" style="gap:6px;margin-bottom:6px">${statusChip(ev.status)}${ev.status==="draft"?'<span class="chip neutral">видите только вы</span>':""}</div><b>${esc(ev.name)}</b></div><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button></div>
    <div class="utabs" role="tablist" style="margin-top:10px">${[["ind","Атлеты"],["team","Команды"],["aff","Клубы"]].map(([k,t])=>`<button role="tab" aria-selected="${L.tab===k}" data-lbt="${k}">${t}</button>`).join("")}</div>${L.tab==="aff"?"":mpills}`;
-  if (ev.status==="open") return {title:null, html: head + `<div class="empty" style="margin-top:16px">Старт ${dHuman(ev.date)}. Лидерборд заполнится, когда судьи внесут первые результаты.</div>`};
+
   if (L.tab==="aff") return {title:null, html: head + affBoard(ev)};
   const RS = allResults(), hasRes = d => month==="year" ? (ev0.months||[]).some(m=>RS[resKey(ev0,d.id,m.id)]) : RS[resKey(ev0,d.id,month)];
-  const divs = ev.divisions.filter(d=> L.tab==="team" ? d.type==="team" : d.type==="ind").filter(d=>hasRes(d)||d.id===L.div);
+  const divs = ev.divisions.filter(d=> L.tab==="team" ? d.type==="team" : d.type==="ind").filter(d=>ev0.status==="open"||hasRes(d)||d.id===L.div);
   if (!divs.length && ev0.permanent) return {title:null, html: head + '<div class="empty" style="margin-top:16px">За этот месяц результатов пока нет</div>'};
   if (!divs.length) return {title:null, html: head + '<div class="empty" style="margin-top:16px">В этом старте нет командных категорий с результатами</div>'};
   if (!divs.find(d=>d.id===L.div)) L.div = divs[0].id;
@@ -1357,7 +1367,7 @@ leaderboard(){
    ${wi>=0 && L.desc===ev.workouts[wi]?.id?wodCard(ev.workouts[wi], ev0):""}
    ${(()=>{ const me=rows.find(r=>r.me); return me && !q ? `<div class="mine"><div class="muted tiny" style="margin:12px 0 6px">ВАШ РЕЗУЛЬТАТ</div><div class="lb">${row(me,ev,wi)}</div></div>` : ""; })()}
    <div class="lb-head" style="margin-top:8px"><span>#</span><span></span><span>${L.tab==="team"?"Команда":"Атлет"}</span><span class="wcols">${wi<0?ev.workouts.map(w=>`<span class="wc">${esc(w.name.split(" · ")[0])}</span>`).join(""):""}</span><span class="hpts">${wi<0?(usesPoints(ev0)?"Баллы":"Очки"):"Результат"}</span><span></span></div>
-   <div class="lb">${shown.map(r=>row(r,ev,wi)).join("") || '<div class="empty">Никого не нашли</div>'}</div>
+   <div class="lb">${shown.map(r=>row(r,ev,wi)).join("") || (q?'<div class="empty">Никого не нашли</div>':'<div class="empty">Пока никто не зарегистрировался</div>')}</div>
    ${month==="year"?'<div class="rule" style="margin-top:12px">Таблица года: очки — сумма мест за месяцы, меньше значит выше. Пропущенный месяц — место «последний + 1».</div>':wi<0?(usesPoints(ev0)?ptsRules(rows.length):'<div class="rule" style="margin-top:12px">Очки — сумма мест по заданиям, меньше значит выше. Равный результат делит место, следующее пропускается. Без результата — место «последний + 1».</div>'):""}`;
   return {title:null, html};
 },
@@ -1602,19 +1612,20 @@ function wodCard(w, ev0){
     </div></section>`;
 }
 function row(r, ev, wi){
-  const place = wi<0 ? r.place : r.wr[wi];
-  const cls = place>=1&&place<=3 && (wi>=0?r.r[wi]!=null:r.r.some(v=>v!=null)) ? `r${place}` : "";
+  const hasResult = r.r.some(v=>v!==null && v!==undefined);
+  const place = !hasResult ? "—" : wi<0 ? (r.place??"—") : (r.r[wi]==null?"—":r.wr[wi]);
+  const cls = typeof place==="number"&&place>=1&&place<=3 ? `r${place}` : "";
   const id = `${r.n}`;
-  const right = wi<0 ? `<span class="pts">${r.pts}<small>PTS</small></span>` : `<span class="pts mono" style="font-size:16px">${fmtRes(ev.workouts[wi].type, r.r[wi])}</span>`;
+  const right = wi<0 ? (hasResult?`<span class="pts">${r.pts}<small>PTS</small></span>`:'<span class="muted tiny">Нет результата</span>') : `<span class="pts mono" style="font-size:16px">${fmtRes(ev.workouts[wi].type, r.r[wi])}</span>`;
   const initials = r.n.split(" ").map(x=>x[0]).slice(0,2).join("");
-  const wcols = `<span class="wcols">${wi<0 ? ev.workouts.map((w,i)=>`<span class="wc ${r.wr[i]===1?"first":""}"><b>#${r.wr[i]}</b><i>${r.r[i]&&typeof r.r[i]==="object"&&r.r[i].cap!=null ? `${r.r[i].cap} повт.` : fmtRes(w.type,r.r[i])}</i></span>`).join("") : ""}</span>`;
+  const wcols = `<span class="wcols">${wi<0 ? ev.workouts.map((w,i)=>`<span class="wc ${r.r[i]!=null&&r.wr[i]===1?"first":""}"><b>${r.r[i]==null?"—":"#"+r.wr[i]}</b><i>${r.r[i]&&typeof r.r[i]==="object"&&r.r[i].cap!=null ? `${r.r[i].cap} повт.` : fmtRes(w.type,r.r[i])}</i></span>`).join("") : ""}</span>`;
   const open = S.lb.open===id;
   return `<div class="lr ${cls} ${r.me?"me":""} ${open?"open":""}"><button data-row="${esc(id)}" aria-expanded="${open}">
     <span class="rk">${place}</span><span class="av">${esc(initials)}</span>
     <span class="nm"><b>${esc(r.n)}${r.me?' <span class="chip warn" style="height:18px;font-size:10px;vertical-align:2px">Вы</span>':""}</b><span>${r.team?esc(r.team.join(" · ")):esc(r.a)}</span></span>
     ${wcols}${right}<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="split"><table><thead><tr><th>Комплекс</th><th>Место</th><th>Результат</th>${r.wp&&usesPoints(EVENTS.find(e=>e.id===ev.id)||{})?"<th>Баллы</th>":""}</tr></thead><tbody>
-    ${ev.workouts.map((w,i)=>`<tr><td>${w.name.split(" · ")[0]}</td><td class="mono ${r.wr[i]===1?"first":""}">#${r.wr[i]}</td><td class="mono">${fmtRes(w.type,r.r[i])}</td>${r.wp&&usesPoints(EVENTS.find(e=>e.id===ev.id)||{})?`<td class="mono">${r.wp[i]}</td>`:""}</tr>`).join("")}
+    ${ev.workouts.map((w,i)=>`<tr><td>${w.name.split(" · ")[0]}</td><td class="mono ${r.r[i]!=null&&r.wr[i]===1?"first":""}">${r.r[i]==null?"—":"#"+r.wr[i]}</td><td class="mono">${fmtRes(w.type,r.r[i])}</td>${r.wp&&usesPoints(EVENTS.find(e=>e.id===ev.id)||{})?`<td class="mono">${r.wp[i]}</td>`:""}</tr>`).join("")}
     </tbody></table>${r.team?"":`<div class="muted tiny" style="margin-top:8px">${esc(r.a)}</div>`}</div></div>`;
 }
 function affBoard(ev){
@@ -3557,7 +3568,7 @@ document.addEventListener("click", e=>{
   if (ds.evf){ S.p={f:ds.evf}; return render(); }
   if (ds.evt){ S.p={...S.p,t:ds.evt}; return render(); }
   if (ds.lbev && !ds.lbmonth){ const ev=EVENTS.find(e=>e.id===ds.lbev)||{divisions:[]}, RS=allResults(); const d=ev.divisions.find(x=>Object.keys(RS).some(k=>k===`${ev.id}:${x.id}`||k.startsWith(`${ev.id}@`)&&k.endsWith(`:${x.id}`)))||ev.divisions[0]||{};
-    S.lb.ev=ds.lbev; S.lb.w=-1; S.lb.open=null; S.lb.desc=null; S.lb.div=d.id||"m"; S.lb.tab=d.type==="team"?"team":"ind"; S.lb.init=true; return tab("leaderboard"); }
+    S.lb.ev=ds.lbev; S.lb.w=-1; S.lb.open=null; S.lb.desc=null; S.lb.div=d.id||"m"; S.lb.tab=d.type==="team"?"team":"ind"; S.lb.init=true; return tab("leaderboard",true); }
   if (ds.dtype){ S.p={...S.p,type:ds.dtype}; return render(); }
   if (ds.act==="divlogin") return needLogin("Войдите, чтобы записаться на старт");
   if (ds.act==="divprofile") return go("profile",{edit:true,then:"divisions"});
@@ -3601,10 +3612,10 @@ document.addEventListener("click", e=>{
   }
   if (ds.lbcollapse){ S.lb.desc=null; return render(); }
   if (ds.rsw){ adm.rs.w=ds.rsw; render(); return; }
-  if (ds.lbopen){ const [e,d]=ds.lbopen.split("|"), dv=(EVENTS.find(x=>x.id===e)||{divisions:[]}).divisions.find(x=>x.id===d); S.lb.ev=e; S.lb.div=d; S.lb.tab=dv&&dv.type==="team"?"team":"ind"; S.lb.month=ds.lbPeriod||undefined; S.lb.q=""; S.searchOpen=false; S.lb.open=null; S.lb.desc=null; S.lb.w=-1; S.lb.init=true; return tab("leaderboard"); }
+  if (ds.lbopen){ const [e,d]=ds.lbopen.split("|"), dv=(EVENTS.find(x=>x.id===e)||{divisions:[]}).divisions.find(x=>x.id===d); S.lb.ev=e; S.lb.div=d; S.lb.tab=dv&&dv.type==="team"?"team":"ind"; S.lb.month=ds.lbPeriod||undefined; S.lb.q=""; S.searchOpen=false; S.lb.open=null; S.lb.desc=null; S.lb.w=-1; S.lb.init=true; return tab("leaderboard",true); }
   if (ds.lbdesc){ S.lb.desc = S.lb.desc===ds.lbdesc ? null : ds.lbdesc; return render(); }
   if (ds.lbm){ S.lb.month=ds.lbm; S.lb.w=-1; S.lb.open=null; return render(); }
-  if (ds.lbmonth){ S.lb.ev=ds.lbev; S.lb.month=ds.lbmonth; S.lb.w=-1; S.lb.open=null; S.lb.tab="ind"; S.lb.div="m"; return tab("leaderboard"); }
+  if (ds.lbmonth){ S.lb.ev=ds.lbev; S.lb.month=ds.lbmonth; S.lb.w=-1; S.lb.open=null; S.lb.tab="ind"; S.lb.div="m"; return tab("leaderboard",true); }
   if (ds.act==="rsxlsx"){ const ev0=EVENTS.find(e=>e.id===((adm.rq&&adm.rq.ev)||(adm.rs&&adm.rs.ev))); const sh=ev0&&lbSheets(ev0, ev0.permanent ? (S.lb.month&&S.lb.month!=="year"?S.lb.month:curMonth(ev0).id) : null); if (!sh||!sh.length) return toast("Результатов пока нет"); downloadXlsx(`leaderboard-${ev0.id}.xlsx`, sh); return; }
   if (ds.act==="lbxlsx"){ const ev0=EVENTS.find(e=>e.id===S.lb.ev); const sh=ev0&&lbSheets(ev0, ev0.permanent ? (S.lb.month&&S.lb.month!=="year"?S.lb.month:curMonth(ev0).id) : null); if (!sh||!sh.length) return toast("Результатов пока нет"); downloadXlsx(`leaderboard-${ev0.id}.xlsx`, sh); return; }
   if (ds.athopen!==undefined){ const x=adm.ath.list[+ds.athopen]; athOpen(x.type, x.id); return render(); }
