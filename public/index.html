@@ -1351,7 +1351,14 @@ leaderboard(){
   const divs = ev.divisions.filter(d=> L.tab==="team" ? d.type==="team" : d.type==="ind").filter(d=>ev0.status==="open"||hasRes(d)||d.id===L.div);
   if (!divs.length && ev0.permanent) return {title:null, html: head + '<div class="empty" style="margin-top:16px">За этот месяц результатов пока нет</div>'};
   if (!divs.length) return {title:null, html: head + '<div class="empty" style="margin-top:16px">В этом старте нет командных категорий с результатами</div>'};
-  if (!divs.find(d=>d.id===L.div)) L.div = divs[0].id;
+  if (!divs.find(d=>d.id===L.div) && L.div!=="__all__") L.div = divs[0].id;
+  if (L.div==="__all__") {
+    const groups=divs.map(d=>{ const board=month==="year"?leagueYear(ev0,d.id):leaderboard(ev0.id,d.id,month); const q=L.q.trim().toLowerCase(); const rows=board.rows.filter(r=>!q||r.n.toLowerCase().includes(q)||String(r.a||"").toLowerCase().includes(q));
+      return rows.length ? '<section class="stack" style="margin-top:18px"><h3 style="margin:0;padding:10px 12px;border-left:3px solid var(--accent);background:var(--surface)">'+esc(d.name)+'</h3><div class="lb">'+rows.map(r=>row(r,board.ev,-1)).join("")+'</div></section>' : ""; }).join("");
+    const filter='<div class="filters" style="margin-top:12px"><select class="inp" id="lbDiv" aria-label="Категория"><option value="__all__" selected>Все категории</option>'+divs.map(d=>'<option value="'+esc(d.id)+'">'+esc(d.name)+'</option>').join("")+'</select></div>';
+    const search=S.searchOpen?'<input class="inp" id="lbq" style="margin-top:8px" placeholder="Имя атлета или команды" value="'+esc(L.q)+'" autocomplete="off">':"";
+    return {title:null,html:head+filter+search+(groups||'<div class="empty" style="margin-top:14px">В этих категориях пока нет зарегистрированных атлетов</div>')};
+  }
   const lbr = month==="year" ? leagueYear(ev0, L.div) : leaderboard(ev0.id, L.div, month);
   const rows = lbr.rows; ev = lbr.ev;
   const q = L.q.trim().toLowerCase();
@@ -1360,7 +1367,7 @@ leaderboard(){
   if (wi>=0){ const w=ev.workouts[wi]; list=[...rows].sort((a,b)=>a.wr[wi]-b.wr[wi]); }
   const shown = q ? list.filter(r=>r.n.toLowerCase().includes(q)) : list;
   const html = head + `
-   <div class="filters" style="margin-top:12px"><select class="inp" id="lbDiv" aria-label="Категория">${divs.map(d=>`<option value="${d.id}" ${d.id===L.div?"selected":""}>${d.name}</option>`).join("")}</select>
+   <div class="filters" style="margin-top:12px"><select class="inp" id="lbDiv" aria-label="Категория">${`<option value="__all__" ${L.div==="__all__"?"selected":""}>Все категории</option>`}${divs.map(d=>`<option value="${d.id}" ${d.id===L.div?"selected":""}>${d.name}</option>`).join("")}</select>
    <div class="row" style="gap:8px">${["owner","admin"].includes(S.viewAs)?`<button class="iconbtn" data-act="lbxlsx" aria-label="Скачать в Excel" title="Скачать лидерборд в Excel"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button>`:""}<button class="iconbtn" data-act="lbsearch" aria-label="Поиск"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></button></div></div>
    ${S.searchOpen?`<input class="inp" id="lbq" style="margin-top:8px" placeholder="Имя атлета или команды" value="${esc(L.q)}" autocomplete="off">`:""}
    ${month==="year"?"":`<div class="pills" role="tablist" style="margin-top:12px"><button role="tab" aria-selected="${wi<0}" data-lbw="-1">${ev0.permanent?"Итог месяца":"Общий зачёт"}</button>${ev.workouts.map((w,i)=>`<button role="tab" aria-selected="${wi===i}" data-lbw="${i}">${w.name.split(" · ")[0]}</button>`).join("")}</div>`}
@@ -1630,11 +1637,16 @@ function row(r, ev, wi){
 }
 function affBoard(ev){
   const cnt = {};
-  Object.keys(RESULTS).filter(k=>k.startsWith(ev.id+":")||k.startsWith(ev.id+"@")).forEach(k=>RESULTS[k].forEach(r=>{ cnt[r.a]=(cnt[r.a]||0)+(r.team?r.team.length:1); }));
-  const arr = Object.entries(cnt).sort((a,b)=>b[1]-a[1]);
-  arr.forEach((x,i)=>{ x.place = (i>0 && arr[i-1][1]===x[1]) ? arr[i-1].place : i+1; });
-  return `<div class="lb-head" style="margin-top:12px"><span>#</span><span></span><span>Клуб</span><span class="wcols"></span><span class="hpts">Участников</span><span></span></div><div class="lb">${arr.map(x=>`<div class="lr ${x.place<=3?"r"+x.place:""}"><button tabindex="-1" style="cursor:default"><span class="rk">${x.place}</span><span class="av">${esc(x[0][0])}</span><span class="nm"><b>${esc(x[0])}</b><span>Иркутская область</span></span><span class="wcols"></span><span class="pts">${x[1]}</span><span></span></button></div>`).join("")}</div>
-  <div class="rule" style="margin-top:12px">Рейтинг клубов показывает активность: сколько атлетов клуб выставил на старт.</div>`;
+  Object.keys(allResults()).filter(k=>k.startsWith(ev.id+":")||k.startsWith(ev.id+"@")).forEach(k=>allResults()[k].forEach(r=>{ const club=r.a||"Без клуба"; cnt[club]=(cnt[club]||0)+(r.team?r.team.length:1); }));
+  const arr = Object.entries(cnt).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ru"));
+  arr.forEach((x,i)=>{ x.place=(i>0&&arr[i-1][1]===x[1])?arr[i-1].place:i+1; });
+  if(S.lb.affOpen){
+    const club=S.lb.affOpen, athletes=[];
+    (ev.divisions||[]).forEach(d=>leaderboard(ev.id,d.id,null).rows.forEach(r=>{ if((r.a||"Без клуба")!==club)return; if(r.team&&r.team.length)r.team.forEach(name=>athletes.push({name,place:r.place,category:d.name,team:r.n})); else athletes.push({name:r.n,place:r.place,category:d.name,team:""}); }));
+    athletes.sort((a,b)=>a.category.localeCompare(b.category,"ru")||(a.place||99999)-(b.place||99999)||a.name.localeCompare(b.name,"ru"));
+    return '<div class="row" style="justify-content:space-between;margin:14px 0"><b>'+esc(club)+'</b><button class="btn sm ghost" data-act="affback">← Все клубы</button></div><div class="lb-head"><span>Место</span><span></span><span>Атлет</span><span></span><span>Категория</span><span></span></div><div class="lb">'+athletes.map(a=>'<div class="lr"><div style="display:grid;grid-template-columns:42px 1fr;gap:10px;padding:12px"><b class="rk">'+(a.place??"—")+'</b><span class="nm"><b>'+esc(a.name)+'</b><span>'+esc(a.category)+(a.team?" · "+esc(a.team):"")+'</span></span></div></div>').join("")+(athletes.length?"":'<div class="empty">В этом старте пока нет атлетов этого клуба</div>')+'</div>';
+  }
+  return '<div class="lb-head" style="margin-top:12px"><span>#</span><span></span><span>Клуб</span><span class="wcols"></span><span class="hpts">Участников</span><span></span></div><div class="lb">'+arr.map(x=>'<div class="lr '+(x.place<=3?"r"+x.place:"")+'"><button data-affopen="'+esc(x[0])+'"><span class="rk">'+x.place+'</span><span class="av">'+esc(x[0][0])+'</span><span class="nm"><b>'+esc(x[0])+'</b><span>Нажмите, чтобы увидеть атлетов и места</span></span><span class="wcols"></span><span class="pts">'+x[1]+'</span><span>›</span></button></div>').join("")+'</div><div class="rule" style="margin-top:12px">Нажмите на клуб, чтобы посмотреть его атлетов и итоговые места по категориям.</div>';
 }
 /* a child's card in the profile: who else has access, invite a second adult, hand over to the grown-up athlete */
 function kidCard(k){
@@ -3600,7 +3612,9 @@ document.addEventListener("click", e=>{
     api("POST","/api/promo",{code:v,event:S.reg.ev.id,div:S.reg.div.id}).then(res=>{ S.reg.f.promoOk=true; S.reg.f.promoOff=res.off; S.reg.f.promoMsg=`Скидка ${res.label} применена: −${fmtRub(res.off)}`; render(); })
       .catch(err=>{ S.reg.f.promoOk=false; S.reg.f.promoOff=0; S.reg.f.promoMsg=err.message; render(); }); return; }
   if (ds.act==="evsheet") return evSheet();
-  if (ds.lbt){ S.lb.tab=ds.lbt; S.lb.w=-1; S.lb.open=null; S.lb.div = ds.lbt==="team"?"pair":"m"; return render(); }
+  if (ds.lbt){ S.lb.tab=ds.lbt; S.lb.w=-1; S.lb.open=null; S.lb.affOpen=null; S.lb.div = ds.lbt==="team"?"pair":"m"; return render(); }
+  if (ds.affopen){ S.lb.affOpen=ds.affopen; return render(); }
+  if (ds.act==="affback"){ S.lb.affOpen=null; return render(); }
   if (ds.lbw!==undefined){
     const index=+ds.lbw;
     S.lb.w=index;
