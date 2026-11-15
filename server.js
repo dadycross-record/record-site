@@ -281,8 +281,28 @@ const divWorkoutsSrv = (ev, divId) => (ev.workouts || []).filter(w => !w.divs ||
 async function liveResults(EVENTS) {
   const { rows } = await db.query(`select s.workout_id, s.value, r.id reg, r.pub, r.event_id, r.div_id, r.team, r.person, r.publish
     from scores s join registrations r on r.id=s.reg_id where s.state='accepted' and r.status in ${ACTIVE} order by s.created_at`);
-  const members = (await db.query(`select pub, event_id, div_id, team, person, publish from registrations where team is not null and status in ${ACTIVE} order by created_at`)).rows;
+  const registrations = (await db.query(`select id, pub, event_id, div_id, team, person, publish from registrations where status in ${ACTIVE} order by created_at`)).rows;
+  const members = registrations.filter(r=>r.team);
   const RES = {};
+  // Published non-permanent starts display their registered athletes and teams
+  // immediately, even before judges enter the first accepted result.
+  for (const r of registrations) {
+    const ev=EVENTS.find(e=>e.id===r.event_id);
+    if (!ev || ev.status==="draft" || ev.permanent) continue;
+    const div=(ev.divisions||[]).find(d=>d.id===r.div_id);
+    if (!div) continue;
+    const key=`${ev.id}:${div.id}`, map=RES[key] ||= new Map();
+    const isTeam=div.type==="team" && r.team;
+    const rk=isTeam?"T:"+r.team:"R:"+r.id;
+    if (map.has(rk)) continue;
+    const wl=divWorkoutsSrv(ev,div.id);
+    if (isTeam) {
+      const ms=members.filter(m=>m.event_id===r.event_id && m.div_id===r.div_id && m.team===r.team);
+      map.set(rk,{n:r.team,a:canonGym(r.person.affiliate),team:ms.map(displayName),k:ms.map(m=>m.pub),r:wl.map(()=>null)});
+    } else {
+      map.set(rk,{n:displayName(r),a:canonGym(r.person.affiliate),k:[r.pub],r:wl.map(()=>null)});
+    }
+  }
   for (const s of rows) {
     const ev = EVENTS.find(e => e.id === s.event_id); if (!ev) continue;
     const div = (ev.divisions || []).find(d => d.id === s.div_id); const w = (ev.workouts || []).find(x => x.id === s.workout_id);
