@@ -135,12 +135,12 @@ a.btn{text-decoration:none}
 .ev.dim .band{background:repeating-linear-gradient(-45deg,var(--surface-2) 0 10px,var(--bg) 10px 20px)}
 .ev .in{padding:14px}
 .ev h3{font-family:var(--f-display);font-weight:600;font-size:17px;margin:6px 0 4px;text-transform:uppercase;letter-spacing:.01em}
-.ev.archive .band{display:none}
-.ev.archive .archive-cover{height:76px;background:#222 center/cover no-repeat;position:relative}
-.ev.archive .archive-cover:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.10),transparent 60%)}
+.ev.archive{min-height:0;border-radius:10px}
+.ev.archive .band,.ev.archive .cover,.ev.archive .archive-cover{display:none}
 .ev.archive .in{padding:10px 14px}
-.ev.archive h3{font-size:15px;margin:4px 0}
-@media(max-width:639px){.ev.archive .archive-cover{height:64px}}
+.ev.archive .row{gap:8px}
+.ev.archive h3{font-size:15px;margin:0;font-weight:600}
+.ev.archive .meta{display:none}
 .archive-year{padding:12px 14px}
 .archive-year>summary{cursor:pointer;font-weight:700;list-style:none}
 .archive-year>summary::-webkit-details-marker{display:none}
@@ -1496,7 +1496,7 @@ function datedFeed(items, draw, eventOf){
 }
 function eventFeed(list){ return list.length?datedFeed(list,evCard,e=>e):'<div class="empty">Стартов пока нет</div>'; }
 function evCard(ev, archived=false){
-  const media=archived?(ev.cover?`<div class="archive-cover" style="background-image:url(${ev.cover})"></div>`:""):ev.cover?`<div class="cover" style="background-image:url(${ev.cover})"></div>`:'<div class="band"></div>';
+  const media=archived?"":ev.cover?`<div class="cover" style="background-image:url(${ev.cover})"></div>`:'<div class="band"></div>';
   return `<button class="ev ${ev.status==="ended"?"dim":""} ${archived?"archive":""}" data-go="event" data-ev="${ev.id}">${media}<div class="in">
    <div class="row">${statusChip(ev.status)}<span class="sp"></span><span class="muted tiny">${ev.format==="online"?"Онлайн":"Очный"}</span></div>
    <h3>${esc(ev.name)}</h3><div class="meta"><span>${dateRange(ev)}${durTxt(ev)}</span><span>${ev.city}</span><span>${ev.divisions.length} категорий</span></div></div></button>`;
