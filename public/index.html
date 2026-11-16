@@ -557,6 +557,35 @@ h2.ch{font-family:var(--f-display);font-weight:800;font-size:clamp(24px,7vw,40px
 .lr.r1 .rk,.lr.r2 .rk,.lr.r3 .rk{font-size:18px}
 .prize-place{font-family:var(--f-mono);font-weight:800;white-space:nowrap}.prize-place>span{font-size:23px}.prize-place>small{font-size:12px;font-weight:600}
 .stats b.prize-1,.prize-1{color:var(--gold)}.stats b.prize-2,.prize-2{color:var(--silver)}.stats b.prize-3,.prize-3{color:var(--bronze)}.stats b.prize-place{font-size:24px}
+
+/* RECORD RACE: one result, intuitive format and age standings. */
+.race-pills{display:flex;gap:7px;overflow-x:auto;flex-wrap:wrap;padding:2px 0 6px;scrollbar-width:thin}
+.race-pills button{appearance:none;border:1px solid var(--line);border-radius:999px;padding:9px 13px;background:var(--surface);color:var(--text);font:inherit;font-size:13px;font-weight:700;white-space:nowrap;cursor:pointer}
+.race-pills button[aria-pressed="true"]{background:var(--accent);color:#111;border-color:var(--accent)}
+.race-format button{font-size:14px}
+.race-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0 14px}
+.race-summary div{display:flex;flex-direction:column;gap:3px;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--surface)}
+.race-summary b{font-size:20px;font-variant-numeric:tabular-nums}
+.race-summary span{font-size:11px;color:var(--muted)}
+.race-results{border:1px solid var(--line);border-radius:13px;overflow:hidden;background:var(--surface)}
+.race-thead,.race-result{display:grid;grid-template-columns:48px minmax(0,1fr) 100px 105px;align-items:center;gap:8px;padding:11px 12px}
+.race-thead{background:var(--surface-2);color:var(--muted);font-size:11px;text-transform:uppercase;font-weight:800}
+.race-result{border-top:1px solid var(--line);font-size:13px}
+.race-result b{display:block;font-size:14px;overflow-wrap:anywhere}
+.race-result strong{text-align:right}
+.race-place{font-weight:800;font-size:17px;text-align:center}
+@media(max-width:560px){
+  .race-pills{flex-wrap:nowrap}
+  .race-thead,.race-result{grid-template-columns:34px minmax(0,1fr) 70px 70px;gap:5px;padding:10px 7px}
+  .race-result b{font-size:12px}
+  .race-result{font-size:11px}
+  .race-result .tiny{font-size:10px}
+  .race-result strong{font-size:11px}
+  .race-summary div{padding:9px}
+  .race-summary b{font-size:17px}
+  .race-summary span{font-size:10px}
+}
+
 </style>
 
 </head>
@@ -1075,6 +1104,107 @@ function evCount(ev){
 }
 
 /* ---------- screens ---------- */
+
+/* RECORD RACE uses one finish time and two independent standings (absolute and age).
+   All other competitions continue using the original CrossFit leaderboard. */
+const isRaceEvent = ev => !!ev && ev.id==="evmvwkp907";
+const RACE_FORMATS=[["individual","Личный"],["pair","Пары"],["relay","Эстафета"],["kids","Дети"],["first","Первый старт"],["forces","Силовые ведомства"]];
+const RACE_AGES=[[16,24],[25,29],[30,34],[35,39],[40,44],[45,49],[50,89]];
+const raceView=()=>S.race||(S.race={kind:"individual",level:"standard",gender:"F",age:"all",kid:"",q:"",stamp:0,data:null,error:"",loading:false});
+function raceLoad(eventId, force=false){
+ const R=raceView();
+ if(R.loading)return;
+ if(!force&&R.data&&R.data.eventId===eventId&&Date.now()-R.stamp<30000)return;
+ R.loading=true;R.error="";
+ api("GET","/api/race/leaderboard/"+encodeURIComponent(eventId)).then(data=>{
+   R.loading=false;R.data=data;R.stamp=Date.now();
+   if(S.route==="leaderboard"&&S.lb.ev===eventId)render();
+ }).catch(err=>{
+   R.loading=false;R.error=err.message||"Не удалось загрузить результаты";
+   if(S.route==="leaderboard"&&S.lb.ev===eventId)render();
+ });
+}
+const raceSeconds=t=>t==null?"—":(Math.floor(t/60)+":"+String(Math.floor(t%60)).padStart(2,"0")+
+  (Math.round(t*100)%100 ? ","+String(Math.round(t*100)%100).padStart(2,"0"):""));
+const raceAgeKey=a=>a>=50?"50+":RACE_AGES.find(([min,max])=>a>=min&&a<max+1)?.join("–")||"";
+function raceBoardScreen(ev){
+ const R=raceView(), data=R.data&&R.data.eventId===ev.id?R.data:null;
+ const staff=["owner","admin","judge"].includes(S.viewAs);
+ const top='<div class="card" style="padding:12px 14px"><button class="selbtn" data-act="evsheet"><div><b>'+esc(ev.name)+'</b><div class="muted tiny">ГОНКА · одно итоговое время · абсолютный и возрастной зачёт</div></div><span aria-hidden="true">⌄</span></button></div>';
+ if(!data){
+   return {title:null,html:top+'<div class="card stack" style="margin-top:12px"><b>Гонка Рекорда</b><div class="muted">'+esc(R.error||"Загружаем результаты и возрастные категории…")+'</div><button class="btn sm" data-racerefresh="'+esc(ev.id)+'">Обновить</button></div>',after:()=>{if(!R.loading&&!R.error)raceLoad(ev.id)}};
+ }
+ const formats=RACE_FORMATS.filter(([key])=>data.divisions.some(d=>d.kind===key));
+ if(!formats.some(([key])=>key===R.kind))R.kind=formats[0]?.[0]||"individual";
+ let kinds=data.divisions.filter(d=>d.kind===R.kind);
+ const levels=[...new Set(kinds.map(d=>d.level))];
+ if(!levels.includes(R.level))R.level=levels[0]||"standard";
+ if(levels.length>1)kinds=kinds.filter(d=>d.level===R.level);
+ const genders=[...new Set(kinds.map(d=>d.gender))].sort((a,b)=>({F:0,M:1,X:2}[a]-{F:0,M:1,X:2}[b]));
+ if(!genders.includes(R.gender))R.gender=genders[0]||"F";
+ kinds=kinds.filter(d=>d.gender===R.gender);
+ if(R.kind==="kids"){
+   const ages=kinds.map(d=>({id:d.id,label:(d.name.match(/\d+[–-]\d+/)||[])[0]||d.name}));
+   if(!ages.some(a=>a.id===R.kid))R.kid=ages[0]?.id||"";
+ }
+ const div=R.kind==="kids"?kinds.find(d=>d.id===R.kid):kinds[0];
+ const levelNav=levels.length>1?'<div class="race-pills" style="margin-top:12px">'+levels.map(l=>'<button data-race-level="'+l+'" aria-pressed="'+(l===R.level)+'">'+(l==="pro"?"PRO":"Обычная")+'</button>').join("")+'</div>':"";
+ const genderNav=genders.length>1?'<div class="race-pills" style="margin-top:10px">'+genders.map(g=>'<button data-race-gender="'+g+'" aria-pressed="'+(R.gender===g)+'">'+({F:"Женщины",M:"Мужчины",X:"Микст"}[g])+'</button>').join("")+'</div>':"";
+ const kidsNav=R.kind==="kids"?'<div class="race-pills" style="margin-top:10px">'+kinds.map(d=>'<button data-race-kid="'+esc(d.id)+'" aria-pressed="'+(R.kid===d.id)+'">'+esc((d.name.match(/\d+[–-]\d+/)||[])[0]||d.name)+'</button>').join("")+'</div>':"";
+ const ageNav=(R.kind==="individual"||R.kind==="pair")?
+   '<div class="muted tiny" style="margin-top:16px;margin-bottom:6px">Возрастной зачёт · нажми свою группу</div><div class="race-pills"><button data-race-age="all" aria-pressed="'+(R.age==="all")+'">Все возрасты</button>'+
+   RACE_AGES.map(([lo,hi])=>{const k=lo>=50?"50+":lo+"–"+hi;return '<button data-race-age="'+k+'" aria-pressed="'+(R.age===k)+'">'+k+'</button>';}).join("")+'</div>':
+   R.kind==="relay"?'<div class="race-pills" style="margin-top:12px"><button data-race-age="all" aria-pressed="'+(R.age==="all")+'">Все возрасты</button><button data-race-age="до 40" aria-pressed="'+(R.age==="до 40")+'">До 40</button><button data-race-age="40+" aria-pressed="'+(R.age==="40+")+'">40+</button></div>':"";
+ const head=top+'<div class="race-format race-pills" style="margin-top:12px">'+formats.map(([k,label])=>'<button data-race-kind="'+k+'" aria-pressed="'+(R.kind===k)+'">'+label+'</button>').join("")+'</div>'+levelNav+genderNav+kidsNav+ageNav;
+ if(!div)return {title:null,html:head+'<div class="empty">В этом дивизионе пока нет категории.</div>'};
+ let rows=div.entries;
+ let actualMerged=null;
+ if(R.kind==="individual"||R.kind==="pair"){
+   if(R.age!=="all"){
+     let matching=rows.find(row=>row.age!=null&&raceAgeKey(row.age)===R.age);
+     if(!matching && R.age!=="50+"){
+       const start=Number(R.age.split("–")[0]);
+       matching=rows.find(row=>{const parts=String(row.ageGroup||"").split("–").map(Number);
+         return parts.length===2&&Number.isFinite(parts[0])&&parts[0]<=start&&parts[1]>=start;});
+     }
+     if(matching){actualMerged=matching.ageGroup;rows=rows.filter(row=>row.ageGroup===actualMerged);}
+     else rows=[];
+   }
+ }else if(R.kind==="relay"&&R.age!=="all"){
+   rows=rows.filter(row=>row.ageGroup===R.age);
+ }
+ if(R.q.trim()){
+   const needle=R.q.trim().toLocaleLowerCase("ru");
+   rows=rows.filter(row=>(row.name+" "+row.members.join(" ")).toLocaleLowerCase("ru").includes(needle));
+ }
+ const scoreCount=div.entries.filter(row=>row.seconds!=null).length;
+ const summary='<div class="race-summary"><div><b>'+div.entries.length+'</b><span>участников / команд</span></div><div><b>'+scoreCount+'</b><span>финишировали</span></div><div><b>'+div.ageGroups.filter(g=>g.established).length+'</b><span>возрастных зачётов</span></div></div>';
+ const quorumMsg=!div.categoryEstablished&&div.registrations>0?
+   '<div class="rule small">В дивизионе пока меньше двух участников. Итоговый зачёт не считается состоявшимся, но результаты остаются в абсолютной таблице.</div>':"";
+ const groupMsg=R.age!=="all"&&actualMerged&&actualMerged!==R.age?
+  '<div class="rule small">Возрастная группа объединена по правилу минимум двух участников. Официальный зачёт: <b>'+esc(actualMerged)+'</b>. Абсолютные места не меняются.</div>':"";
+ const columns='<div class="race-thead"><span>Абс.</span><span>Участник / команда</span><span>Время</span><span>Возраст</span></div>';
+ const list=rows.length?rows.map((row,i)=>{
+   const primary=R.age==="all"?row.absolutePlace:row.agePlace;
+   const secondary=R.age==="all"?row.agePlace:row.absolutePlace;
+   const main=primary!=null?String(primary):"—";
+   const secondaryLabel=secondary!=null?(R.age==="all"?"Возраст: "+secondary:"Абсолют: "+secondary):"";
+   const ageText=row.ageGroup?row.ageGroup+(row.ageEstablished===false?" · не состоялась":""):
+     row.age!=null?(String(row.age).replace(".",",")+" лет"):"—";
+   return '<div class="race-result"><span class="race-place">'+main+'</span><div><b>'+esc(row.name)+'</b>'+
+      (row.members.length?'<div class="muted tiny">'+esc(row.members.join(" · "))+'</div>':"")+
+      (secondaryLabel?'<div class="muted tiny">'+secondaryLabel+' место</div>':"")+
+      (row.status!=="Финишировал"?'<div class="muted tiny">'+esc(row.status)+'</div>':"")+
+      '</div><strong class="mono">'+raceSeconds(row.seconds)+'</strong><span class="muted tiny">'+esc(ageText)+'</span></div>';
+ }).join(""):'<div class="empty">В этой возрастной группе участников или результатов пока нет.</div>';
+ const footer='<div class="rule small" style="margin-top:14px">Одно итоговое время на дистанции с учётом внесённых штрафов. Меньше — лучше. Абсолютное место и место по возрасту рассчитываются отдельно. Если возрастная группа не набрала 2 участников, она объединяется с более молодой; первый возрастной диапазон с одним участником не разыгрывается.</div>';
+ const toolbar='<div class="row wrap" style="margin-top:14px;gap:8px"><b class="sp">'+esc(div.name)+'</b>'+
+  '<button class="btn sm ghost" data-racerefresh="'+esc(ev.id)+'">Обновить</button>'+
+  (staff?'<button class="btn sm ghost" data-race-edit="'+esc(ev.id)+'">Ввод результатов</button><button class="btn sm ghost" data-race-export="'+esc(ev.id)+'">Excel · оба зачёта</button>':"")+
+  '</div><input class="inp" id="raceQ" placeholder="Найти атлета или команду" value="'+esc(R.q)+'" style="margin:10px 0" autocomplete="off">';
+ return {title:null,html:head+toolbar+summary+quorumMsg+groupMsg+'<div class="race-results">'+columns+list+'</div>'+footer};
+}
+
 const SCREENS = {
 home(){
   const ev = EVENTS.find(e=>isPub(e)&&e.status==="open") || EVENTS.find(e=>isPub(e)&&e.status!=="ended");
@@ -1186,7 +1316,11 @@ event(){
 },
 divisions(){
   const ev = EVENTS.find(e=>e.id===S.p.ev), type = S.p.type || "ind";
-  const ds = ev.divisions.filter(d=>d.type===type);
+  const race=isRaceEvent(ev), level=S.who!=="me"?"standard":(S.p.raceLevel||"standard");
+  const proIds=new Set(["race26-ind-fpro","race26-ind-mpro","race26-pair-fpro","race26-pair-mpro"]);
+  const source=ev.divisions.filter(d=>d.type===type);
+  const hasPro=race&&source.some(d=>proIds.has(d.id))&&S.who==="me";
+  const ds=hasPro?source.filter(d=>level==="pro"?proIds.has(d.id):!proIds.has(d.id)):source;
   const avail=[], off=[];
   ds.forEach(d=>{ const why=eligibility(ev,d); (why?off:avail).push({d,why}); });
   const gate = ds.some(d=>{ const w=eligibility(ev,d); return w===WHY_LOGIN || w===WHY_PROFILE; });
@@ -1208,6 +1342,8 @@ divisions(){
   return {title:"Категории", html:`
     <div class="muted small" style="margin-bottom:10px">${esc(ev.name)} · ${dHuman(ev.date)}${ev.ageMode==="year"?" · возраст по году рождения":""}</div>${whoSw}
     <div class="tabs" role="tablist">${[["ind","Индивидуальные"],["team","Командные"]].map(([k,t])=>`<button role="tab" aria-selected="${type===k}" data-dtype="${k}">${t}</button>`).join("")}</div>
+    ${hasPro?`<div class="card stack" style="margin-top:12px"><b>Выберите уровень нагрузки</b><div class="race-pills"><button data-race-reg-level="standard" aria-pressed="${level!=="pro"}">Обычная</button><button data-race-reg-level="pro" aria-pressed="${level==="pro"}">PRO · повышенные веса</button></div><div class="muted small">Возрастная группа определяется автоматически по дате рождения на день гонки. Не нужно выбирать 35+, 40+ или 45+ отдельно.</div></div>`:
+       race?`<div class="rule small" style="margin-top:10px">Возрастной зачёт определяется автоматически. Для пары — по среднему возрасту двух участников, для эстафеты — по среднему возрасту четырёх участников.</div>`:""}
     ${hasReg(ev.id,S.who)?`<div class="rule" style="margin-top:12px">${evDays(ev).length>1?"У этого участника уже есть регистрация на старт. В один день можно выступать только в одной категории: категории в те же дни закрыты, в другие дни — доступны.":"У этого участника уже есть регистрация на старт. В один день можно выступать только в одной категории, поэтому остальные категории закрыты."}</div>`:""}
     ${gate ? `<div class="rule stack" style="margin-top:12px"><span>${!USER?"Войдите на сайт и заполните анкету участника. После этого откроются категории, которые подходят вам по полу и возрасту, а если добавите в анкету детей — и детские категории.":"Заполните анкету участника: пол и дата рождения определяют, в какие категории можно записаться. Детей добавьте в той же анкете."}</span><button class="btn sm" style="align-self:flex-start" data-act="${!USER?"divlogin":"divprofile"}">${!USER?"Войти":"Заполнить анкету"}</button></div>
        <h2 class="sec">Категории</h2><div class="stack cards">${ds.map(d=>card({d,why:eligibility(ev,d)})).join("") || '<div class="empty">Категорий нет</div>'}</div>`
@@ -1363,6 +1499,7 @@ leaderboard(){
   if (!L.ev || !LE.some(e=>e.id===L.ev))
     return {title:null,html:'<div class="card stack" style="margin-top:12px"><h2>Выберите соревнование</h2><p class="muted small">Выберите старт, чтобы посмотреть зарегистрированных атлетов, команды и результаты.</p><button class="btn block" data-act="evsheet">Выбрать старт</button></div>',after:()=>setTimeout(()=>{if(S.route==="leaderboard"&&!S.lb.ev)evSheet();},0)};
   const ev0 = EVENTS.find(e=>e.id===L.ev);
+  if (isRaceEvent(ev0)) return raceBoardScreen(ev0);
   let month = null;
   if (ev0.permanent){ if (L.month!=="year" && !(ev0.months||[]).some(m=>m.id===L.month)) L.month = curMonth(ev0).id; month = L.month; }
   let ev = month==="year" ? leagueYear(ev0, L.div).ev : lbEv(ev0, month);
@@ -2557,10 +2694,11 @@ adminEvent(){
   ev.docs = ev.docs || [];
   const stHint = {draft:"Черновик видите только вы.",open:"Старт виден в приложении, запись открыта до даты окончания регистрации.",live:"Старт идёт: открыт лидерборд, для онлайн-стартов — сдача результатов.",ended:"Регистрация и сдача закрыты, лидерборд остаётся."}[adm.st];
   return {title: ev.name || "Новый старт", html:`<div class="stack">
-    ${EVENTS.some(e=>e.id===ev.id)?`<div class="row wrap" style="gap:8px"><button class="btn sm" data-adm-people="${ev.id}">Участники и заявки</button><button class="btn sm ghost" data-lbev="${ev.id}">Лидерборд</button></div>`:""}
+    ${EVENTS.some(e=>e.id===ev.id)?`<div class="row wrap" style="gap:8px"><button class="btn sm" data-adm-people="${ev.id}">Участники и заявки</button><button class="btn sm ghost" data-lbev="${ev.id}">Лидерборд</button>${isRaceEvent(ev)?`<button class="btn sm" data-race-event="${ev.id}">🏁 ГОНКА · зачёты</button>`:""}</div>`:""}
     <h2 class="sec" style="margin-top:0">Основное</h2>
     <label class="f">Название<input class="inp ${E.name?"err":""}" id="aName" value="${esc(ev.name)}" placeholder="Например, Детская Гонка Рекорда"></label>${fErr(E.name)}
     <label class="f">Подзаголовок<input class="inp" id="aEn" value="${esc(ev.en||"")}" placeholder="RECORD KIDS"></label>
+    ${isRaceEvent(ev)?'<div class="rule small"><b>🏁 Режим ГОНКА</b> · отдельные абсолютный и возрастной зачёты, одно итоговое время. Обычный CrossFit-подсчёт других стартов не затронут.</div>':""}
     ${ev.permanent ? `<h2 class="sec">Месяцы лиги</h2>
       <div class="card" style="padding:4px 14px">${[...(ev.months||[])].reverse().map(m=>`<div class="arow"><div class="sp"><b>${monthTitle(m.id)} ${m.id.slice(0,4)}</b><div class="muted tiny">${ev.workouts.filter(w=>w.month===m.id).length} заданий · ${m.done?"итоги подведены":`итоги ${dHuman(monthEnd(m.id))}`}</div></div>${m.done?'<span class="chip ok">Итоги</span>':'<span class="chip live">Идёт</span>'}</div>`).join("")}</div>
       ${adm.mAsk ? `<div class="panel stack" style="margin:0"><div class="small">Закрыть ${MON_NOM[+curMonth(ev).id.slice(5,7)-1]}? Места месяца зафиксируются и уйдут в таблицу года, откроется ${MON_NOM[+nextMonthId(curMonth(ev).id).slice(5,7)-1]} — добавьте в него задания.</div><div class="row"><button class="btn sm" data-act="mcloseyes">Подвести итоги</button><button class="btn sm ghost" data-act="mcloseno">Отмена</button></div></div>`
@@ -2699,6 +2837,7 @@ adminAudit(){return operationsAuditScreen();},
 adminCrewStats(){return crewStatisticsScreen();},
 adminResults(){
   const ev=curEv(); if (!ev) return {title:"Результаты", html:'<div class="empty">Старт не найден</div>'};
+  const raceShortcut=isRaceEvent(ev)?'<div class="card row wrap" style="margin-bottom:14px"><div class="sp"><b>ГОНКА</b><div class="muted tiny">Абсолютный рейтинг и возрастные группы · одно время</div></div><button class="btn sm" data-race-event="'+esc(ev.id)+'">Открыть зачёты гонки</button></div>':"";
   const R = adm.rq = adm.rq && adm.rq.ev===ev.id ? adm.rq : {ev:ev.id, q:"", div:"", miss:false};
   const owner = S.viewAs==="owner", pts = usesPoints(ev), q = R.q.trim().toLowerCase();
   const paid = ADM.REGS.filter(o=>o.event===ev.id && o.status==="paid");
@@ -2726,7 +2865,7 @@ adminResults(){
         ${owner?`<td class="pen"><input class="inp" data-pen="${L.reg}" value="${esc((ADM.PENALTIES||{})[L.reg]||"")}" placeholder="Нарушение, решение…" maxlength="500" autocomplete="off"></td>`:""}</tr>`; }).join("")}
     </tbody></table></div>`:'<div class="empty">У категории нет комплексов — добавьте их в редакторе старта</div>'}`;
   }).join("");
-  return {title:"Результаты", html:`<div class="muted small" style="margin-bottom:10px">${esc(ev.name)}${ev.permanent?" · "+monthTitle(curMonth(ev).id):ev.date?" · "+dHuman(ev.date):""}</div>
+  return {title:"Результаты", html:`${raceShortcut}<div class="muted small" style="margin-bottom:10px">${esc(ev.name)}${ev.permanent?" · "+monthTitle(curMonth(ev).id):ev.date?" · "+dHuman(ev.date):""}</div>
     <div class="resbar"><input class="inp" id="rqQ" type="search" placeholder="Поиск атлета или команды" value="${esc(R.q)}" autocomplete="off">
       <select class="inp" id="rqDiv" aria-label="Категория"><option value="">Все категории</option>${divs.map(d=>`<option value="${d.id}" ${d.id===R.div?"selected":""}>${esc(d.name)}</option>`).join("")}</select></div>
     <div class="row wrap" style="gap:8px;margin:10px 0 4px;align-items:center"><div class="pills" role="tablist" style="margin:0"><button role="tab" aria-selected="${!R.miss}" data-rqmiss="0">Все</button><button role="tab" aria-selected="${R.miss}" data-rqmiss="1">Не внесено</button></div>
@@ -3618,6 +3757,30 @@ document.addEventListener("click", e=>{
   if (ds.act==="cookies"){ cookieBar(true); return; }
   if (S.route==="adminEvent") syncEv(); else if (S.route==="adminDiv") syncDiv(); else if (S.route==="adminWod") syncWod(); else if (S.route==="adminSch") syncSch(); else if (S.route==="adminPromo") syncPromo(); else if (S.route==="admin") syncAcc();
   if (S.route==="club") syncTrial();
+  if (ds.raceEvent){
+    S.lb.ev=ds.raceEvent;S.lb.w=-1;S.lb.q="";S.lb.tab="ind";
+    const R=raceView();R.data=null;R.stamp=0;R.q="";R.age="all";R.kind="individual";R.level="standard";R.gender="F";
+    return tab("leaderboard",true);
+  }
+  if(ds.raceRegLevel){S.p.raceLevel=ds.raceRegLevel;return render();}
+  if(ds.raceKind){const R=raceView();R.kind=ds.raceKind;R.age="all";R.q="";return render();}
+  if(ds.raceLevel){const R=raceView();R.level=ds.raceLevel;R.age="all";return render();}
+  if(ds.raceGender){const R=raceView();R.gender=ds.raceGender;R.age="all";return render();}
+  if(ds.raceAge){raceView().age=ds.raceAge;return render();}
+  if(ds.raceKid){raceView().kid=ds.raceKid;return render();}
+  if(ds.raceExport){
+    const data=raceView().data;if(!data||data.eventId!==ds.raceExport)return toast("Сначала загрузите результаты гонки");
+    const rows=[["Формат","Дивизион","Атлет / команда","Состав","Возраст / средний возраст","Возрастной зачёт","Абсолютное место","Место по возрасту","Итоговое время","Состояние зачёта"]];
+    for(const d of data.divisions)for(const r of d.entries)rows.push([
+      d.kind,d.name,r.name,(r.members||[]).join(" / "),r.age??"",r.ageGroup||"",
+      r.absolutePlace??"",r.agePlace??"",raceSeconds(r.seconds),
+      !d.categoryEstablished?"Дивизион не состоялся":r.ageEstablished===false?"Возрастной зачёт не состоялся":""
+    ]);
+    downloadCsv("record-race-absolute-age-"+ds.raceExport+".csv",rows);
+    return;
+  }
+  if(ds.racerefresh){raceLoad(ds.racerefresh,true);return;}
+  if(ds.raceEdit){adm.evId=ds.raceEdit;return go("adminResults",{});}
   if (clubClick(t, ds)) return;
   if (adminClick(t, ds)) return;
   if (ds.act==="back") return back();
@@ -3767,6 +3930,10 @@ document.addEventListener("input", e=>{
     if (v.trim().length<2){ A.list=null; refocus(); } else athTimer=setTimeout(()=>{ api("POST","/api/admin/athletes",{q:v}).then(r=>{ if (A.q===v){ A.list=r.list; refocus(); } }).catch(err=>toast(err.message)); }, 300);
     return; }
   if (e.target.id==="rqQ"){ adm.rq.q=e.target.value; const pos=e.target.selectionStart; render(); const i=document.getElementById("rqQ"); if (i){ i.focus(); try{ i.setSelectionRange(pos,pos); }catch(_){} } return; }
+  if (e.target.id==="raceQ"){
+    const R=raceView();R.q=e.target.value;const pos=e.target.selectionStart;render();
+    const el=document.getElementById("raceQ");if(el){el.focus();el.setSelectionRange(pos,pos);}return;
+  }
   if (e.target.id==="lbq"){ S.lb.q=e.target.value; const pos=e.target.selectionStart; render(); const i=document.getElementById("lbq"); i.focus(); i.setSelectionRange(pos,pos); }
 });
 document.addEventListener("submit", e=>{

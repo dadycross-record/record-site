@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const https = require('https');
 const zlib = require('zlib');
 const { Pool } = require('./lib/pg');
+const { raceBoard } = require('./lib/race-leaderboard');
 const mail = require('./lib/mail');
 const tg = require('./lib/tg');
 
@@ -421,6 +422,21 @@ const routes = [];
 const route = (method, pattern, fn, opts = {}) => routes.push({ method, re: new RegExp('^' + pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)') + '$'), fn, opts });
 
 route('GET', '/api/health', async () => ({ ok: true }));
+/* Dedicated RECORD RACE standings. Existing CrossFit rankings remain untouched. */
+route('GET', '/api/race/leaderboard/:id', async (req, res, u, body, params) => {
+  const ev = ((await rawContent()).EVENTS || []).find(e => e.id === params.id);
+  const isRace = ev && (ev.raceMode === 'race' || ev.id === 'evmvwkp907');
+  if (!isRace) throw new HttpError(404, 'Лидерборд гонки не найден');
+  if (ev.status === 'draft' && !['owner','admin'].includes(u?.role)) throw new HttpError(404, 'Лидерборд гонки не найден');
+  const registrations = (await db.query(
+    "select id, pub, event_id, div_id, who, user_id, athlete_user, person, team, status, team_role from registrations where event_id=$1 and status in ('new','paid','refund_requested') order by created_at",
+    [ev.id])).rows;
+  const scores = (await db.query(
+    "select s.reg_id, s.workout_id, s.value, s.state from scores s join registrations r on r.id=s.reg_id where r.event_id=$1 and s.state='accepted' order by s.created_at",
+    [ev.id])).rows;
+  return raceBoard(ev, registrations, scores);
+});
+
 
 route('GET', '/api/content', async (req, res) => {
   const c = await publicContent();
