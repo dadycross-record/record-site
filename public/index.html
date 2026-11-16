@@ -1126,7 +1126,7 @@ function raceLoad(eventId, force=false){
 }
 const raceSeconds=t=>t==null?"—":(Math.floor(t/60)+":"+String(Math.floor(t%60)).padStart(2,"0")+
   (Math.round(t*100)%100 ? ","+String(Math.round(t*100)%100).padStart(2,"0"):""));
-const raceAgeKey=a=>a>=50?"50+":RACE_AGES.find(([min,max])=>a>=min&&a<=max)?.join("–")||"";
+const raceAgeKey=a=>a>=50?"50+":RACE_AGES.find(([min,max])=>a>=min&&a<max+1)?.join("–")||"";
 function raceBoardScreen(ev){
  const R=raceView(), data=R.data&&R.data.eventId===ev.id?R.data:null;
  const staff=["owner","admin","judge"].includes(S.viewAs);
