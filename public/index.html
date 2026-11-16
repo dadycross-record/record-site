@@ -1309,7 +1309,11 @@ event(){
 },
 divisions(){
   const ev = EVENTS.find(e=>e.id===S.p.ev), type = S.p.type || "ind";
-  const ds = ev.divisions.filter(d=>d.type===type);
+  const race=isRaceEvent(ev), level=S.who!=="me"?"standard":(S.p.raceLevel||"standard");
+  const proIds=new Set(["race26-ind-fpro","race26-ind-mpro","race26-pair-fpro","race26-pair-mpro"]);
+  const source=ev.divisions.filter(d=>d.type===type);
+  const hasPro=race&&source.some(d=>proIds.has(d.id))&&S.who==="me";
+  const ds=hasPro?source.filter(d=>level==="pro"?proIds.has(d.id):!proIds.has(d.id)):source;
   const avail=[], off=[];
   ds.forEach(d=>{ const why=eligibility(ev,d); (why?off:avail).push({d,why}); });
   const gate = ds.some(d=>{ const w=eligibility(ev,d); return w===WHY_LOGIN || w===WHY_PROFILE; });
@@ -1331,6 +1335,8 @@ divisions(){
   return {title:"Категории", html:`
     <div class="muted small" style="margin-bottom:10px">${esc(ev.name)} · ${dHuman(ev.date)}${ev.ageMode==="year"?" · возраст по году рождения":""}</div>${whoSw}
     <div class="tabs" role="tablist">${[["ind","Индивидуальные"],["team","Командные"]].map(([k,t])=>`<button role="tab" aria-selected="${type===k}" data-dtype="${k}">${t}</button>`).join("")}</div>
+    ${hasPro?`<div class="card stack" style="margin-top:12px"><b>Выберите уровень нагрузки</b><div class="race-pills"><button data-race-reg-level="standard" aria-pressed="${level!=="pro"}">Обычная</button><button data-race-reg-level="pro" aria-pressed="${level==="pro"}">PRO · повышенные веса</button></div><div class="muted small">Возрастная группа определяется автоматически по дате рождения на день гонки. Не нужно выбирать 35+, 40+ или 45+ отдельно.</div></div>`:
+       race?`<div class="rule small" style="margin-top:10px">Возрастной зачёт определяется автоматически. Для пары — по среднему возрасту двух участников, для эстафеты — по среднему возрасту четырёх участников.</div>`:""}
     ${hasReg(ev.id,S.who)?`<div class="rule" style="margin-top:12px">${evDays(ev).length>1?"У этого участника уже есть регистрация на старт. В один день можно выступать только в одной категории: категории в те же дни закрыты, в другие дни — доступны.":"У этого участника уже есть регистрация на старт. В один день можно выступать только в одной категории, поэтому остальные категории закрыты."}</div>`:""}
     ${gate ? `<div class="rule stack" style="margin-top:12px"><span>${!USER?"Войдите на сайт и заполните анкету участника. После этого откроются категории, которые подходят вам по полу и возрасту, а если добавите в анкету детей — и детские категории.":"Заполните анкету участника: пол и дата рождения определяют, в какие категории можно записаться. Детей добавьте в той же анкете."}</span><button class="btn sm" style="align-self:flex-start" data-act="${!USER?"divlogin":"divprofile"}">${!USER?"Войти":"Заполнить анкету"}</button></div>
        <h2 class="sec">Категории</h2><div class="stack cards">${ds.map(d=>card({d,why:eligibility(ev,d)})).join("") || '<div class="empty">Категорий нет</div>'}</div>`
@@ -3750,6 +3756,7 @@ document.addEventListener("click", e=>{
     const R=raceView();R.data=null;R.stamp=0;R.q="";R.age="all";R.kind="individual";R.level="standard";R.gender="F";
     return tab("leaderboard",true);
   }
+  if(ds.raceRegLevel){S.p.raceLevel=ds.raceRegLevel;return render();}
   if(ds.raceKind){const R=raceView();R.kind=ds.raceKind;R.age="all";R.q="";return render();}
   if(ds.raceLevel){const R=raceView();R.level=ds.raceLevel;R.age="all";return render();}
   if(ds.raceGender){const R=raceView();R.gender=ds.raceGender;R.age="all";return render();}
