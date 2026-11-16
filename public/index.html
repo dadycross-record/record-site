@@ -1161,7 +1161,12 @@ function raceBoardScreen(ev){
  let actualMerged=null;
  if(R.kind==="individual"||R.kind==="pair"){
    if(R.age!=="all"){
-     const matching=rows.find(row=>row.age!=null&&raceAgeKey(row.age)===R.age);
+     let matching=rows.find(row=>row.age!=null&&raceAgeKey(row.age)===R.age);
+     if(!matching && R.age!=="50+"){
+       const start=Number(R.age.split("–")[0]);
+       matching=rows.find(row=>{const parts=String(row.ageGroup||"").split("–").map(Number);
+         return parts.length===2&&Number.isFinite(parts[0])&&parts[0]<=start&&parts[1]>=start;});
+     }
      if(matching){actualMerged=matching.ageGroup;rows=rows.filter(row=>row.ageGroup===actualMerged);}
      else rows=[];
    }
