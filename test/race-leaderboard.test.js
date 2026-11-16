@@ -30,13 +30,13 @@ test('absolute standings are independent from age groups, and underfilled bands 
  const rr=[reg('a',d,'1980-01-01'),reg('b',d,'1987-01-01'),reg('c',d,'1988-01-01'),reg('d',d,'1995-01-01')];
  const s=[sc('a',d,300),sc('b',d,400),sc('c',d,500),sc('d',d,350)];
  const board=raceBoard(event,rr,s).divisions.find(x=>x.id===d);
- assert.equal(board.entries.find(r=>r.name.startsWith('a ')).absolutePlace,1);
- assert.equal(board.entries.find(r=>r.name.startsWith('d ')).absolutePlace,2);
- assert.equal(board.entries.find(r=>r.name.startsWith('a ')).ageGroup,'35–49');
- assert.equal(board.entries.find(r=>r.name.startsWith('b ')).ageGroup,'35–49');
- assert.equal(board.entries.find(r=>r.name.startsWith('c ')).ageGroup,'35–49');
- assert.equal(board.entries.find(r=>r.name.startsWith('a ')).agePlace,1);
- assert.equal(board.entries.find(r=>r.name.startsWith('d ')).ageEstablished,false);
+ assert.equal(board.entries.find(r=>r.name.endsWith(' a')).absolutePlace,1);
+ assert.equal(board.entries.find(r=>r.name.endsWith(' d')).absolutePlace,2);
+ assert.equal(board.entries.find(r=>r.name.endsWith(' a')).ageGroup,'35–49');
+ assert.equal(board.entries.find(r=>r.name.endsWith(' b')).ageGroup,'35–49');
+ assert.equal(board.entries.find(r=>r.name.endsWith(' c')).ageGroup,'35–49');
+ assert.equal(board.entries.find(r=>r.name.endsWith(' a')).agePlace,1);
+ assert.equal(board.entries.find(r=>r.name.endsWith(' d')).ageEstablished,false);
 });
 test('PRO and standard divisions cannot mix; result requires accepted state',()=>{
  const rr=[reg('a','race26-ind-f','1980-01-01'),reg('b','race26-ind-fpro','1980-01-01')];
