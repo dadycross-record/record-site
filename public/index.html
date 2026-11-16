@@ -2853,7 +2853,7 @@ adminResults(){
         ${owner?`<td class="pen"><input class="inp" data-pen="${L.reg}" value="${esc((ADM.PENALTIES||{})[L.reg]||"")}" placeholder="Нарушение, решение…" maxlength="500" autocomplete="off"></td>`:""}</tr>`; }).join("")}
     </tbody></table></div>`:'<div class="empty">У категории нет комплексов — добавьте их в редакторе старта</div>'}`;
   }).join("");
-  return {title:"Результаты", html:`<div class="muted small" style="margin-bottom:10px">${esc(ev.name)}${ev.permanent?" · "+monthTitle(curMonth(ev).id):ev.date?" · "+dHuman(ev.date):""}</div>
+  return {title:"Результаты", html:`${raceShortcut}<div class="muted small" style="margin-bottom:10px">${esc(ev.name)}${ev.permanent?" · "+monthTitle(curMonth(ev).id):ev.date?" · "+dHuman(ev.date):""}</div>
     <div class="resbar"><input class="inp" id="rqQ" type="search" placeholder="Поиск атлета или команды" value="${esc(R.q)}" autocomplete="off">
       <select class="inp" id="rqDiv" aria-label="Категория"><option value="">Все категории</option>${divs.map(d=>`<option value="${d.id}" ${d.id===R.div?"selected":""}>${esc(d.name)}</option>`).join("")}</select></div>
     <div class="row wrap" style="gap:8px;margin:10px 0 4px;align-items:center"><div class="pills" role="tablist" style="margin:0"><button role="tab" aria-selected="${!R.miss}" data-rqmiss="0">Все</button><button role="tab" aria-selected="${R.miss}" data-rqmiss="1">Не внесено</button></div>
