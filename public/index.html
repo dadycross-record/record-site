@@ -1173,7 +1173,7 @@ function raceBoardScreen(ev){
    (R.kind==="kids"?select("kid","Возраст",kidOpts,R.kid):ageOpts.length?select("age","Возраст",ageOpts,R.age,true):""))+
    '</div>';
  if(R.mode==="heats"){
-   const all=data.divisions.filter(d=>d.entries.length);
+   const all=data.divisions;
    const assigned=new Set();
    const heats=(ev.schedule||[]).filter(s=>Array.isArray(s[4])&&s[4].length);
    const days=[...new Set(heats.map(s=>s[3]||ev.date))].sort();
@@ -2052,6 +2052,7 @@ function promoPreview(){
 function syncSch(){
   const g=id=>document.getElementById(id), s=adm.sc; if(!s || !g("sTime")) return;
   s.time=g("sTime").value.trim(); s.title=g("sTitle").value; s.desc=g("sDesc").value; if (g("sDay")) s.day=g("sDay").value;
+  if(isRaceEvent(curEv()))s.divs=[...document.querySelectorAll('[data-heatdiv]:checked')].map(x=>x.value);
 }
 /* moving the first day shifts the whole event, keeping its length and the day of every item */
 function shiftEvent(ev, oldDate){
@@ -2414,7 +2415,7 @@ function adminClick(t, ds){
   if (ds.act==="mcloseyes"){ const m=curMonth(ev); m.done=true; const nx=nextMonthId(m.id); if (!ev.months.some(x=>x.id===nx)) ev.months.push({id:nx}); adm.mAsk=false; render(); toast(`Итоги: ${MON_NOM[+m.id.slice(5,7)-1]} закрыт. Открыт ${MON_NOM[+nx.slice(5,7)-1]} — добавьте задания`); return true; }
   if (ds.asch!==undefined){
     adm.schIdx = ds.asch==="new" ? null : +ds.asch; const s = adm.schIdx===null ? null : ev.schedule[adm.schIdx];
-    adm.sc = s ? {time:s[0],title:s[1],desc:s[2]||"",day:evDays(ev).includes(s[3])?s[3]:evDays(ev)[0]} : {time:"10:00",title:"",desc:"",day:ds.day||evDays(ev)[0]};
+    adm.sc = s ? {time:s[0],title:s[1],desc:s[2]||"",day:evDays(ev).includes(s[3])?s[3]:evDays(ev)[0],divs:Array.isArray(s[4])?s[4].filter(id=>ev.divisions.some(d=>d.id===id)):[]} : {time:"10:00",title:"",desc:"",day:ds.day||evDays(ev)[0],divs:[]};
     adm.serr={}; go("adminSch",{}); return true;
   }
   if (ds.aschdel!==undefined){ ev.schedule.splice(+ds.aschdel,1); render(); return true; }
@@ -2424,7 +2425,7 @@ function adminClick(t, ds){
     if (!s.time) e.time="Укажите время";
     if (!s.title.trim()) e.title="Напишите, что происходит";
     adm.serr=e; if (Object.keys(e).length){ render(); return true; }
-    const dl=evDays(ev), row=[s.time.padStart(5,"0"),s.title.trim(),s.desc.trim()]; if (ev.format!=="online") row[3]=dl.includes(s.day)?s.day:dl[0];
+    const dl=evDays(ev), row=[s.time.padStart(5,"0"),s.title.trim(),s.desc.trim()]; if (ev.format!=="online") row[3]=dl.includes(s.day)?s.day:dl[0]; if(isRaceEvent(ev)&&s.divs?.length)row[4]=s.divs.filter(id=>ev.divisions.some(d=>d.id===id));
     if (adm.schIdx===null) ev.schedule.push(row); else ev.schedule[adm.schIdx]=row;
     adm.err.days=null; back(); toast("Программа обновлена"); return true;
   }
@@ -2767,7 +2768,7 @@ adminEvent(){
     ${ev.permanent?"":`<h2 class="sec">Программа${multi?" по дням":""}</h2>
     ${days.map(d=>{ const its=ev.schedule.map((s,i)=>({s,i})).filter(x=>on || (days.includes(x.s[3])?x.s[3]:days[0])===d).sort((a,b)=>a.s[0].localeCompare(b.s[0]));
       return `<div class="card" style="padding:4px 14px">${multi?`<div class="arow"><b class="sp" style="color:var(--accent)">${dayLabel(ev,d)}</b><span class="muted tiny">${its.length} пункт.</span></div>`:""}
-      ${its.map(({s,i})=>`<div class="arow"><span class="mono" style="color:var(--accent);min-width:46px">${esc(s[0])}</span><div class="sp"><b>${esc(s[1])}</b>${s[2]?`<div class="muted tiny">${esc(s[2])}</div>`:""}</div><button class="iconbtn sm" data-asch="${i}" aria-label="Изменить пункт">${IC.edit}</button><button class="iconbtn sm" data-aschdel="${i}" aria-label="Удалить пункт">${IC.del}</button></div>`).join("")}
+      ${its.map(({s,i})=>`<div class="arow"><span class="mono" style="color:var(--accent);min-width:46px">${esc(s[0])}</span><div class="sp"><b>${esc(s[1])}</b>${s[2]?`<div class="muted tiny">${esc(s[2])}</div>`:""}${isRaceEvent(ev)&&s[4]?.length?`<div class="muted tiny">Заход · ${s[4].length} категорий</div>`:""}</div><button class="iconbtn sm" data-asch="${i}" aria-label="Изменить пункт">${IC.edit}</button><button class="iconbtn sm" data-aschdel="${i}" aria-label="Удалить пункт">${IC.del}</button></div>`).join("")}
       <div class="arow"><button class="btn sm ghost" data-asch="new" data-day="${d}">+ Пункт${multi?" в этот день":""}</button></div></div>`; }).join('<div style="height:8px"></div>')}
     ${fErr(E.days)}`}
     <h2 class="sec">Баннер старта</h2>
@@ -2854,6 +2855,10 @@ adminSch(){
     <label class="f">${on?"Когда":"Время"}<input class="inp mono ${E.time?"err":""}" id="sTime" value="${esc(s.time)}" placeholder="${on?"01.10":"10:30"}" ${on?"":'inputmode="numeric"'}></label>${fErr(E.time)}
     <label class="f">Что происходит<input class="inp ${E.title?"err":""}" id="sTitle" value="${esc(s.title)}" placeholder="Квалификация, потоки 1–4"></label>${fErr(E.title)}
     <label class="f">Подробности<input class="inp" id="sDesc" value="${esc(s.desc)}" placeholder="Необязательно"></label>
+    ${isRaceEvent(ev)?`<div class="card stack" style="gap:8px"><b>Категории этого захода</b>
+      <div class="muted tiny">Если это регистрация, награждение или общий пункт программы, оставьте все пустыми. Для настоящего захода отметьте категории, чтобы они появились в списке по времени.</div>
+      <div style="max-height:260px;overflow-y:auto;display:grid;gap:7px">${ev.divisions.map(d=>`<label class="check"><input type="checkbox" data-heatdiv value="${esc(d.id)}" ${s.divs?.includes(d.id)?"checked":""}><span>${esc(d.name)}</span></label>`).join("")}</div>
+    </div>`:""}
     <button class="btn block" data-act="ssave">${adm.schIdx===null?"Добавить в программу":"Сохранить"}</button>
   </div>`};
 },
