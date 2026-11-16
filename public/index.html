@@ -1107,7 +1107,7 @@ function evCount(ev){
 
 /* RECORD RACE uses one finish time and two independent standings (absolute and age).
    All other competitions continue using the original CrossFit leaderboard. */
-const isRaceEvent = ev => !!ev && (ev.raceMode==="race" || ev.id==="evmvwkp907");
+const isRaceEvent = ev => !!ev && ev.id==="evmvwkp907";
 const RACE_FORMATS=[["individual","Личный"],["pair","Пары"],["relay","Эстафета"],["kids","Дети"],["first","Первый старт"],["forces","Силовые ведомства"]];
 const RACE_AGES=[[16,24],[25,29],[30,34],[35,39],[40,44],[45,49],[50,89]];
 const raceView=()=>S.race||(S.race={kind:"individual",level:"standard",gender:"F",age:"all",kid:"",q:"",stamp:0,data:null,error:"",loading:false});
@@ -1979,7 +1979,6 @@ function validateEv(ev){
 function syncEv(){
   const ev=curEv(), g=id=>document.getElementById(id); if(!ev || !g("aName")) return;
   ev.name=g("aName").value; ev.en=g("aEn").value;
-  if(g("aRaceMode")) ev.raceMode=g("aRaceMode").checked?"race":undefined;
   if (g("aDate")) ev.date=g("aDate").value; if (g("aRegTo")) ev.regTo=g("aRegTo").value;
   if (g("aR100")) ev.r100=g("aR100").value; if (g("aR50")) ev.r50=g("aR50").value;
   if (g("aRefOn")) ev.hideRefund = !g("aRefOn").checked;
@@ -2699,7 +2698,7 @@ adminEvent(){
     <h2 class="sec" style="margin-top:0">Основное</h2>
     <label class="f">Название<input class="inp ${E.name?"err":""}" id="aName" value="${esc(ev.name)}" placeholder="Например, Детская Гонка Рекорда"></label>${fErr(E.name)}
     <label class="f">Подзаголовок<input class="inp" id="aEn" value="${esc(ev.en||"")}" placeholder="RECORD KIDS"></label>
-    <label class="f" style="display:flex;gap:10px;align-items:flex-start"><input id="aRaceMode" type="checkbox" ${isRaceEvent(ev)?"checked":""} style="margin-top:4px"><span><b>ГОНКА · отдельный лидерборд</b><small class="muted" style="display:block">Одно итоговое время, абсолютный и возрастной зачёты. Для других стартов обычный CrossFit-подсчёт не изменяется.</small></span></label>
+    ${isRaceEvent(ev)?'<div class="rule small"><b>🏁 Режим ГОНКА</b> · отдельные абсолютный и возрастной зачёты, одно итоговое время. Обычный CrossFit-подсчёт других стартов не затронут.</div>':""}
     ${ev.permanent ? `<h2 class="sec">Месяцы лиги</h2>
       <div class="card" style="padding:4px 14px">${[...(ev.months||[])].reverse().map(m=>`<div class="arow"><div class="sp"><b>${monthTitle(m.id)} ${m.id.slice(0,4)}</b><div class="muted tiny">${ev.workouts.filter(w=>w.month===m.id).length} заданий · ${m.done?"итоги подведены":`итоги ${dHuman(monthEnd(m.id))}`}</div></div>${m.done?'<span class="chip ok">Итоги</span>':'<span class="chip live">Идёт</span>'}</div>`).join("")}</div>
       ${adm.mAsk ? `<div class="panel stack" style="margin:0"><div class="small">Закрыть ${MON_NOM[+curMonth(ev).id.slice(5,7)-1]}? Места месяца зафиксируются и уйдут в таблицу года, откроется ${MON_NOM[+nextMonthId(curMonth(ev).id).slice(5,7)-1]} — добавьте в него задания.</div><div class="row"><button class="btn sm" data-act="mcloseyes">Подвести итоги</button><button class="btn sm ghost" data-act="mcloseno">Отмена</button></div></div>`
