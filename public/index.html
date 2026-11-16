@@ -1109,7 +1109,7 @@ function evCount(ev){
    All other competitions continue using the original CrossFit leaderboard. */
 const isRaceEvent = ev => !!ev && ev.id==="evmvwkp907";
 const RACE_FORMATS=[["individual","Личный"],["pair","Пары"],["relay","Эстафета"],["kids","Дети"],["first","Первый старт"],["forces","Силовые ведомства"]];
-const RACE_AGES=[[16,24],[25,29],[30,34],[35,39],[40,44],[45,49],[50,89]];
+const RACE_AGES=[[16,24],[25,29],[30,34],[35,39],[40,44],[45,49],[50,54],[55,59],[60,64],[65,69],[70,74],[75,79],[80,84],[85,89]];
 const raceView=()=>S.race||(S.race={kind:"individual",level:"standard",gender:"F",age:"all",kid:"",q:"",stamp:0,data:null,error:"",loading:false});
 function raceLoad(eventId, force=false){
  const R=raceView();
@@ -1126,7 +1126,7 @@ function raceLoad(eventId, force=false){
 }
 const raceSeconds=t=>t==null?"—":(Math.floor(t/60)+":"+String(Math.floor(t%60)).padStart(2,"0")+
   (Math.round(t*100)%100 ? ","+String(Math.round(t*100)%100).padStart(2,"0"):""));
-const raceAgeKey=a=>a>=50?"50+":RACE_AGES.find(([min,max])=>a>=min&&a<max+1)?.join("–")||"";
+const raceAgeKey=a=>RACE_AGES.find(([min,max])=>a>=min&&a<=max)?.join("–")||"";
 function raceBoardScreen(ev){
  const R=raceView(), data=R.data&&R.data.eventId===ev.id?R.data:null;
  const staff=["owner","admin","judge"].includes(S.viewAs);
@@ -1153,7 +1153,7 @@ function raceBoardScreen(ev){
  const kidsNav=R.kind==="kids"?'<div class="race-pills" style="margin-top:10px">'+kinds.map(d=>'<button data-race-kid="'+esc(d.id)+'" aria-pressed="'+(R.kid===d.id)+'">'+esc((d.name.match(/\d+[–-]\d+/)||[])[0]||d.name)+'</button>').join("")+'</div>':"";
  const ageNav=(R.kind==="individual"||R.kind==="pair")?
    '<div class="muted tiny" style="margin-top:16px;margin-bottom:6px">Возрастной зачёт · нажми свою группу</div><div class="race-pills"><button data-race-age="all" aria-pressed="'+(R.age==="all")+'">Все возрасты</button>'+
-   RACE_AGES.map(([lo,hi])=>{const k=lo>=50?"50+":lo+"–"+hi;return '<button data-race-age="'+k+'" aria-pressed="'+(R.age===k)+'">'+k+'</button>';}).join("")+'</div>':
+   RACE_AGES.map(([lo,hi])=>{const k=lo+"–"+hi;return '<button data-race-age="'+k+'" aria-pressed="'+(R.age===k)+'">'+k+'</button>';}).join("")+'</div>':
    R.kind==="relay"?'<div class="race-pills" style="margin-top:12px"><button data-race-age="all" aria-pressed="'+(R.age==="all")+'">Все возрасты</button><button data-race-age="до 40" aria-pressed="'+(R.age==="до 40")+'">До 40</button><button data-race-age="40+" aria-pressed="'+(R.age==="40+")+'">40+</button></div>':"";
  const head=top+'<div class="race-format race-pills" style="margin-top:12px">'+formats.map(([k,label])=>'<button data-race-kind="'+k+'" aria-pressed="'+(R.kind===k)+'">'+label+'</button>').join("")+'</div>'+levelNav+genderNav+kidsNav+ageNav;
  if(!div)return {title:null,html:head+'<div class="empty">В этом дивизионе пока нет категории.</div>'};
@@ -1162,7 +1162,7 @@ function raceBoardScreen(ev){
  if(R.kind==="individual"||R.kind==="pair"){
    if(R.age!=="all"){
      let matching=rows.find(row=>row.age!=null&&raceAgeKey(row.age)===R.age);
-     if(!matching && R.age!=="50+"){
+     if(!matching){
        const start=Number(R.age.split("–")[0]);
        matching=rows.find(row=>{const parts=String(row.ageGroup||"").split("–").map(Number);
          return parts.length===2&&Number.isFinite(parts[0])&&parts[0]<=start&&parts[1]>=start;});
