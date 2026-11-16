@@ -563,6 +563,14 @@ h2.ch{font-family:var(--f-display);font-weight:800;font-size:clamp(24px,7vw,40px
 .race-pills button{appearance:none;border:1px solid var(--line);border-radius:999px;padding:9px 13px;background:var(--surface);color:var(--text);font:inherit;font-size:13px;font-weight:700;white-space:nowrap;cursor:pointer}
 .race-pills button[aria-pressed="true"]{background:var(--accent);color:#111;border-color:var(--accent)}
 .race-format button{font-size:14px}
+.race-filters{display:flex;gap:9px;overflow-x:auto;align-items:flex-end;padding:12px 0 7px;scrollbar-width:thin}
+.race-filter{display:flex;flex-direction:column;gap:5px;flex:0 0 auto;min-width:105px}
+.race-filter span{font-size:11px;color:var(--muted);font-weight:700}
+.race-filter .inp{min-width:112px;max-width:190px;height:42px;font-size:13px;font-weight:650;padding:7px 27px 7px 9px}
+.race-filter-wide .inp{min-width:138px}
+.race-heat{display:grid;grid-template-columns:65px minmax(0,1fr);gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+.race-heat:last-child{border-bottom:0}
+.race-heat-divs{display:grid;gap:5px;margin-top:8px}
 .race-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0 14px}
 .race-summary div{display:flex;flex-direction:column;gap:3px;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--surface)}
 .race-summary b{font-size:20px;font-variant-numeric:tabular-nums}
@@ -1110,7 +1118,7 @@ function evCount(ev){
 const isRaceEvent = ev => !!ev && ev.id==="evmvwkp907";
 const RACE_FORMATS=[["individual","Личный"],["pair","Пары"],["relay","Эстафета"],["kids","Дети"],["first","Первый старт"],["forces","Силовые ведомства"]];
 const RACE_AGES=[[16,24],[25,29],[30,34],[35,39],[40,44],[45,49],[50,54],[55,59],[60,64],[65,69],[70,74],[75,79],[80,84],[85,89]];
-const raceView=()=>S.race||(S.race={kind:"individual",level:"standard",gender:"F",age:"all",kid:"",q:"",stamp:0,data:null,error:"",loading:false});
+const raceView=()=>S.race||(S.race={kind:"individual",level:"standard",gender:"F",age:"all",kid:"",q:"",mode:"results",stamp:0,data:null,error:"",loading:false});
 function raceLoad(eventId, force=false){
  const R=raceView();
  if(R.loading)return;
@@ -1148,14 +1156,44 @@ function raceBoardScreen(ev){
    if(!ages.some(a=>a.id===R.kid))R.kid=ages[0]?.id||"";
  }
  const div=R.kind==="kids"?kinds.find(d=>d.id===R.kid):kinds[0];
- const levelNav=levels.length>1?'<div class="race-pills" style="margin-top:12px">'+levels.map(l=>'<button data-race-level="'+l+'" aria-pressed="'+(l===R.level)+'">'+(l==="pro"?"PRO":"Обычная")+'</button>').join("")+'</div>':"";
- const genderNav=genders.length>1?'<div class="race-pills" style="margin-top:10px">'+genders.map(g=>'<button data-race-gender="'+g+'" aria-pressed="'+(R.gender===g)+'">'+({F:"Женщины",M:"Мужчины",X:"Микст"}[g])+'</button>').join("")+'</div>':"";
- const kidsNav=R.kind==="kids"?'<div class="race-pills" style="margin-top:10px">'+kinds.map(d=>'<button data-race-kid="'+esc(d.id)+'" aria-pressed="'+(R.kid===d.id)+'">'+esc((d.name.match(/\d+[–-]\d+/)||[])[0]||d.name)+'</button>').join("")+'</div>':"";
- const ageNav=(R.kind==="individual"||R.kind==="pair")?
-   '<div class="muted tiny" style="margin-top:16px;margin-bottom:6px">Возрастной зачёт · нажми свою группу</div><div class="race-pills"><button data-race-age="all" aria-pressed="'+(R.age==="all")+'">Все возрасты</button>'+
-   RACE_AGES.map(([lo,hi])=>{const k=lo+"–"+hi;return '<button data-race-age="'+k+'" aria-pressed="'+(R.age===k)+'">'+k+'</button>';}).join("")+'</div>':
-   R.kind==="relay"?'<div class="race-pills" style="margin-top:12px"><button data-race-age="all" aria-pressed="'+(R.age==="all")+'">Все возрасты</button><button data-race-age="до 40" aria-pressed="'+(R.age==="до 40")+'">До 40</button><button data-race-age="40+" aria-pressed="'+(R.age==="40+")+'">40+</button></div>':"";
- const head=top+'<div class="race-format race-pills" style="margin-top:12px">'+formats.map(([k,label])=>'<button data-race-kind="'+k+'" aria-pressed="'+(R.kind===k)+'">'+label+'</button>').join("")+'</div>'+levelNav+genderNav+kidsNav+ageNav;
+
+ const option=(value,label,current)=>'<option value="'+esc(value)+'"'+(value===current?' selected':'')+'>'+esc(label)+'</option>';
+ const select=(key,label,opts,current,wide=false)=>'<label class="race-filter'+(wide?' race-filter-wide':'')+'"><span>'+esc(label)+'</span><select class="inp" data-race-filter="'+key+'" aria-label="'+esc(label)+'">'+opts.map(([v,t])=>option(v,t,current)).join("")+'</select></label>';
+ const kindOpts=formats.map(([k,label])=>[k,label]);
+ const levelOpts=levels.map(l=>[l,l==="pro"?"PRO":"Обычная"]);
+ const genderOpts=genders.map(g=>[g,({F:"Женщины",M:"Мужчины",X:"Микст"}[g])]);
+ const ageOpts=(R.kind==="individual"||R.kind==="pair")?[["all","Все возрасты"],...RACE_AGES.map(([lo,hi])=>[lo+"–"+hi,lo+"–"+hi])]:
+   R.kind==="relay"?[["all","Все возрасты"],["до 40","До 40 лет"],["40+","40 лет и старше"]]:[];
+ const kidOpts=kinds.map(d=>[d.id,(d.name.match(/\\d+[–-]\\d+/)||[])[0]||d.name]);
+ const head=top+'<div class="race-filters">'+
+   select("mode","Просмотр",[["results","Результаты"],["heats","Заходы по времени"]],R.mode||"results")+
+   (R.mode==="heats"?'':select("kind","Формат",kindOpts,R.kind)+
+   (levelOpts.length>1?select("level","Уровень",levelOpts,R.level):"")+
+   (genderOpts.length>1?select("gender","Участники",genderOpts,R.gender):"")+
+   (R.kind==="kids"?select("kid","Возраст",kidOpts,R.kid):ageOpts.length?select("age","Возраст",ageOpts,R.age,true):""))+
+   '</div>';
+ if(R.mode==="heats"){
+   const all=data.divisions.filter(d=>d.entries.length);
+   const assigned=new Set();
+   const heats=(ev.schedule||[]).filter(s=>Array.isArray(s[4])&&s[4].length);
+   const days=[...new Set(heats.map(s=>s[3]||ev.date))].sort();
+   const heading='<div class="row wrap" style="margin:14px 0 10px"><b class="sp">Все категории · заходы по времени</b><button class="btn sm ghost" data-racerefresh="'+esc(ev.id)+'">Обновить</button></div>';
+   const timed=days.map(day=>{
+     const rows=heats.filter(s=>(s[3]||ev.date)===day).sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
+     return '<h2 class="sec">'+esc(dayLabel(ev,day))+'</h2><div class="card stack" style="gap:0">'+rows.map(s=>{
+       const ids=s[4].filter(id=>all.some(d=>d.id===id));
+       ids.forEach(id=>assigned.add(id));
+       return '<div class="race-heat"><b class="mono">'+esc(s[0])+'</b><div><strong>'+esc(s[1])+'</strong>'+
+         (s[2]?'<div class="muted tiny">'+esc(s[2])+'</div>':"")+
+         (ids.length?'<div class="race-heat-divs">'+ids.map(id=>{const d=all.find(x=>x.id===id);return '<div>'+esc(d.name)+' <span class="muted tiny">· '+d.entries.length+' уч./команд</span></div>';}).join("")+'</div>':'<div class="muted tiny">Категории не назначены</div>')+
+         '</div></div>';
+     }).join("")+'</div>';
+   }).join("");
+   const pending=all.filter(d=>!assigned.has(d.id));
+   const unassigned=pending.length?'<h2 class="sec">Время захода уточняется</h2><div class="card stack" style="gap:0">'+pending.map(d=>'<div class="race-heat"><span class="muted tiny">—</span><div><b>'+esc(d.name)+'</b><div class="muted tiny">'+d.entries.length+' участников / команд · заход не назначен</div></div></div>').join("")+'</div>':"";
+   const empty=!all.length?'<div class="empty">Пока нет зарегистрированных участников.</div>':"";
+   return {title:null,html:head+heading+timed+unassigned+empty+'<div class="rule small" style="margin-top:12px">Показаны только заходы с назначенными категориями. Точное время вносит организатор в программе старта; категории без времени показаны отдельно.</div>'};
+ }
  if(!div)return {title:null,html:head+'<div class="empty">В этом дивизионе пока нет категории.</div>'};
  let rows=div.entries;
  let actualMerged=null;
@@ -3759,7 +3797,7 @@ document.addEventListener("click", e=>{
   if (S.route==="club") syncTrial();
   if (ds.raceEvent){
     S.lb.ev=ds.raceEvent;S.lb.w=-1;S.lb.q="";S.lb.tab="ind";
-    const R=raceView();R.data=null;R.stamp=0;R.q="";R.age="all";R.kind="individual";R.level="standard";R.gender="F";
+    const R=raceView();R.data=null;R.stamp=0;R.q="";R.age="all";R.kind="individual";R.level="standard";R.gender="F";R.mode="results";
     return tab("leaderboard",true);
   }
   if(ds.raceRegLevel){S.p.raceLevel=ds.raceRegLevel;return render();}
@@ -3909,7 +3947,17 @@ document.addEventListener("change", e=>{
     api("PATCH",crewApi(c.id),{work}).then(r=>{ ADM.CREW=ADM.CREW.map(x=>x.id===c.id?r.crew:x); render(); window.scrollTo(0,y); }).catch(err=>{ toast(err.message); render(); }); return; }
   if (e.target.dataset && e.target.dataset.sel){ adm.rf.sel[e.target.dataset.sel]=e.target.checked; return render(); }
   if (["c1","c2","c3","c4","c5","rSize","rAff"].includes(id)){ keepForm(); const y=window.scrollY; render(); window.scrollTo(0,y); }
-  if (id==="lbDiv"){ S.lb.div=e.target.value; S.lb.open=null; render(); }
+  if (e.target.dataset && e.target.dataset.raceFilter){
+     const R=raceView(), field=e.target.dataset.raceFilter, val=e.target.value;
+     if(field==="mode")R.mode=val;
+     else if(field==="kind"){R.kind=val;R.age="all";R.q="";}
+     else if(field==="level"){R.level=val;R.age="all";}
+     else if(field==="gender"){R.gender=val;R.age="all";}
+     else if(field==="age")R.age=val;
+     else if(field==="kid")R.kid=val;
+     return render();
+   }
+   if (id==="lbDiv"){ S.lb.div=e.target.value; S.lb.open=null; render(); }
   if (id==="pEv"){ syncPromo(); const el=document.getElementById("promoPrev"); if (el) el.innerHTML=promoPreview(); }
   if (id==="aDate" || id==="aDateEnd"){
     const ev=curEv(), oldDate=ev.date;
