@@ -1164,7 +1164,7 @@ function raceBoardScreen(ev){
  const genderOpts=genders.map(g=>[g,({F:"Женщины",M:"Мужчины",X:"Микст"}[g])]);
  const ageOpts=(R.kind==="individual"||R.kind==="pair")?[["all","Все возрасты"],...RACE_AGES.map(([lo,hi])=>[lo+"–"+hi,lo+"–"+hi])]:
    R.kind==="relay"?[["all","Все возрасты"],["до 40","До 40 лет"],["40+","40 лет и старше"]]:[];
- const kidOpts=kinds.map(d=>[d.id,(d.name.match(/\\d+[–-]\\d+/)||[])[0]||d.name]);
+ const kidOpts=kinds.map(d=>[d.id,(d.name.match(/\d+[–-]\d+/)||[])[0]||d.name]);
  const head=top+'<div class="race-filters">'+
    select("mode","Просмотр",[["results","Результаты"],["heats","Заходы по времени"]],R.mode||"results")+
    (R.mode==="heats"?'':select("kind","Формат",kindOpts,R.kind)+
