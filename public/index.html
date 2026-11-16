@@ -1138,6 +1138,7 @@ const raceAgeKey=a=>RACE_AGES.find(([min,max])=>a>=min&&a<=max)?.join("–")||""
 function raceBoardScreen(ev){
  const R=raceView(), data=R.data&&R.data.eventId===ev.id?R.data:null;
  const staff=["owner","admin","judge"].includes(S.viewAs);
+ const raceExportAllowed=!!USER && (["owner","admin"].includes(USER.role)||(USER.headEvents||[]).includes(ev.id));
  const top='<div class="card" style="padding:12px 14px"><button class="selbtn" data-act="evsheet"><div><b>'+esc(ev.name)+'</b><div class="muted tiny">ГОНКА · одно итоговое время · абсолютный и возрастной зачёт</div></div><span aria-hidden="true">⌄</span></button></div>';
  if(!data){
    return {title:null,html:top+'<div class="card stack" style="margin-top:12px"><b>Гонка Рекорда</b><div class="muted">'+esc(R.error||"Загружаем результаты и возрастные категории…")+'</div><button class="btn sm" data-racerefresh="'+esc(ev.id)+'">Обновить</button></div>',after:()=>{if(!R.loading&&!R.error)raceLoad(ev.id)}};
@@ -1239,7 +1240,7 @@ function raceBoardScreen(ev){
  const toolbar='<div class="row wrap" style="margin-top:14px;gap:8px"><b class="sp">'+esc(div.name)+'</b>'+
   '<button class="btn sm ghost" data-racerefresh="'+esc(ev.id)+'">Обновить</button>'+
   (staff?'<button class="btn sm ghost" data-race-edit="'+esc(ev.id)+'">Ввод результатов</button>':"")+
-  (["owner","admin"].includes(S.viewAs)?'<button class="btn sm ghost" data-race-export="'+esc(ev.id)+'">Excel · оба зачёта</button>':"")+
+  (raceExportAllowed?'<button class="btn sm ghost" data-race-export="'+esc(ev.id)+'">Excel · оба зачёта</button>':"")+
   '</div><input class="inp" id="raceQ" placeholder="Найти атлета или команду" value="'+esc(R.q)+'" style="margin:10px 0" autocomplete="off">';
  return {title:null,html:head+toolbar+summary+quorumMsg+groupMsg+'<div class="race-results">'+columns+list+'</div>'+footer};
 }
@@ -3813,7 +3814,7 @@ document.addEventListener("click", e=>{
   if(ds.raceAge){raceView().age=ds.raceAge;return render();}
   if(ds.raceKid){raceView().kid=ds.raceKid;return render();}
   if(ds.raceExport){
-    if(!["owner","admin"].includes(S.viewAs))return toast("Экспорт доступен только организатору");
+    if(!USER || !(["owner","admin"].includes(USER.role)||(USER.headEvents||[]).includes(ds.raceExport)))return toast("Экспорт доступен только организатору и главному судье этого старта");
     const data=raceView().data;if(!data||data.eventId!==ds.raceExport)return toast("Сначала загрузите результаты гонки");
     const rows=[["Формат","Дивизион","Атлет / команда","Состав","Возраст / средний возраст","Возрастной зачёт","Абсолютное место","Место по возрасту","Итоговое время","Состояние зачёта"]];
     for(const d of data.divisions)for(const r of d.entries)rows.push([
