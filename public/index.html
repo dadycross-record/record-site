@@ -1174,6 +1174,8 @@ function raceBoardScreen(ev){
  }
  const scoreCount=div.entries.filter(row=>row.seconds!=null).length;
  const summary='<div class="race-summary"><div><b>'+div.entries.length+'</b><span>участников / команд</span></div><div><b>'+scoreCount+'</b><span>финишировали</span></div><div><b>'+div.ageGroups.filter(g=>g.established).length+'</b><span>возрастных зачётов</span></div></div>';
+ const quorumMsg=!div.categoryEstablished&&div.registrations>0?
+   '<div class="rule small">В дивизионе пока меньше двух участников. Итоговый зачёт не считается состоявшимся, но результаты остаются в абсолютной таблице.</div>':"";
  const groupMsg=R.age!=="all"&&actualMerged&&actualMerged!==R.age?
   '<div class="rule small">Возрастная группа объединена по правилу минимум двух участников. Официальный зачёт: <b>'+esc(actualMerged)+'</b>. Абсолютные места не меняются.</div>':"";
  const columns='<div class="race-thead"><span>Абс.</span><span>Участник / команда</span><span>Время</span><span>Возраст</span></div>';
@@ -1193,9 +1195,9 @@ function raceBoardScreen(ev){
  const footer='<div class="rule small" style="margin-top:14px">Одно итоговое время на дистанции с учётом внесённых штрафов. Меньше — лучше. Абсолютное место и место по возрасту рассчитываются отдельно. Если возрастная группа не набрала 2 участников, она объединяется с более молодой; первый возрастной диапазон с одним участником не разыгрывается.</div>';
  const toolbar='<div class="row wrap" style="margin-top:14px;gap:8px"><b class="sp">'+esc(div.name)+'</b>'+
   '<button class="btn sm ghost" data-racerefresh="'+esc(ev.id)+'">Обновить</button>'+
-  (staff?'<button class="btn sm ghost" data-race-edit="'+esc(ev.id)+'">Ввод результатов</button>':"")+
+  (staff?'<button class="btn sm ghost" data-race-edit="'+esc(ev.id)+'">Ввод результатов</button><button class="btn sm ghost" data-race-export="'+esc(ev.id)+'">Excel · оба зачёта</button>':"")+
   '</div><input class="inp" id="raceQ" placeholder="Найти атлета или команду" value="'+esc(R.q)+'" style="margin:10px 0" autocomplete="off">';
- return {title:null,html:head+toolbar+summary+groupMsg+'<div class="race-results">'+columns+list+'</div>'+footer};
+ return {title:null,html:head+toolbar+summary+quorumMsg+groupMsg+'<div class="race-results">'+columns+list+'</div>'+footer};
 }
 
 const SCREENS = {
@@ -3762,6 +3764,17 @@ document.addEventListener("click", e=>{
   if(ds.raceGender){const R=raceView();R.gender=ds.raceGender;R.age="all";return render();}
   if(ds.raceAge){raceView().age=ds.raceAge;return render();}
   if(ds.raceKid){raceView().kid=ds.raceKid;return render();}
+  if(ds.raceExport){
+    const data=raceView().data;if(!data||data.eventId!==ds.raceExport)return toast("Сначала загрузите результаты гонки");
+    const rows=[["Формат","Дивизион","Атлет / команда","Состав","Возраст / средний возраст","Возрастной зачёт","Абсолютное место","Место по возрасту","Итоговое время","Состояние зачёта"]];
+    for(const d of data.divisions)for(const r of d.entries)rows.push([
+      d.kind,d.name,r.name,(r.members||[]).join(" / "),r.age??"",r.ageGroup||"",
+      r.absolutePlace??"",r.agePlace??"",raceSeconds(r.seconds),
+      !d.categoryEstablished?"Дивизион не состоялся":r.ageEstablished===false?"Возрастной зачёт не состоялся":""
+    ]);
+    downloadCsv("record-race-absolute-age-"+ds.raceExport+".csv",rows);
+    return;
+  }
   if(ds.racerefresh){raceLoad(ds.racerefresh,true);return;}
   if(ds.raceEdit){adm.evId=ds.raceEdit;return go("adminResults",{});}
   if (clubClick(t, ds)) return;
