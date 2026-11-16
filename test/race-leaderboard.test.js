@@ -27,7 +27,7 @@ test('ages use competition day, and fractional average stays in correct five-yea
 });
 test('absolute standings are independent from age groups, and underfilled bands move younger',()=>{
  const d='race26-ind-f';
- const rr=[reg('a',d,'1980-01-01'),reg('b',d,'1986-01-01'),reg('c',d,'1987-01-01'),reg('d',d,'1995-01-01')];
+ const rr=[reg('a',d,'1980-01-01'),reg('b',d,'1987-01-01'),reg('c',d,'1988-01-01'),reg('d',d,'1995-01-01')];
  const s=[sc('a',d,300),sc('b',d,400),sc('c',d,500),sc('d',d,350)];
  const board=raceBoard(event,rr,s).divisions.find(x=>x.id===d);
  assert.equal(board.entries.find(r=>r.name.startsWith('a ')).absolutePlace,1);
