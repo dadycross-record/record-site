@@ -44,3 +44,30 @@ test('moving into an occupied spot raises a conflict',()=>{
  const one=original.find(x=>x.key==='reg:1'),two=original.find(x=>x.key==='reg:2');
  assert.throws(()=>H.move(event,rows,saved,two.key,event.date,one.wave,one.lane),/Конфликт/);
 });
+
+test('six singles, three doubles or three four-person relay teams start per wave',()=>{
+ const ev={id:H.EVENT_ID,date:'2026-12-12',dateEnd:'2026-12-13',divisions:[
+  {id:'race26-ind-f',name:'Женщины OPEN',type:'ind'},
+  {id:'race26-pair-f',name:'Двойки OPEN',type:'team',size:2},
+  {id:'race26-relay-f',name:'Эстафеты',type:'team',size:4}
+ ]};
+ const regs=[];
+ for(let i=1;i<=7;i++)regs.push(r(String(i),'race26-ind-f'));
+ for(let i=1;i<=4;i++)for(let j=1;j<=2;j++)regs.push(r('p'+i+j,'race26-pair-f','Двойка-'+i));
+ for(let i=1;i<=4;i++)for(let j=1;j<=4;j++)regs.push(r('e'+i+j,'race26-relay-f','Четвёрка-'+i));
+ const b=H.build(ev,regs,{});
+ const firstDay=b.days[ev.date],secondDay=b.days[ev.dateEnd];
+ assert.equal(firstDay.filter(x=>x.wave===1).length,6);
+ assert.equal(firstDay.filter(x=>x.wave===2).length,1);
+ const doubles=secondDay.filter(x=>x.divId==='race26-pair-f');
+ const relays=secondDay.filter(x=>x.divId==='race26-relay-f');
+ assert.equal(doubles.filter(x=>x.wave===1).length,3);
+ assert.equal(doubles.filter(x=>x.wave===2).length,1);
+ assert.equal(relays.filter(x=>x.wave===3).length,3);
+ assert.equal(relays.filter(x=>x.wave===4).length,1);
+ assert.deepEqual(relays.filter(x=>x.wave===3).map(x=>x.lane),[1,2,3]);
+ assert.ok(secondDay.every(x=>x.lane<=3));
+ assert.ok(secondDay.every(x=>!secondDay.some(y=>y.wave===x.wave&&y.divId!==x.divId)));
+ assert.throws(()=>H.move(ev,regs,{},relays[0].key,ev.dateEnd,3,4),/Неверный заход/);
+ assert.throws(()=>H.move(ev,regs,{},relays[0].key,ev.dateEnd,1,1),/другой дивизион/);
+});
