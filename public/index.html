@@ -1148,8 +1148,8 @@ function raceHeatsLoad(eventId,force){
  R.heatLoading=true;R.heatError="";
  api("GET","/api/race/heats/"+encodeURIComponent(eventId)).then(data=>{
   R.heatLoading=false;R.heatData=data;
-  if(S.route==="leaderboard"&&S.lb.ev===eventId)render();
- }).catch(err=>{R.heatLoading=false;R.heatError=err.message||"Не удалось загрузить заходы";if(S.route==="leaderboard")render();});
+  if((S.route==="leaderboard"&&S.lb.ev===eventId)||S.route==="orders")render();
+ }).catch(err=>{R.heatLoading=false;R.heatError=err.message||"Не удалось загрузить заходы";if(S.route==="leaderboard"||S.route==="orders")render();});
 }
 async function raceHeatsAction(ev,payload){
  try{
@@ -1202,6 +1202,7 @@ function raceHeatsScreen(ev,head){
   }
   body+='</section>';
  }
+ if(owner&&H.hasUnpublishedChanges)controls+='<div class="rule small">Есть ручные изменения, которые ещё не видны атлетам. Используй «Полный перерасчёт и повторная публикация».</div>';
  if(!owner&&!Object.keys(H.days||{}).length)body='<div class="card muted small">Организатор пока не опубликовал заходы. Дата, время и стартовый номер появятся после публикации.</div>';
  return {title:null,html:head+header+controls+body};
 }
@@ -1237,7 +1238,7 @@ function raceBoardScreen(ev){
  const option=(value,label,current)=>'<option value="'+esc(value)+'"'+(value===current?' selected':'')+'>'+esc(label)+'</option>';
  const select=(key,label,opts,current,wide=false)=>'<label class="race-filter'+(wide?' race-filter-wide':'')+'"><span>'+esc(label)+'</span><select class="inp" data-race-filter="'+key+'" aria-label="'+esc(label)+'">'+opts.map(([v,t])=>option(v,t,current)).join("")+'</select></label>';
  const kindOpts=formats.map(([k,label])=>[k,label]);
- const levelOpts=levels.map(l=>[l,l==="pro"?"PRO":"Обычная"]);
+ const levelOpts=levels.map(l=>[l,l==="pro"?"PRO":"OPEN"]);
  const genderOpts=genders.map(g=>[g,({F:"Женщины",M:"Мужчины",X:"Микст"}[g])]);
  const ageOpts=(R.kind==="individual"||R.kind==="pair")?[["all","Все возрасты"],...RACE_AGES.map(([lo,hi])=>[lo+"–"+hi,lo+"–"+hi])]:
    R.kind==="relay"?[["all","Все возрасты"],["до 40","До 40 лет"],["40+","40 лет и старше"]]:[];
