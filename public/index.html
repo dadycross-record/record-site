@@ -1184,9 +1184,9 @@ function raceHeatsScreen(ev,head){
   if(owner){
    body+='<div class="row wrap" style="gap:8px"><label class="f" style="max-width:160px">Первый заход<input class="inp" type="time" id="raceFirst'+di+'" value="'+esc(time)+'" '+(pub?'disabled':'')+'></label>'+
      (pub?'':'<button class="btn sm ghost" data-race-start="'+di+'">Сохранить начало</button>')+'</div>'+
-     '<label class="check" style="gap:8px"><input type="checkbox" '+(pub?'checked disabled':'disabled')+'><span>Опубликовать заходы · '+(pub?'опубликованы':'не опубликованы')+'</span></label>'+
+     '<label class="check" style="gap:8px"><input type="checkbox" data-race-pub-day="'+di+'" '+(pub?'checked disabled':'')+'><span>Опубликовать заходы · '+(pub?'опубликованы':'пока черновик')+'</span></label>'+
      (pub?'<button class="btn sm ghost" data-race-publish="'+di+'|full">Полный перерасчёт и повторная публикация</button>':
-           '<button class="btn sm" data-race-publish="'+di+'|initial">Опубликовать заходы этого дня</button>')+
+           '<div class="muted tiny">Отметь галочку выше, чтобы опубликовать заходы этого дня.</div>')+
      '<div class="muted tiny">'+(pub?'Новые регистрации занимают свободные слоты или новый заход; опубликованное время остальных не сдвигается.':'Этот список видишь только ты. При новых регистрациях черновик пересчитывается автоматически.')+'</div>';
   }
   if(!rows.length)body+='<div class="muted small">Пока нет готовых регистраций'+(owner?' для черновика.':' или опубликованных заходов.')+'</div>';
@@ -4043,6 +4043,14 @@ document.addEventListener("click", e=>{
 function keepForm(){ const f=S.reg.f; const g=id=>document.getElementById(id); if(g("rSize")) f.size=g("rSize").value; if(g("rAff")) f.aff=g("rAff").value.trim(); ["c1","c2","c3","c4","c5"].forEach(k=>{ if(g(k)) f[k]=g(k).checked; }); }
 document.addEventListener("keydown", e=>{ if (e.key==="Enter" && e.target.dataset && e.target.dataset.rsreg){ e.preventDefault(); adm.rsNext=true; e.target.blur(); } });
 document.addEventListener("change", e=>{
+  if(e.target.dataset?.racePubDay!==undefined){
+    const ev=EVENTS.find(x=>x.id===S.lb.ev);
+    if(!ev||USER?.role!=="owner"){e.target.checked=false;return;}
+    const days=[...new Set([ev.date,ev.dateEnd||ev.date])],day=days[Number(e.target.dataset.racePubDay)];
+    if(!day||!e.target.checked)return;
+    if(!window.confirm("Опубликовать заходы "+day+"? Атлеты увидят время, дорожку и стартовый номер.")){e.target.checked=false;return;}
+    return raceHeatsAction(ev.id,{action:"publish",day,full:false});
+  }
   const id = e.target.id;
   if (id==="rsDiv"){ adm.rs.div=e.target.value; adm.rs.w=""; return render(); }
   if (e.target.dataset && e.target.dataset.rsreg){ const t=e.target, wid=t.dataset.rsw, col=[...document.querySelectorAll(`[data-rsw="${wid}"]`)], idx=col.indexOf(t), nextReg=col[idx+1]&&col[idx+1].dataset.rsreg, go=adm.rsNext;
