@@ -3852,6 +3852,44 @@ document.addEventListener("click", e=>{
   if (ds.act==="cookies"){ cookieBar(true); return; }
   if (S.route==="adminEvent") syncEv(); else if (S.route==="adminDiv") syncDiv(); else if (S.route==="adminWod") syncWod(); else if (S.route==="adminSch") syncSch(); else if (S.route==="adminPromo") syncPromo(); else if (S.route==="admin") syncAcc();
   if (S.route==="club") syncTrial();
+  if(ds.raceManage){
+    S.lb.ev=ds.raceManage;S.lb.w=-1;S.lb.q="";S.lb.tab="ind";
+    const R=raceView();R.data=null;R.heatData=null;R.mode="heats";R.kind="individual";R.age="all";
+    raceHeatsLoad(ds.raceManage,true);
+    return tab("leaderboard",true);
+  }
+  if(ds.raceHeatsRefresh){raceView().heatData=null;raceHeatsLoad(ds.raceHeatsRefresh,true);return;}
+  if(ds.raceOrder){
+    if(USER?.role!=="owner")return;
+    const R=raceView(),ev=EVENTS.find(x=>x.id===S.lb.ev),a=R.heatData?.order?.slice();
+    if(!ev||!a)return;
+    const [index,dir]=ds.raceOrder.split("|"),i=Number(index),j=i+(dir==="up"?-1:1);
+    if(j<0||j>=a.length)return;
+    [a[i],a[j]]=[a[j],a[i]];
+    return raceHeatsAction(ev.id,{action:"configure",order:a});
+  }
+  if(ds.raceStart!==undefined){
+    if(USER?.role!=="owner")return;
+    const ev=EVENTS.find(x=>x.id===S.lb.ev),days=[...new Set([ev.date,ev.dateEnd||ev.date])],di=Number(ds.raceStart);
+    const time=document.getElementById("raceFirst"+di)?.value;
+    return raceHeatsAction(ev.id,{action:"configure",day:days[di],time});
+  }
+  if(ds.racePublish){
+    if(USER?.role!=="owner")return;
+    const ev=EVENTS.find(x=>x.id===S.lb.ev),days=[...new Set([ev.date,ev.dateEnd||ev.date])];
+    const [di,mode]=ds.racePublish.split("|"),day=days[Number(di)];
+    if(!day)return;
+    const msg=mode==="full"?"Выполнить полный перерасчёт и повторно опубликовать заходы "+day+"? Время и номер у уже опубликованных атлетов могут измениться.":"Опубликовать заходы "+day+"? Атлеты увидят своё время, заход и стартовый номер.";
+    if(!window.confirm(msg))return;
+    return raceHeatsAction(ev.id,{action:"publish",day,full:mode==="full"});
+  }
+  if(ds.raceMove){
+    if(USER?.role!=="owner")return;
+    const ev=EVENTS.find(x=>x.id===S.lb.ev),days=[...new Set([ev.date,ev.dateEnd||ev.date])],day=days[Number(ds.raceDi)],idx=ds.raceIndex;
+    const wave=Number(document.getElementById("raceWave"+idx)?.value),lane=Number(document.getElementById("raceLane"+idx)?.value);
+    if(!day)return;
+    return raceHeatsAction(ev.id,{action:"move",key:ds.raceMove,day,wave,lane});
+  }
   if (ds.raceEvent){
     S.lb.ev=ds.raceEvent;S.lb.w=-1;S.lb.q="";S.lb.tab="ind";
     const R=raceView();R.data=null;R.stamp=0;R.q="";R.age="all";R.kind="individual";R.level="standard";R.gender="F";R.mode="results";R.heatData=null;R.heatError="";
