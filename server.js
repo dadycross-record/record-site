@@ -8,6 +8,7 @@ const https = require('https');
 const zlib = require('zlib');
 const { Pool } = require('./lib/pg');
 const { raceBoard } = require('./lib/race-leaderboard');
+const raceHeats = require('./lib/race-heats');
 const mail = require('./lib/mail');
 const tg = require('./lib/tg');
 
@@ -141,6 +142,7 @@ function logClientIpShape(req) {
 /* ---------- database ---------- */
 const SCHEMA = `
 create table if not exists content (id int primary key, data jsonb not null, updated_at timestamptz not null default now(), updated_by text);
+create table if not exists race_heat_plans (event_id text primary key, plan jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now(), updated_by text);
 create table if not exists users (id bigserial primary key, email text unique not null, created_at timestamptz not null default now(), profile jsonb not null default '{}', kids jsonb not null default '[]');
 create table if not exists login_codes (email text primary key, code_hash text not null, expires_at timestamptz not null, attempts int not null default 0, sent_at timestamptz not null default now());
 create table if not exists sessions (token_hash text primary key, user_id bigint not null references users(id) on delete cascade, created_at timestamptz not null default now(), expires_at timestamptz not null);
@@ -437,6 +439,83 @@ route('GET', '/api/race/leaderboard/:id', async (req, res, u, body, params) => {
   return raceBoard(ev, registrations, scores);
 });
 
+
+/* RECORD RACE heat planner — separate from CrossFit results. */
+const raceHeatEvent = async id => {
+ const ev=((await rawContent()).EVENTS||[]).find(e=>e.id===id);
+ if(!ev||ev.id!==raceHeats.EVENT_ID)throw new HttpError(404,'Заходы гонки не найдены');
+ return ev;
+};
+const raceHeatRegistrations = async (ev,q=db.query.bind(db)) =>
+ (await q("select id, pub, event_id, div_id, person, team, status, created_at from registrations where event_id=$1 and status in ('new','paid','refund_requested') order by created_at,id",[ev.id])).rows;
+const raceHeatAllowed = u=>!!u&&u.role==='owner';
+// The published snapshot is incrementally extended for new registrants only. Existing
+// wave/time/number allocations remain locked, even if a participant cancels.
+async function raceHeatView(ev,u){
+ return db.tx(async q=>{
+  await q('select pg_advisory_xact_lock(hashtext($1))',['race-heats:'+ev.id]);
+  const prior=(await q('select plan from race_heat_plans where event_id=$1',[ev.id])).rows[0]?.plan||{};
+  let cfg=raceHeats.settingsFor(ev,prior),regs=await raceHeatRegistrations(ev,q);
+  const board=raceHeats.build(ev,regs,cfg);
+  let dirtyPlan=false;
+  for(const [day,rows] of Object.entries(board.days))if(cfg.published[day]){
+   for(const row of rows)if(!cfg.assignments[row.key]){
+    cfg.assignments[row.key]={day,wave:row.wave,lane:row.lane,number:row.number};
+    dirtyPlan=true;
+   }
+  }
+  if(dirtyPlan){
+   cfg.revision++;
+   await q("insert into race_heat_plans(event_id,plan,updated_by) values($1,$2,$3) on conflict(event_id) do update set plan=excluded.plan,updated_at=now(),updated_by=excluded.updated_by",
+     [ev.id,JSON.stringify(cfg),'auto-assignment']);
+  }
+  const result=raceHeats.build(ev,regs,cfg);
+  if(!raceHeatAllowed(u)){
+   result.days=Object.fromEntries(Object.entries(result.days).filter(([day])=>cfg.published[day]));
+   delete result.order;delete result.start;delete result.pending;
+  }
+  return result;
+ });
+}
+route('GET','/api/race/heats/:id',async(req,res,u,body,params)=>{
+ const ev=await raceHeatEvent(params.id);
+ return raceHeatView(ev,u);
+});
+route('POST','/api/admin/race/heats/:id',async(req,res,u,body,params)=>{
+ need(u,'owner');
+ const ev=await raceHeatEvent(params.id);
+ return db.tx(async q=>{
+  await q('select pg_advisory_xact_lock(hashtext($1))',['race-heats:'+ev.id]);
+  const old=(await q('select plan from race_heat_plans where event_id=$1',[ev.id])).rows[0]?.plan||{};
+  let cfg=raceHeats.settingsFor(ev,old), regs=await raceHeatRegistrations(ev,q);
+  const action=String(body.action||'');
+  if(action==='configure'){
+   if(Array.isArray(body.order)){
+    const ids=ev.divisions.map(d=>d.id);
+    if(body.order.length!==ids.length||new Set(body.order).size!==ids.length||body.order.some(id=>!ids.includes(id)))throw bad('Порядок должен содержать каждую категорию ровно один раз');
+    cfg.order=body.order;
+   }
+   if(body.day!==undefined){
+    if(!(body.day in cfg.start))throw bad('Неверный день старта');
+    if(raceHeats.parseTime(body.time)===null)throw bad('Время должно быть в формате 09:00');
+    if(cfg.published[body.day])throw bad('Время опубликованного дня меняется только через полный пересчёт');
+    cfg.start[body.day]=body.time;
+   }
+  }else if(action==='move'){
+   try{cfg=raceHeats.move(ev,regs,cfg,String(body.key||''),String(body.day||''),Number(body.wave),Number(body.lane));}
+   catch(e){throw bad(e.message);}
+  }else if(action==='publish'){
+   const day=String(body.day||'');
+   if(!(day in cfg.start))throw bad('Неверный день старта');
+   try{cfg=raceHeats.publish(ev,regs,cfg,day,!!body.full);}
+   catch(e){throw bad(e.message);}
+  }else throw bad('Неизвестное действие');
+  cfg.revision++;
+  await q("insert into race_heat_plans(event_id,plan,updated_by) values($1,$2,$3) on conflict(event_id) do update set plan=excluded.plan,updated_at=now(),updated_by=excluded.updated_by",
+    [ev.id,JSON.stringify(cfg),u.email]);
+  return {ok:true,revision:cfg.revision};
+ });
+});
 
 route('GET', '/api/content', async (req, res) => {
   const c = await publicContent();
