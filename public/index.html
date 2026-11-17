@@ -130,7 +130,12 @@ a.btn{text-decoration:none}
 .quick svg{color:var(--accent)}
 
 /* event cards */
-.ev{display:block;width:100%;min-width:0;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:0;overflow:hidden}
+.ev{display:block;width:100%;min-width:0;text-align:left;background:var(--surface);border:1px solid #fff;border-radius:var(--r);padding:0;overflow:hidden;position:relative}
+.ev:not(.archive)::after{content:"";pointer-events:none;position:absolute;inset:0 0 0 auto;width:min(36%,220px);background:repeating-linear-gradient(116deg,transparent 0 18px,rgba(255,255,255,.10) 18px 20px,transparent 20px 43px);z-index:0}
+.ev .in{position:relative;z-index:1}
+.ev .ev-ticker{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#fff;border-bottom:1px solid rgba(255,255,255,.65);padding:0 0 8px;margin:0 0 10px;max-width:max-content}
+.ev .band{height:34px!important;background:repeating-linear-gradient(116deg,#111 0 28px,#262626 28px 30px,#111 30px 62px)!important}
+.ev .cover{filter:grayscale(.85) brightness(.8) contrast(1.1)}
 .ev .band{height:6px;background:repeating-linear-gradient(-45deg,var(--accent) 0 10px,var(--accent-ink) 10px 20px)}
 .ev.dim .band{background:repeating-linear-gradient(-45deg,var(--surface-2) 0 10px,var(--bg) 10px 20px)}
 .ev .in{padding:14px;min-width:0}
@@ -139,12 +144,12 @@ a.btn{text-decoration:none}
 .ev .ev-details{min-width:0}
 .ev .ev-status{display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-width:0}
 .ev h3{font-family:var(--f-display);font-weight:600;font-size:17px;margin:6px 0 4px;text-transform:uppercase;letter-spacing:.01em;overflow-wrap:anywhere}
-.ev .ev-date{width:68px;min-height:68px;border-radius:9px;background:var(--accent);color:var(--accent-ink);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 3px;box-sizing:border-box;text-align:center;font-variant-numeric:tabular-nums;overflow:hidden}
+.ev .ev-date{width:68px;min-height:68px;border-radius:9px;background:rgba(0,0,0,.46);border:1px solid #fff;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 3px;box-sizing:border-box;text-align:center;font-variant-numeric:tabular-nums;overflow:hidden}
 .ev .ev-date b{font-family:var(--f-display);font-size:20px;line-height:1.05;max-width:100%;overflow-wrap:anywhere}
 .ev .ev-date span{font-size:11px;font-weight:750;line-height:1.2;margin-top:4px;text-transform:uppercase}
 .ev .ev-date.range b{font-size:15px}
 .ev .ev-date.cross-month b{font-size:12px;line-height:1.3}
-.ev.archive{min-height:0;border-radius:10px;border:1mm solid var(--accent)}
+.ev.archive{min-height:0;border-radius:10px;border:1px solid #fff}
 .ev.archive .band,.ev.archive .cover,.ev.archive .archive-cover{display:none}
 .ev.archive .in{padding:10px 12px}
 .ev.archive .ev-main{grid-template-columns:68px minmax(0,1fr)}
@@ -1820,9 +1825,10 @@ function evCard(ev, archived=false){
   const ended=archived||isArchivedEvent(ev);
   const media=archived?"":ev.cover?`<div class="cover" style="background-image:url(${ev.cover})"></div>`:'<div class="band"></div>';
   const date=eventDateBox(ev);
+  const ticker=ev.permanent?"":(ev.cardDateText||((dateRange(ev)||"")+" "+String(ev.date||"").slice(0,4))).toLocaleUpperCase("ru");
   const status=ended?'<span class="chip ended">Завершён</span>':statusChip(ev.status);
   return `<button class="ev ${ended?"dim":""} ${archived?"archive":""}" data-go="event" data-ev="${ev.id}">${media}<div class="in">
-   <div class="ev-main ${date?"":"no-date"}">${date}<div class="ev-details">
+   ${!archived&&ticker?`<div class="ev-ticker">${esc(ticker)}</div>`:""}<div class="ev-main ${date?"":"no-date"}">${date}<div class="ev-details">
    <div class="ev-status">${status}<span class="sp"></span>${archived?"":`<span class="muted tiny ev-format">${ev.format==="online"?"Онлайн":"Очный"}</span>`}</div>
    <h3>${esc(ev.name)}</h3>${archived?"":`<div class="meta"><span>${dateRange(ev)}${durTxt(ev)}</span><span>${esc(ev.city||"")}</span><span>${ev.divisions.length} категорий</span></div>`}</div></div></div></button>`;
 }
@@ -2069,6 +2075,7 @@ function validateEv(ev){
 function syncEv(){
   const ev=curEv(), g=id=>document.getElementById(id); if(!ev || !g("aName")) return;
   ev.name=g("aName").value; ev.en=g("aEn").value;
+  if(g("aCardDate"))ev.cardDateText=g("aCardDate").value.trim();
   if (g("aDate")) ev.date=g("aDate").value; if (g("aRegTo")) ev.regTo=g("aRegTo").value;
   if (g("aR100")) ev.r100=g("aR100").value; if (g("aR50")) ev.r50=g("aR50").value;
   if (g("aRefOn")) ev.hideRefund = !g("aRefOn").checked;
@@ -2789,6 +2796,8 @@ adminEvent(){
     <h2 class="sec" style="margin-top:0">Основное</h2>
     <label class="f">Название<input class="inp ${E.name?"err":""}" id="aName" value="${esc(ev.name)}" placeholder="Например, Детская Гонка Рекорда"></label>${fErr(E.name)}
     <label class="f">Подзаголовок<input class="inp" id="aEn" value="${esc(ev.en||"")}" placeholder="RECORD KIDS"></label>
+    <label class="f">Дата на плашке соревнования<input class="inp" id="aCardDate" value="${esc(ev.cardDateText||"")}" placeholder="12–13 ДЕКАБРЯ 2026"></label>
+    <div class="muted tiny">Если оставить пустым, дата формируется автоматически из начала и окончания старта.</div>
     ${isRaceEvent(ev)?'<div class="rule small"><b>🏁 Режим ГОНКА</b> · отдельные абсолютный и возрастной зачёты, одно итоговое время. Обычный CrossFit-подсчёт других стартов не затронут.</div>':""}
     ${ev.permanent ? `<h2 class="sec">Месяцы лиги</h2>
       <div class="card" style="padding:4px 14px">${[...(ev.months||[])].reverse().map(m=>`<div class="arow"><div class="sp"><b>${monthTitle(m.id)} ${m.id.slice(0,4)}</b><div class="muted tiny">${ev.workouts.filter(w=>w.month===m.id).length} заданий · ${m.done?"итоги подведены":`итоги ${dHuman(monthEnd(m.id))}`}</div></div>${m.done?'<span class="chip ok">Итоги</span>':'<span class="chip live">Идёт</span>'}</div>`).join("")}</div>
