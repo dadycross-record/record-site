@@ -1172,6 +1172,7 @@ function evCount(ev){
 /* RECORD RACE uses one finish time and two independent standings (absolute and age).
    All other competitions continue using the original CrossFit leaderboard. */
 const isRaceEvent = ev => !!ev && ev.id==="evmvwkp907";
+const RACE_CASH_INFO = "Оплата участия — только наличными в Центре спорта «Рекорд». После подачи заявки необходимо внести взнос. Регистрация подтверждается организатором после оплаты.";
 const RACE_FORMATS=[["individual","Личный"],["pair","Пары"],["relay","Эстафета"],["kids","Дети"],["first","Первый старт"],["forces","Силовые ведомства"]];
 const RACE_AGES=[[16,24],[25,29],[30,34],[35,39],[40,44],[45,49],[50,54],[55,59],[60,64],[65,69],[70,74],[75,79],[80,84],[85,89]];
 const raceView=()=>S.race||(S.race={kind:"individual",level:"standard",gender:"F",age:"all",kid:"",q:"",mode:"results",stamp:0,data:null,error:"",loading:false,heatData:null,heatLoading:false});
@@ -1418,7 +1419,7 @@ event(){
     <h2 class="sec">Как участвовать</h2>
     <div class="card timeline">
       <div class="it"><b>1</b><div><strong>Выберите категорию</strong><div class="muted small">Формат, пол и возраст. Неподходящие категории приложение не даст выбрать.</div></div></div>
-      <div class="it"><b>2</b><div><strong>Заполните анкету и оплатите</strong><div class="muted small">Данные подставятся из профиля. Место закрепляется сразу после оплаты.</div></div></div>
+      <div class="it"><b>2</b><div><strong>${isRaceEvent(ev)?"Подайте заявку и оплатите наличными":"Заполните анкету и оплатите"}</strong><div class="muted small">${isRaceEvent(ev)?esc(RACE_CASH_INFO):"Данные подставятся из профиля. Место закрепляется сразу после оплаты."}</div></div></div>
       <div class="it"><b>3</b><div><strong>${ev.format==="online"?"Сдайте результаты с видео":"Пройдите регистрацию на месте"}</strong><div class="muted small">${ev.format==="online"?"Судьи проверяют видео, после этого результат попадает в лидерборд.":"Покажите QR-код из профиля, получите номер и пройдите брифинг."}</div></div></div>
     </div>`;
   if (t==="divs") body = ["ind","team"].map(type=>{ const ds=ev.divisions.filter(d=>d.type===type); if(!ds.length) return ""; return `<h2 class="sec">${type==="ind"?"Индивидуальные":"Командные"}</h2><div class="card stack" style="gap:0">${ds.map(d=>{const s=divState(d);return `<div class="row" style="padding:10px 0;border-bottom:1px solid var(--line)"><span class="sp">${esc(isRaceEvent(ev)?raceDivTitle(d):d.name)}<span class="muted tiny"> · ${d.size?`${d.size} чел. · `:""}${ageLabel(d,ev)}${divDaysNote(ev,d)}</span></span><span class="chip ${s.k}">${s.t}</span></div>`}).join("")}</div>`;}).join("");
@@ -1598,9 +1599,10 @@ form(){
       ${disc?`<div class="sum"><span class="muted">Промокод ${esc(f.promo)}</span><span class="mono" style="color:var(--good)">−${fmtRub(disc)}</span></div>`:""}
       <div class="sum"><span>К оплате</span><b>${fmtRub(total)}</b></div>
     </div>
+    ${isRaceEvent(ev)&&total>0?`<div class="card" style="border-left:3px solid var(--accent);margin-top:10px"><b>Оплата участия</b><div class="small" style="margin-top:8px">${esc(RACE_CASH_INFO)}</div></div>`:""}
     ${f.err?`<div class="err-t">${esc(f.err)}</div>`:""}
     <button class="btn block" type="submit" ${ready&&!f.busy?"":"disabled"}>${f.busy?"Отправляю…":!ready?"Отметьте согласия":total>0?"Отправить заявку":"Зарегистрироваться"}</button>
-    ${total>0?'<div class="muted tiny" style="text-align:center">Онлайн-оплата скоро появится. Пока организатор подтвердит заявку и подскажет, как оплатить взнос.</div>':""}
+    ${total>0&&!isRaceEvent(ev)?'<div class="muted tiny" style="text-align:center">Онлайн-оплата скоро появится. Пока организатор подтвердит заявку и подскажет, как оплатить взнос.</div>':""}
    </form>`};
 },
 pay(){
@@ -1630,7 +1632,7 @@ done(){
    <div style="font-family:var(--f-display);font-weight:800;font-size:22px;text-transform:uppercase">${o.status==="pending"?"Заявка у капитана":o.status==="reserve"?"Вы в запасе":o.status==="paid"?nm:"Заявка принята"}</div>
    <p class="muted">${esc(ev.name)} · ${esc(d.name)}${o.team?` · ${esc(o.team)}`:""}</p>
    <div class="card kv" style="text-align:left;margin:16px 0"><dt>Заказ</dt><dd class="mono">${o.id}</dd><dt>${o.status==="paid"?"Взнос":"К оплате"}</dt><dd class="mono">${fmtRub(o.status==="paid"?o.paid:o.due)}</dd><dt>Email</dt><dd>${esc(USER?USER.email:"")}</dd></div>
-   <p class="muted small">${o.status==="pending"?"Капитан команды получит письмо и подтвердит заявку. Платить взнос нужно после того, как он примет вас в основной состав. Статус — в «Моих стартах».":o.status==="reserve"?"Взнос платить не нужно, пока капитан не переведёт вас в основной состав. Статус — в «Моих стартах».":o.status==="paid"?"Статус и возврат — в разделе «Мои старты».":"Организатор подтвердит заявку и подскажет, как оплатить взнос. Статус видно в разделе «Мои старты»."}${o.team&&o.role==="main"&&S.reg&&S.reg.newTeam?" Ссылка-приглашение для команды — в «Моих стартах», в карточке старта.":""}</p>
+   <p class="muted small">${o.status==="pending"?"Капитан команды получит письмо и подтвердит заявку. Платить взнос нужно после того, как он примет вас в основной состав. Статус — в «Моих стартах».":o.status==="reserve"?"Взнос платить не нужно, пока капитан не переведёт вас в основной состав. Статус — в «Моих стартах».":o.status==="paid"?"Статус и возврат — в разделе «Мои старты».":(isRaceEvent(ev)?esc(RACE_CASH_INFO)+" Статус заявки — в разделе «Мои старты».":"Организатор подтвердит заявку и подскажет, как оплатить взнос. Статус видно в разделе «Мои старты».")}${o.team&&o.role==="main"&&S.reg&&S.reg.newTeam?" Ссылка-приглашение для команды — в «Моих стартах», в карточке старта.":""}</p>
    ${invitation?`<div class="card stack" style="margin:14px 0;text-align:left"><b>Пригласите партнёра в команду</b><div class="muted small">Отправьте ссылку партнёру, чтобы он присоединился к вашему составу.</div><input class="inp mono" readonly value="${esc(invitation)}" aria-label="Ссылка-приглашение" style="font-size:13px"><button class="btn block" data-copyinv="${esc(captainTeam.invite)}">Скопировать ссылку</button></div>`:""}
    <div class="stack"><button class="btn block" data-tab-go="me" data-sub="orders">Мои старты</button><button class="btn block ghost" data-tab-go="home">На главную</button></div></div>`};
 },
