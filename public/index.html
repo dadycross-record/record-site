@@ -1409,6 +1409,7 @@ event(){
         ${ev.submitTo?`<dt>Сдача результатов</dt><dd>до ${dHuman(ev.submitTo)}, 23:59</dd>`:""}
       </dl>
     </div>
+    ${isRaceEvent(ev)?`<div class="card" style="border-left:3px solid var(--accent);margin-top:12px"><b>Время старта</b><p class="small" style="margin:8px 0 0">Точное время стартов волн сообщается каждому участнику индивидуально после окончания регистрации.</p><div class="muted small" style="margin-top:6px">После публикации заходов дата, время, номер захода и стартовый номер будут доступны в разделе «Мои старты».</div></div>`:""}
     ${evQuick(ev, secs)}
     ${evCount(ev)}
     ${crewInvite(ev)}
@@ -1433,7 +1434,8 @@ event(){
     body = !ev.schedule.length ? '<div class="empty">Расписание пока не опубликовано</div>'
       : multi ? days.map(d=>{ const its=ev.schedule.filter(s=>(s[3]||days[0])===d).sort((a,b)=>a[0].localeCompare(b[0])); return `<h2 class="sec">${dayLabel(ev,d)}</h2><div class="card timeline">${its.map(item).join("") || '<div class="muted small" style="padding:10px 0">Программа дня уточняется</div>'}</div>`; }).join("")
       : `<div class="card timeline">${ev.schedule.map(item).join("")}</div>`;
-    if (ev.format==="onsite" && ev.status==="open") body += '<div class="rule" style="margin-top:12px">Заходы по потокам и дорожки публикуются за 5 дней до старта. Здесь появится поиск по своему имени.</div>';
+    if (isRaceEvent(ev)) body += '<div class="card" style="margin-top:12px;border-left:3px solid var(--accent)"><b>Персональные заходы</b><div class="small" style="margin-top:8px">Точное время стартов волн сообщается каждому участнику индивидуально после окончания регистрации.</div><div class="muted small" style="margin-top:6px">После публикации сведения появятся в разделе «Мои старты».</div></div>';
+    else if (ev.format==="onsite" && ev.status==="open") body += '<div class="rule" style="margin-top:12px">Заходы по потокам и дорожки публикуются за 5 дней до старта. Здесь появится поиск по своему имени.</div>';
   }
   if (t==="wods" && ev.permanent){
     const card = w => `<div class="card wod"><h4>${esc(w.name.split(" · ")[0])}</h4><div class="muted tiny">${esc(w.note)}</div><ul>${w.body.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`;
