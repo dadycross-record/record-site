@@ -1215,7 +1215,7 @@ function raceHeatsScreen(ev,head){
   after:()=>{if(!R.heatLoading&&!R.heatError)raceHeatsLoad(ev.id);}};
  const divs=new Map(ev.divisions.map(d=>[d.id,d]));
  const days=[...new Set([ev.date,ev.dateEnd||ev.date])];
- const header='<div class="row wrap" style="margin:12px 0"><b class="sp">Заходы · 6 участников · каждые 10 минут</b><button class="btn sm ghost" data-race-heats-refresh="'+esc(ev.id)+'">Обновить</button></div>';
+ const header='<div class="row wrap" style="margin:12px 0"><b class="sp">Заходы: 6 личников / 3 двойки / 3 эстафетные команды · шаг 10 минут</b><button class="btn sm ghost" data-race-heats-refresh="'+esc(ev.id)+'">Обновить</button></div>';
  let controls='';
  if(owner){
   const order=(H.order||ev.divisions.map(d=>d.id));
@@ -1243,11 +1243,11 @@ function raceHeatsScreen(ev,head){
   if(!rows.length)body+='<div class="muted small">Пока нет готовых регистраций'+(owner?' для черновика.':' или опубликованных заходов.')+'</div>';
   for(const wave of waves){
    const list=rows.filter(r=>r.wave===wave);
-   body+='<div class="race-wave"><div class="row wrap"><b>Заход '+wave+'</b><span class="mono small">'+esc(list[0].start)+'</span><span class="muted tiny">'+list.reduce((n,x)=>n+x.size,0)+' / 6 мест</span></div>';
+   body+='<div class="race-wave"><div class="row wrap"><b>Заход '+wave+'</b><span class="mono small">'+esc(list[0].start)+'</span><span class="muted tiny">'+list.length+' / '+(list[0].team?3:6)+' '+(list[0].team?'команды':'мест')+'</span></div>';
    body+=list.map((x,j)=>{
     const index=di+'-'+wave+'-'+j,move=owner?
-      '<div class="race-move"><label>Заход<input class="inp" type="number" min="1" max="120" id="raceWave'+index+'" value="'+x.wave+'"></label><label>Дорожка<select class="inp" id="raceLane'+index+'">'+Array.from({length:7-x.size},(_,i)=>i+1).map(n=>'<option value="'+n+'"'+(n===x.lane?' selected':'')+'>'+n+'</option>').join("")+'</select></label><button class="btn sm ghost" data-race-move="'+esc(x.key)+'" data-race-di="'+di+'" data-race-index="'+index+'">Перенести</button></div>':"";
-    return '<div class="race-entrant"><span class="mono">'+x.lane+(x.size>1?'–'+(x.lane+x.size-1):"")+'</span><div><b>'+esc(x.name)+'</b><div class="muted tiny">'+esc(raceDivTitle(divs.get(x.divId)))+' · № '+esc(x.number)+' · '+esc(x.start)+'</div>'+move+'</div></div>';
+      '<div class="race-move"><label>Заход<input class="inp" type="number" min="1" max="120" id="raceWave'+index+'" value="'+x.wave+'"></label><label>Дорожка<select class="inp" id="raceLane'+index+'">'+Array.from({length:x.team?3:6},(_,i)=>i+1).map(n=>'<option value="'+n+'"'+(n===x.lane?' selected':'')+'>'+n+'</option>').join("")+'</select></label><button class="btn sm ghost" data-race-move="'+esc(x.key)+'" data-race-di="'+di+'" data-race-index="'+index+'">Перенести</button></div>':"";
+    return '<div class="race-entrant"><span class="mono">'+x.lane+'</span><div><b>'+esc(x.name)+'</b><div class="muted tiny">'+esc(raceDivTitle(divs.get(x.divId)))+' · № '+esc(x.number)+' · '+esc(x.start)+'</div>'+move+'</div></div>';
    }).join("");
    body+='</div>';
   }
