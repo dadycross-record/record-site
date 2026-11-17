@@ -135,7 +135,7 @@ a.btn{text-decoration:none}
 .ev .in{position:relative;z-index:1}
 .ev .ev-ticker{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#fff;border-bottom:1px solid rgba(255,255,255,.65);padding:0 0 8px;margin:0 0 10px;max-width:max-content}
 .ev .band{height:34px!important;background:repeating-linear-gradient(116deg,#111 0 28px,#262626 28px 30px,#111 30px 62px)!important}
-.ev .cover{filter:grayscale(.85) brightness(.8) contrast(1.1)}
+.ev .cover{filter:none}
 .ev .band{height:6px;background:repeating-linear-gradient(-45deg,var(--accent) 0 10px,var(--accent-ink) 10px 20px)}
 .ev.dim .band{background:repeating-linear-gradient(-45deg,var(--surface-2) 0 10px,var(--bg) 10px 20px)}
 .ev .in{padding:14px;min-width:0}
@@ -176,6 +176,57 @@ a.btn{text-decoration:none}
 .archive-year>summary{cursor:pointer;font-weight:700;list-style:none}
 .archive-year>summary::-webkit-details-marker{display:none}
 .meta{display:flex;flex-wrap:wrap;gap:4px 14px;color:var(--muted);font-size:13px}
+
+
+/* Competition calendar · RECORD visual direction 3. No color filter on photos. */
+.ev.comp-card{display:block;isolation:isolate;position:relative;width:100%;min-height:290px;overflow:hidden;border:1px solid #f2f1ee;border-radius:3px;text-align:left;color:#fff;background:#101112;transition:border-color .2s ease,transform .2s ease}
+.ev.comp-card::after{display:none}
+.ev.comp-card:focus-visible{outline:3px solid #fff;outline-offset:3px}
+.ev.comp-card:hover{border-color:#fff}
+.ev.comp-card .comp-photo{position:absolute;inset:0;z-index:0;background-size:cover;background-position:center center;background-repeat:no-repeat;filter:none}
+.ev.comp-card .comp-shade{position:absolute;inset:0;z-index:1;pointer-events:none;background:linear-gradient(90deg,rgba(0,0,0,.87) 0%,rgba(0,0,0,.54) 44%,rgba(0,0,0,.09) 100%),linear-gradient(0deg,rgba(0,0,0,.48),transparent 60%)}
+.ev.comp-card.comp-without-photo{background:radial-gradient(ellipse at 80% 30%,#44474a 0%,#1c1d1f 31%,#101010 75%),repeating-linear-gradient(115deg,#1a1a1a 0 16px,#252525 16px 18px,#171717 18px 34px)}
+.ev.comp-card .comp-stripes{position:absolute;inset:0;z-index:2;pointer-events:none;background:linear-gradient(116deg,transparent 0 76%,rgba(255,255,255,.28) 76.1% 76.25%,transparent 76.35%),linear-gradient(116deg,transparent 0 82%,rgba(217,55,63,.90) 82.1% 82.8%,transparent 83%),linear-gradient(116deg,transparent 0 88%,rgba(255,255,255,.53) 88.04% 88.18%,transparent 88.2%)}
+.ev.comp-card .comp-stripes::before{content:"";position:absolute;top:0;left:0;width:140px;height:3px;background:#eb444b;transform:skewX(-34deg);transform-origin:top left}
+.ev.comp-card .comp-content{position:relative;z-index:3;display:flex;flex-direction:column;justify-content:space-between;gap:32px;padding:24px;min-height:290px;box-sizing:border-box;width:100%}
+.ev.comp-card .comp-label{display:block;font-size:11px;letter-spacing:.25em;text-transform:uppercase;font-weight:800;text-shadow:0 1px 3px #000}
+.ev.comp-card .comp-body{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;min-width:0}
+.ev.comp-card .comp-info{display:flex;flex-direction:column;align-items:flex-start;gap:7px;min-width:0;max-width:70%}
+.ev.comp-card .comp-name{display:block;font-family:var(--f-display);font-weight:800;line-height:1.05;font-size:clamp(24px,5vw,42px);text-transform:uppercase;overflow-wrap:anywhere;text-shadow:0 2px 10px rgba(0,0,0,.65)}
+.ev.comp-card .comp-city{font-size:12px;font-weight:750;letter-spacing:.13em;text-transform:uppercase;color:#f5f5f5;text-shadow:0 1px 4px #000}
+.ev.comp-card .comp-date{display:block;color:#fff;font-family:var(--f-display);font-size:clamp(15px,2.4vw,24px);font-weight:800;line-height:1.3;text-align:right;text-transform:uppercase;text-shadow:0 1px 5px #000;max-width:45%}
+.ev.comp-card .comp-state{display:inline-flex;align-items:center;border:1px solid rgba(255,255,255,.72);font-size:11px;line-height:1.1;text-transform:uppercase;font-weight:800;letter-spacing:.12em;padding:7px 11px;margin-top:4px;color:#fff;background:rgba(0,0,0,.46)}
+.ev.comp-card.comp-featured .comp-content{min-height:340px;padding:30px}
+.ev.comp-card.comp-featured .comp-name{font-size:clamp(28px,6vw,52px);max-width:650px}
+.ev.comp-card.comp-featured .comp-date{background:#c82732;padding:11px 20px 11px 17px;clip-path:polygon(3% 0,100% 0,97% 100%,0 100%);text-align:left;max-width:none;box-sizing:border-box}
+.ev.comp-card.comp-featured .comp-info{max-width:80%}
+.ev.comp-card.comp-archive{min-height:148px;border-color:rgba(255,255,255,.82)}
+.ev.comp-card.comp-archive .comp-content{min-height:148px;padding:18px 22px;gap:15px}
+.ev.comp-card.comp-archive .comp-body{align-items:center}
+.ev.comp-card.comp-archive .comp-name{font-size:clamp(18px,3vw,27px);line-height:1.15}
+.ev.comp-card.comp-archive .comp-info{max-width:65%}
+.ev.comp-card.comp-archive .comp-date{font-size:clamp(13px,1.65vw,19px);max-width:42%}
+.ev.comp-card.comp-archive .comp-state{border-color:#eb444b;border-left:3px solid #eb444b;background:rgba(0,0,0,.60);padding:5px 9px}
+.ev.comp-card.comp-archive .comp-stripes{opacity:.66}
+@media(max-width:600px){
+ .ev.comp-card.comp-featured,.ev.comp-card.comp-featured .comp-content{min-height:300px}
+ .ev.comp-card.comp-featured .comp-content{padding:20px;gap:34px}
+ .ev.comp-card.comp-featured .comp-info{max-width:100%}
+ .ev.comp-card .comp-body{align-items:flex-start;flex-direction:column;gap:14px}
+ .ev.comp-card .comp-info,.ev.comp-card .comp-date{max-width:100%}
+ .ev.comp-card .comp-date{text-align:left;font-size:17px}
+ .ev.comp-card.comp-featured .comp-date{font-size:18px}
+ .ev.comp-card.comp-archive,.ev.comp-card.comp-archive .comp-content{min-height:153px}
+ .ev.comp-card.comp-archive .comp-content{padding:13px 15px;gap:10px}
+ .ev.comp-card.comp-archive .comp-body{flex-direction:row;align-items:flex-end;gap:10px}
+ .ev.comp-card.comp-archive .comp-info{max-width:61%}
+ .ev.comp-card.comp-archive .comp-name{font-size:16px}
+ .ev.comp-card.comp-archive .comp-date{font-size:12px;text-align:right;max-width:40%}
+ .ev.comp-card.comp-archive .comp-label{font-size:9px}
+ .ev.comp-card.comp-archive .comp-city{font-size:10px}
+ .ev.comp-card.comp-archive .comp-state{font-size:9px;padding:5px}
+}
+@media(prefers-reduced-motion:reduce){.ev.comp-card{transition:none}}
 
 /* tabs */
 .tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px;overflow-x:auto}
@@ -1822,7 +1873,21 @@ function eventDateBox(ev){
   const dateSub=sameMonth?month:`${+end.slice(8)}.${end.slice(5,7)}`;
   return `<span class="ev-date range ${sameMonth?"":"cross-month"}" aria-label="Даты: ${esc(dateRange(ev))}"><b>${esc(dateText)}</b><span>${esc(dateSub)}</span></span>`;
 }
-function evCard(ev, archived=false){
+function evCard(ev, archived=false, competition=false){
+  if(competition){
+    const done=archived||isArchivedEvent(ev);
+    const year=String(ev.date||"").slice(0,4);
+    const dateCaption=String(ev.cardDateText||((dateRange(ev)||"Дата уточняется")+(year?" "+year:""))).trim().toLocaleUpperCase("ru");
+    const picture=ev.cover?'<span class="comp-photo" aria-hidden="true" style="background-image:url('+esc(ev.cover)+')"></span>':"";
+    const eventLabel=String(ev.en||"ЦЕНТР СПОРТА «РЕКОРД»").trim();
+    return '<button class="ev comp-card '+(done?'comp-archive':'comp-featured')+' '+(ev.cover?'comp-with-photo':'comp-without-photo')+'" data-go="event" data-ev="'+esc(ev.id)+'">'+
+      picture+'<span class="comp-shade" aria-hidden="true"></span><span class="comp-stripes" aria-hidden="true"></span>'+
+      '<span class="comp-content"><span class="comp-label">'+esc(eventLabel)+'</span>'+
+      '<span class="comp-body"><span class="comp-info"><span class="comp-name">'+esc(ev.name)+'</span>'+
+      (ev.city?'<span class="comp-city">'+esc(ev.city)+'</span>':"")+
+      (done?'<span class="comp-state">✓ Завершено</span>':"")+
+      '</span><span class="comp-date">'+esc(dateCaption)+'</span></span></span></button>';
+  }
   const ended=archived||isArchivedEvent(ev);
   const media=archived?"":ev.cover?`<div class="cover" style="background-image:url(${ev.cover})"></div>`:'<div class="band"></div>';
   const date=eventDateBox(ev);
@@ -1831,7 +1896,7 @@ function evCard(ev, archived=false){
   return `<button class="ev ${ended?"dim":""} ${archived?"archive":""}" data-go="event" data-ev="${ev.id}">${media}<div class="in">
    ${!archived&&ticker?`<div class="ev-ticker">${esc(ticker)}</div>`:""}<div class="ev-main ${date?"":"no-date"}">${date}<div class="ev-details">
    <div class="ev-status">${status}<span class="sp"></span>${archived?"":`<span class="muted tiny ev-format">${ev.format==="online"?"Онлайн":"Очный"}</span>`}</div>
-   <h3>${esc(ev.name)}</h3>${archived?"":`<div class="meta"><span>${dateRange(ev)}${durTxt(ev)}</span><span>${esc(ev.city||"")}</span><span>${ev.divisions.length} категорий</span></div>`}</div></div></div></button>`;
+   <h3>${esc(ev.name)}</h3>${archived?"":`<div class="meta"><span>${dateRange(ev)}${durTxt(ev)}</span><span>${esc(ev.city||"")}</span><span></div>`}</div></div></div></button>`;
 }
 function eventDateKey(ev){ return String(ev?.dateEnd||ev?.dateTo||ev?.date||"9999-12-31").slice(0,10); }
 function isArchivedEvent(ev){ return ev.status==="ended" || (!ev.permanent && ev.status!=="live" && eventDateKey(ev)<TODAY); }
@@ -1844,9 +1909,9 @@ function competitionFeed(list){
   const others=sorted(list.filter(e=>!isArchivedEvent(e)&&e.id!==featured?.id));
   const years=new Map();
   archive.forEach(ev=>{const y=eventYear(ev);if(!years.has(y))years.set(y,[]);years.get(y).push(ev);});
-  const currentBlock=featured?`<h2 class="sec">${featured.status==="live"?"Сейчас проходит":"Ближайший старт · регистрация открыта"}</h2><div class="stack">${evCard(featured)}</div>`:'<div class="card muted small">Сейчас нет стартов с открытой регистрацией.</div>';
-  const othersBlock=others.length?`<h2 class="sec">Другие актуальные старты</h2><div class="stack">${others.map(ev=>evCard(ev)).join("")}</div>`:"";
-  const archiveBlock=archive.length?`<h2 class="sec">Прошедшие старты</h2><div class="stack archive-list">${[...years.entries()].sort((a,b)=>b[0].localeCompare(a[0])).map(([year,items],i)=>`<details class="card archive-year" ${i===0?"open":""}><summary>${esc(year)} год <span class="muted tiny">· ${items.length}</span></summary><div class="stack" style="margin-top:10px">${items.map(ev=>evCard(ev,true)).join("")}</div></details>`).join("")}</div>`:'<h2 class="sec">Прошедшие старты</h2><div class="empty">Пока нет прошедших стартов</div>';
+  const currentBlock=featured?`<h2 class="sec">${featured.status==="live"?"Сейчас проходит":"Ближайший старт · регистрация открыта"}</h2><div class="stack">${evCard(featured,false,true)}</div>`:'<div class="card muted small">Сейчас нет стартов с открытой регистрацией.</div>';
+  const othersBlock=others.length?`<h2 class="sec">Другие актуальные старты</h2><div class="stack">${others.map(ev=>evCard(ev,false,true)).join("")}</div>`:"";
+  const archiveBlock=archive.length?`<h2 class="sec">Прошедшие старты</h2><div class="stack archive-list">${[...years.entries()].sort((a,b)=>b[0].localeCompare(a[0])).map(([year,items],i)=>`<details class="card archive-year" ${i===0?"open":""}><summary>${esc(year)} год <span class="muted tiny">· ${items.length}</span></summary><div class="stack" style="margin-top:10px">${items.map(ev=>evCard(ev,true,true)).join("")}</div></details>`).join("")}</div>`:'<h2 class="sec">Прошедшие старты</h2><div class="empty">Пока нет прошедших стартов</div>';
   return currentBlock+othersBlock+archiveBlock;
 }
 /* how points work — for athletes, under the overall leaderboard */
@@ -2842,7 +2907,7 @@ adminEvent(){
     <h2 class="sec">Баннер старта</h2>
     <div class="card stack">
       ${ev.cover?`<div class="imgprev" style="background-image:url(${ev.cover})"></div>`:'<div class="imgprev empty-img">Баннер не добавлен</div>'}
-      <div class="muted small">${IMG_HINT.cover} Для прошедшего старта баннер показывается компактной горизонтальной полосой в архиве и на странице самого соревнования. Если баннер не загружен, в архиве остаётся только текстовая плашка.</div>
+      <div class="muted small">${IMG_HINT.cover} Фото отображается в цвете на главной карточке соревнований и в горизонтальной плашке архива. После загрузки можно двигать фото, приближать и уменьшать его в редакторе. Для архивной полосы лучше выбирать снимок с главным объектом ближе к центру. Если фотографии нет, показывается текстура с диагональными линиями.</div>
       <div class="row wrap"><button class="btn sm" data-act="coverimg">${ev.cover?"Заменить картинку":"Загрузить картинку"}</button>${ev.cover?'<button class="btn sm ghost" data-act="coveredit">Настроить кадр</button><button class="btn sm ghost" data-act="coverdel">Убрать</button>':""}</div>
     </div>
     <h2 class="sec">Документы для участников</h2>
