@@ -469,10 +469,12 @@ async function raceHeatView(ev,u){
    await q("insert into race_heat_plans(event_id,plan,updated_by) values($1,$2,$3) on conflict(event_id) do update set plan=excluded.plan,updated_at=now(),updated_by=excluded.updated_by",
      [ev.id,JSON.stringify(cfg),'auto-assignment']);
   }
-  const result=raceHeats.build(ev,regs,cfg);
+  const result=raceHeats.build(ev,regs,cfg,raceHeatAllowed(u));
+  result.hasUnpublishedChanges=raceHeatAllowed(u)&&Object.keys(cfg.pendingMoves||{}).length>0;
   if(!raceHeatAllowed(u)){
    result.days=Object.fromEntries(Object.entries(result.days).filter(([day])=>cfg.published[day]));
    delete result.order;delete result.start;delete result.pending;
+   result.days=Object.fromEntries(Object.entries(result.days).map(([day,rows])=>[day,rows.map(x=>({name:x.name,divId:x.divId,day:x.day,size:x.size,wave:x.wave,lane:x.lane,start:x.start,number:x.number,team:x.team}))]));
   }
   return result;
  });
