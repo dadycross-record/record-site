@@ -1118,7 +1118,7 @@ function evCount(ev){
 const isRaceEvent = ev => !!ev && ev.id==="evmvwkp907";
 const RACE_FORMATS=[["individual","Личный"],["pair","Пары"],["relay","Эстафета"],["kids","Дети"],["first","Первый старт"],["forces","Силовые ведомства"]];
 const RACE_AGES=[[16,24],[25,29],[30,34],[35,39],[40,44],[45,49],[50,54],[55,59],[60,64],[65,69],[70,74],[75,79],[80,84],[85,89]];
-const raceView=()=>S.race||(S.race={kind:"individual",level:"standard",gender:"F",age:"all",kid:"",q:"",mode:"results",stamp:0,data:null,error:"",loading:false});
+const raceView=()=>S.race||(S.race={kind:"individual",level:"standard",gender:"F",age:"all",kid:"",q:"",mode:"results",stamp:0,data:null,error:"",loading:false,heatData:null,heatLoading:false});
 function raceLoad(eventId, force=false){
  const R=raceView();
  if(R.loading)return;
@@ -1135,6 +1135,77 @@ function raceLoad(eventId, force=false){
 const raceSeconds=t=>t==null?"—":(Math.floor(t/60)+":"+String(Math.floor(t%60)).padStart(2,"0")+
   (Math.round(t*100)%100 ? ","+String(Math.round(t*100)%100).padStart(2,"0"):""));
 const raceAgeKey=a=>RACE_AGES.find(([min,max])=>a>=min&&a<=max)?.join("–")||"";
+
+function raceHeatsLoad(eventId,force){
+ const R=raceView();
+ if(R.heatLoading)return;
+ if(!force&&R.heatData&&R.heatData.eventId===eventId)return;
+ R.heatLoading=true;R.heatError="";
+ api("GET","/api/race/heats/"+encodeURIComponent(eventId)).then(data=>{
+  R.heatLoading=false;R.heatData=data;
+  if(S.route==="leaderboard"&&S.lb.ev===eventId)render();
+ }).catch(err=>{R.heatLoading=false;R.heatError=err.message||"Не удалось загрузить заходы";if(S.route==="leaderboard")render();});
+}
+async function raceHeatsAction(ev,payload){
+ try{
+  await api("POST","/api/admin/race/heats/"+encodeURIComponent(ev),payload);
+  const R=raceView();R.heatData=null;raceHeatsLoad(ev,true);
+  toast("Настройки заходов сохранены");
+ }catch(err){toast(err.message||"Не удалось сохранить изменения");}
+}
+function raceHeatsScreen(ev,head){
+ const R=raceView(),owner=!!USER&&USER.role==="owner",H=R.heatData&&R.heatData.eventId===ev.id?R.heatData:null;
+ if(!H)return {title:null,html:head+'<div class="card stack" style="margin-top:12px"><b>Заходы по времени</b><div class="muted">'+esc(R.heatError||"Загружаю актуальные заходы…")+'</div><button class="btn sm" data-race-heats-refresh="'+esc(ev.id)+'">Обновить</button></div>',
+  after:()=>{if(!R.heatLoading&&!R.heatError)raceHeatsLoad(ev.id);}};
+ const divs=new Map(ev.divisions.map(d=>[d.id,d]));
+ const days=[...new Set([ev.date,ev.dateEnd||ev.date])];
+ const header='<div class="row wrap" style="margin:12px 0"><b class="sp">Заходы · 6 участников · каждые 10 минут</b><button class="btn sm ghost" data-race-heats-refresh="'+esc(ev.id)+'">Обновить</button></div>';
+ let controls='';
+ if(owner){
+  const order=(H.order||ev.divisions.map(d=>d.id));
+  controls='<details class="card" style="margin-bottom:14px"><summary style="cursor:pointer;font-weight:750">Порядок категорий · изменить ↑ ↓</summary><div class="muted small" style="margin:10px 0">Расположи категории по возрастанию нагрузки. После изменения порядок влияет на черновик, опубликованные заходы сохраняются до полного перерасчёта.</div>'+
+   order.map((id,i)=>{
+    const d=divs.get(id);if(!d)return "";
+    return '<div class="arow"><span class="mono small">'+(i+1)+'</span><span class="sp">'+esc(raceDivTitle(d))+'</span>'+
+      '<button class="iconbtn sm" data-race-order="'+i+'|up" '+(i?'':'disabled')+' aria-label="Выше">↑</button>'+
+      '<button class="iconbtn sm" data-race-order="'+i+'|down" '+(i===order.length-1?'disabled':'')+' aria-label="Ниже">↓</button></div>';
+   }).join("")+'</details>';
+ }
+ let body='';
+ for(let di=0;di<days.length;di++){
+  const day=days[di],pub=!!H.published?.[day],rows=H.days?.[day]||[],waves=[...new Set(rows.map(r=>r.wave))].sort((a,b)=>a-b);
+  const time=H.start?.[day]||"09:00";
+  body+='<section class="card stack" style="margin-bottom:14px"><div class="row wrap" style="gap:8px"><b class="sp">'+esc(dayLabel(ev,day))+'</b><span class="chip '+(pub?'ok':'neutral')+'">'+(pub?'Опубликовано':'Черновик')+'</span></div>';
+  if(owner){
+   body+='<div class="row wrap" style="gap:8px"><label class="f" style="max-width:160px">Первый заход<input class="inp" type="time" id="raceFirst'+di+'" value="'+esc(time)+'" '+(pub?'disabled':'')+'></label>'+
+     (pub?'':'<button class="btn sm ghost" data-race-start="'+di+'">Сохранить начало</button>')+'</div>'+
+     '<label class="check" style="gap:8px"><input type="checkbox" '+(pub?'checked disabled':'disabled')+'><span>Опубликовать заходы · '+(pub?'опубликованы':'не опубликованы')+'</span></label>'+
+     (pub?'<button class="btn sm ghost" data-race-publish="'+di+'|full">Полный перерасчёт и повторная публикация</button>':
+           '<button class="btn sm" data-race-publish="'+di+'|initial">Опубликовать заходы этого дня</button>')+
+     '<div class="muted tiny">'+(pub?'Новые регистрации занимают свободные слоты или новый заход; опубликованное время остальных не сдвигается.':'Этот список видишь только ты. При новых регистрациях черновик пересчитывается автоматически.')+'</div>';
+  }
+  if(!rows.length)body+='<div class="muted small">Пока нет готовых регистраций'+(owner?' для черновика.':' или опубликованных заходов.')+'</div>';
+  for(const wave of waves){
+   const list=rows.filter(r=>r.wave===wave);
+   body+='<div class="race-wave"><div class="row wrap"><b>Заход '+wave+'</b><span class="mono small">'+esc(list[0].start)+'</span><span class="muted tiny">'+list.reduce((n,x)=>n+x.size,0)+' / 6 мест</span></div>';
+   body+=list.map((x,j)=>{
+    const index=di+'-'+wave+'-'+j,move=owner?
+      '<div class="race-move"><label>Заход<input class="inp" type="number" min="1" max="120" id="raceWave'+index+'" value="'+x.wave+'"></label><label>Дорожка<select class="inp" id="raceLane'+index+'">'+Array.from({length:7-x.size},(_,i)=>i+1).map(n=>'<option value="'+n+'"'+(n===x.lane?' selected':'')+'>'+n+'</option>').join("")+'</select></label><button class="btn sm ghost" data-race-move="'+esc(x.key)+'" data-race-di="'+di+'" data-race-index="'+index+'">Перенести</button></div>':"";
+    return '<div class="race-entrant"><span class="mono">'+x.lane+(x.size>1?'–'+(x.lane+x.size-1):"")+'</span><div><b>'+esc(x.name)+'</b><div class="muted tiny">'+esc(raceDivTitle(divs.get(x.divId)))+' · № '+esc(x.number)+' · '+esc(x.start)+'</div>'+move+'</div></div>';
+   }).join("");
+   body+='</div>';
+  }
+  body+='</section>';
+ }
+ if(!owner&&!Object.keys(H.days||{}).length)body='<div class="card muted small">Организатор пока не опубликовал заходы. Дата, время и стартовый номер появятся после публикации.</div>';
+ return {title:null,html:head+header+controls+body};
+}
+function raceDivTitle(d){
+ if(!d)return "Категория";
+ const name=String(d.name||"");
+ return /^race26-(ind-(f|m)|pair-(f|m|mix))$/.test(d.id) ? name+" · категория OPEN" : name;
+}
+
 function raceBoardScreen(ev){
  const R=raceView(), data=R.data&&R.data.eventId===ev.id?R.data:null;
  const staff=["owner","admin","judge"].includes(S.viewAs);
@@ -1173,28 +1244,7 @@ function raceBoardScreen(ev){
    (genderOpts.length>1?select("gender","Участники",genderOpts,R.gender):"")+
    (R.kind==="kids"?select("kid","Возраст",kidOpts,R.kid):ageOpts.length?select("age","Возраст",ageOpts,R.age,true):""))+
    '</div>';
- if(R.mode==="heats"){
-   const all=data.divisions;
-   const assigned=new Set();
-   const heats=(ev.schedule||[]).filter(s=>Array.isArray(s[4])&&s[4].length);
-   const days=[...new Set(heats.map(s=>s[3]||ev.date))].sort();
-   const heading='<div class="row wrap" style="margin:14px 0 10px"><b class="sp">Все категории · заходы по времени</b><button class="btn sm ghost" data-racerefresh="'+esc(ev.id)+'">Обновить</button></div>';
-   const timed=days.map(day=>{
-     const rows=heats.filter(s=>(s[3]||ev.date)===day).sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
-     return '<h2 class="sec">'+esc(dayLabel(ev,day))+'</h2><div class="card stack" style="gap:0">'+rows.map(s=>{
-       const ids=s[4].filter(id=>all.some(d=>d.id===id));
-       ids.forEach(id=>assigned.add(id));
-       return '<div class="race-heat"><b class="mono">'+esc(s[0])+'</b><div><strong>'+esc(s[1])+'</strong>'+
-         (s[2]?'<div class="muted tiny">'+esc(s[2])+'</div>':"")+
-         (ids.length?'<div class="race-heat-divs">'+ids.map(id=>{const d=all.find(x=>x.id===id);return '<div>'+esc(d.name)+' <span class="muted tiny">· '+d.entries.length+' уч./команд</span></div>';}).join("")+'</div>':'<div class="muted tiny">Категории не назначены</div>')+
-         '</div></div>';
-     }).join("")+'</div>';
-   }).join("");
-   const pending=all.filter(d=>!assigned.has(d.id));
-   const unassigned=pending.length?'<h2 class="sec">Время захода уточняется</h2><div class="card stack" style="gap:0">'+pending.map(d=>'<div class="race-heat"><span class="muted tiny">—</span><div><b>'+esc(d.name)+'</b><div class="muted tiny">'+d.entries.length+' участников / команд · заход не назначен</div></div></div>').join("")+'</div>':"";
-   const empty=!all.length?'<div class="empty">Пока нет зарегистрированных участников.</div>':"";
-   return {title:null,html:head+heading+timed+unassigned+empty+'<div class="rule small" style="margin-top:12px">Показаны только заходы с назначенными категориями. Точное время вносит организатор в программе старта; категории без времени показаны отдельно.</div>'};
- }
+ if(R.mode==="heats")return raceHeatsScreen(ev,head);
  if(!div)return {title:null,html:head+'<div class="empty">В этом дивизионе пока нет категории.</div>'};
  let rows=div.entries;
  let actualMerged=null;
@@ -2735,7 +2785,7 @@ adminEvent(){
   ev.docs = ev.docs || [];
   const stHint = {draft:"Черновик видите только вы.",open:"Старт виден в приложении, запись открыта до даты окончания регистрации.",live:"Старт идёт: открыт лидерборд, для онлайн-стартов — сдача результатов.",ended:"Регистрация и сдача закрыты, лидерборд остаётся."}[adm.st];
   return {title: ev.name || "Новый старт", html:`<div class="stack">
-    ${EVENTS.some(e=>e.id===ev.id)?`<div class="row wrap" style="gap:8px"><button class="btn sm" data-adm-people="${ev.id}">Участники и заявки</button><button class="btn sm ghost" data-lbev="${ev.id}">Лидерборд</button>${isRaceEvent(ev)?`<button class="btn sm" data-race-event="${ev.id}">🏁 ГОНКА · зачёты</button>`:""}</div>`:""}
+    ${EVENTS.some(e=>e.id===ev.id)?`<div class="row wrap" style="gap:8px"><button class="btn sm" data-adm-people="${ev.id}">Участники и заявки</button><button class="btn sm ghost" data-lbev="${ev.id}">Лидерборд</button>${isRaceEvent(ev)?`<button class="btn sm" data-race-event="${ev.id}">🏁 ГОНКА · зачёты</button><button class="btn sm ghost" data-race-manage="${ev.id}">Заходы · управление</button>`:""}</div>`:""}
     <h2 class="sec" style="margin-top:0">Основное</h2>
     <label class="f">Название<input class="inp ${E.name?"err":""}" id="aName" value="${esc(ev.name)}" placeholder="Например, Детская Гонка Рекорда"></label>${fErr(E.name)}
     <label class="f">Подзаголовок<input class="inp" id="aEn" value="${esc(ev.en||"")}" placeholder="RECORD KIDS"></label>
@@ -3804,7 +3854,7 @@ document.addEventListener("click", e=>{
   if (S.route==="club") syncTrial();
   if (ds.raceEvent){
     S.lb.ev=ds.raceEvent;S.lb.w=-1;S.lb.q="";S.lb.tab="ind";
-    const R=raceView();R.data=null;R.stamp=0;R.q="";R.age="all";R.kind="individual";R.level="standard";R.gender="F";R.mode="results";
+    const R=raceView();R.data=null;R.stamp=0;R.q="";R.age="all";R.kind="individual";R.level="standard";R.gender="F";R.mode="results";R.heatData=null;R.heatError="";
     return tab("leaderboard",true);
   }
   if(ds.raceRegLevel){S.p.raceLevel=ds.raceRegLevel;return render();}
@@ -3957,7 +4007,7 @@ document.addEventListener("change", e=>{
   if (["c1","c2","c3","c4","c5","rSize","rAff"].includes(id)){ keepForm(); const y=window.scrollY; render(); window.scrollTo(0,y); }
   if (e.target.dataset && e.target.dataset.raceFilter){
      const R=raceView(), field=e.target.dataset.raceFilter, val=e.target.value;
-     if(field==="mode")R.mode=val;
+     if(field==="mode"){R.mode=val;if(val==="heats")raceHeatsLoad(S.lb.ev);}
      else if(field==="kind"){R.kind=val;R.age="all";R.q="";}
      else if(field==="level"){R.level=val;R.age="all";}
      else if(field==="gender"){R.gender=val;R.age="all";}
