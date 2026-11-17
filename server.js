@@ -447,7 +447,7 @@ const raceHeatEvent = async id => {
  return ev;
 };
 const raceHeatRegistrations = async (ev,q=db.query.bind(db)) =>
- (await q("select id, pub, event_id, div_id, person, team, status, created_at from registrations where event_id=$1 and status in ('new','paid','refund_requested') order by created_at,id",[ev.id])).rows;
+ (await q("select id, pub, event_id, div_id, person, team, status, user_id, athlete_user, created_at from registrations where event_id=$1 and status in ('new','paid','refund_requested') order by created_at,id",[ev.id])).rows;
 const raceHeatAllowed = u=>!!u&&u.role==='owner';
 // The published snapshot is incrementally extended for new registrants only. Existing
 // wave/time/number allocations remain locked, even if a participant cancels.
@@ -474,7 +474,7 @@ async function raceHeatView(ev,u){
   if(!raceHeatAllowed(u)){
    result.days=Object.fromEntries(Object.entries(result.days).filter(([day])=>cfg.published[day]));
    delete result.order;delete result.start;delete result.pending;
-   result.days=Object.fromEntries(Object.entries(result.days).map(([day,rows])=>[day,rows.map(x=>({name:x.name,divId:x.divId,day:x.day,size:x.size,wave:x.wave,lane:x.lane,start:x.start,number:x.number,team:x.team}))]));
+   result.days=Object.fromEntries(Object.entries(result.days).map(([day,rows])=>[day,rows.map(x=>({name:x.name,divId:x.divId,day:x.day,size:x.size,wave:x.wave,lane:x.lane,start:x.start,number:x.number,team:x.team,myIds:u?x.ids.filter(id=>regs.some(r=>r.id===id&&(String(r.user_id)===String(u.id)||String(r.athlete_user)===String(u.id)))):[]}))]));
   }
   return result;
  });
@@ -898,6 +898,9 @@ route('POST', '/api/register', async (req, res, u, body) => {
   if (cons.publish) await logConsent(req, subj, 'publish', out.id);
   if (cons.photo) await logConsent(req, subj, 'photo', out.id);
   dirty();
+  if(ev.id===raceHeats.EVENT_ID) {
+    try { await raceHeatView(ev,u); } catch(err) { console.warn('Race heat auto-allocation warning:',err.message); }
+  }
   notify(`🏁 <b>Новая заявка на старт</b>\n${tg.esc(ev.name)} · ${tg.esc(div.name)}\n${out.due ? `К оплате: ${rub(out.due)}` : 'Бесплатно'} · ${out.id}\n${SITE_URL()}/#admin`,
     { title: 'новая заявка на старт', lines: [`Старт: ${ev.name}`, `Категория: ${div.name}`, `Участник: ${`${snap.last || ''} ${snap.first || ''}`.trim()}${snap.parent ? ` (родитель: ${snap.parent})` : ''}`, ...(out.team ? [`Команда: ${out.team}`] : []), `Телефон: ${snap.phone || ''}`, `Заказ: ${out.id}`, out.due ? `К оплате: ${rub(out.due)} — ждёт отметки об оплате` : 'Взнос: бесплатно'] });
   if (out_captain) mailCaptain(out_captain, `Заявка в команду «${out.team}»`, [`${`${snap.first || ''} ${snap.last || ''}`.trim()} хочет в вашу команду «${out.team}» (${ev.name} · ${div.name}).`, '', `Принять или отклонить: ${SITE_URL()}/#orders → карточка старта → «Команда».`]);
