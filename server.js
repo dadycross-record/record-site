@@ -2026,7 +2026,49 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-init().then(() => {
+// Temporary, guarded one-off repair for the 2026-11-17 accidental empty EVENTS write.
+// Restores ONLY content.data.EVENTS from a verified pre-incident backup.
+// Never restores registrations, results, SITE, PROMOS or other data.
+async function recoverEventsFromPreIncidentBackup() {
+  const present = (await db.query('select data from content where id=1')).rows[0]?.data;
+  if (!present || !Array.isArray(present.EVENTS)) throw new Error('Recovery stopped: no valid content.EVENTS');
+  if (present.EVENTS.length !== 0) {
+    console.log('events recovery skipped: EVENTS already populated', present.EVENTS.length);
+    return;
+  }
+  const backupRow = (await db.query('select created_at, data from backups where id=25')).rows[0];
+  if (!backupRow) throw new Error('Recovery stopped: pre-incident backup 25 missing');
+  const backupDate = new Date(backupRow.created_at);
+  if (!(backupDate >= new Date('2026-11-17T04:00:00Z') && backupDate < new Date('2026-11-17T15:25:34Z'))) {
+    throw new Error('Recovery stopped: unexpected backup timestamp');
+  }
+  const bytes = typeof backupRow.data === 'string'
+    ? Buffer.from(backupRow.data.replace(/^\\x/, ''), 'hex') : backupRow.data;
+  const dump = validateBackup(JSON.parse(zlib.gunzipSync(bytes, {maxOutputLength: 256 * 1024 * 1024}).toString('utf8')));
+  const archiveContent = dump.tables.content.find(r => Number(r.id) === 1)?.data;
+  const recovered = archiveContent?.EVENTS;
+  const ids = ['race', 'league', 'evmvwkp907', 'bazagames26'];
+  if (!Array.isArray(recovered) || recovered.length !== 4 ||
+      ids.some(id => !recovered.some(ev => ev.id === id && Array.isArray(ev.divisions))) ||
+      new Set(recovered.map(ev => ev.id)).size !== 4) {
+    throw new Error('Recovery stopped: backup does not contain the four expected competitions');
+  }
+  const pre = await makeBackup('pre-events-recovery');
+  console.log('events recovery safety backup created', pre.id);
+  const result = await db.tx(async q => {
+    const current = (await q('select data from content where id=1 for update')).rows[0]?.data;
+    if (!current || !Array.isArray(current.EVENTS) || current.EVENTS.length !== 0) return {skipped:true};
+    await q("select set_config('app.actor_email','system:events-recovery',true),set_config('app.action','RECOVER EVENTS FROM BACKUP 25',true)");
+    await q("update content set data=jsonb_set(data,'{EVENTS}',$1::jsonb,false),updated_at=now(),updated_by='system:events-recovery' where id=1",
+      [JSON.stringify(recovered)]);
+    return {restored:recovered.map(ev=>({id:ev.id,status:ev.status}))};
+  });
+  dirty();
+  console.log('events recovery result', JSON.stringify(result));
+}
+
+init().then(async () => {
+  await recoverEventsFromPreIncidentBackup();
   server.listen(PORT, () => console.log(`listening on ${PORT}`, '|', mail.describe()));
   setTimeout(dailyBackup, 60e3).unref();
   tgStart();
