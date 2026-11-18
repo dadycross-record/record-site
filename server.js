@@ -1772,15 +1772,38 @@ route('POST','/api/admin/athlete/update',async(req,res,u,body)=>{
   dirty();return {type,id};
 });
 
-/* ---------- backups: a daily snapshot of every table, kept 14 days; the owner downloads them ---------- */
+/* ---------- backups: daily (30 days), weekly (12 weeks), monthly (12 months) ---------- */
 const { snapshot: snapshotBackup, validate: validateBackup, restore: restoreBackup } = require('./lib/backup');
+async function pruneBackups() {
+  // Keep manual snapshots for 30 days; never prune the weekly/monthly copies early.
+  await db.query(`delete from backups where
+    (kind='daily' and created_at < now() - interval '30 days') or
+    (kind='weekly' and created_at < now() - interval '12 weeks') or
+    (kind='monthly' and created_at < now() - interval '12 months') or
+    (kind not in ('daily','weekly','monthly') and created_at < now() - interval '30 days')`);
+}
 async function makeBackup(kind) {
   const dump = await snapshotBackup(db);
   const rows = Object.values(dump.tables).reduce((n, table) => n + table.length, 0);
   const data = zlib.gzipSync(JSON.stringify(dump));
   const r = await db.query('insert into backups(kind, size, rows, data) values ($1,$2,$3,$4) returning id, created_at', [kind, data.length, rows, data]);
-  await db.query(`delete from backups where created_at < now() - interval '14 days'`);
+  await pruneBackups();
   return r.rows[0];
+}
+async function promoteDailyBackup(id) {
+  // Store an independent weekly and monthly version of today's daily snapshot.
+  // Calendar boundaries use Irkutsk local time, matching competition schedules.
+  const source = (await db.query('select data,size,rows,created_at from backups where id=$1',[id])).rows[0];
+  if (!source) throw new Error('Отсутствует исходная дневная копия');
+  for (const [kind,unit] of [['weekly','week'],['monthly','month']]) {
+    const existing = await db.query(
+      `select 1 from backups where kind=$1 and date_trunc('${unit}', created_at at time zone 'Asia/Irkutsk')=date_trunc('${unit}', $2::timestamptz at time zone 'Asia/Irkutsk') limit 1`,
+      [kind,source.created_at]);
+    if (!existing.rows.length) await db.query(
+      'insert into backups(kind,size,rows,data) values($1,$2,$3,$4)',
+      [kind,source.size,source.rows,source.data]);
+  }
+  await pruneBackups();
 }
 /* off-site copy: the daily backup also goes to Yandex Disk over WebDAV, encrypted with the owner's passphrase.
    BACKUP_WEBDAV_USER / BACKUP_WEBDAV_PASS — Yandex login and an app password for «Файлы (WebDAV)»; BACKUP_KEY — passphrase.
@@ -1819,12 +1842,16 @@ async function uploadOffsite(id) {
 }
 async function dailyBackup() {
   try {
-    const { rows } = await db.query(`select 1 from backups where kind='daily' and created_at > now() - interval '23 hours'`);
-    if (!rows.length) { const b = await makeBackup('daily'); console.log('backup created', b.id); await uploadOffsite(b.id); }
-    else if (offsiteReady() && (!offsite.last || Date.now() - Date.parse(offsite.last) > 25 * 3600e3)) {
-      const last = (await db.query('select id from backups order by created_at desc limit 1')).rows[0]; if (last) await uploadOffsite(last.id);
+    const { rows } = await db.query(`select id from backups where kind='daily' and created_at > now() - interval '23 hours' order by created_at desc limit 1`);
+    let id=rows[0]?.id;
+    if (!id) {
+      const b=await makeBackup('daily');id=b.id;
+      console.log('backup created',id);
     }
-  } catch (e) { console.error('backup failed:', e.message); }
+    await promoteDailyBackup(id); // also repairs missing weekly/monthly slots after restart
+    if (offsiteReady() && (!offsite.last || Date.now()-Date.parse(offsite.last)>25*3600e3))
+      await uploadOffsite(id);
+  } catch(e) { console.error('backup failed:',e.message); }
 }
 const backupOut = b => ({ id: b.id, created: b.created_at, kind: b.kind, size: b.size, rows: b.rows });
 
