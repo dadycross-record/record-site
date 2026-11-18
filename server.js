@@ -1869,6 +1869,30 @@ route('POST', '/api/admin/backups', async (req, res, u) => {
   const b = await makeBackup('manual');
   return { backup: backupOut((await db.query('select id, created_at, kind, size, rows from backups where id=$1', [b.id])).rows[0]) };
 });
+/* Manual full archive: database snapshot plus the deployed source, owner only.
+   Daily backups and optional offsite uploads retain their existing schedules. */
+route('POST', '/api/admin/backups/full', async (req, res, u) => {
+  need(u, 'owner');
+  limit('backup-full:' + u.id, 4, 3600e3);
+  const b = await makeBackup('manual');
+  const saved = (await db.query('select created_at, data from backups where id=$1', [b.id])).rows[0];
+  if (!saved) throw new HttpError(503, 'Не удалось получить резервную копию');
+  const raw = typeof saved.data === 'string' ? Buffer.from(saved.data.replace(/^\\x/, ''), 'hex') : saved.data;
+  if (!raw || raw.length < 50) throw new HttpError(503, 'Резервная копия пуста');
+  const { fullArchive } = require('./lib/full-archive');
+  const stamp = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 16).replace(/[-:T]/g, '');
+  const archive = fullArchive(raw, {createdAt:saved.created_at, sourceVersion:process.env.SOURCE_COMMIT || process.env.COMMIT_SHA || 'deployed-version'});
+  res.writeHead(200, {
+    'Content-Type': 'application/zip',
+    'Content-Disposition': 'attachment; filename="record-full-' + stamp + '.zip"',
+    'Content-Length': archive.length,
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff'
+  });
+  res.end(archive);
+  return undefined;
+});
+
 route('GET', '/api/admin/backups/:id', async (req, res, u, body, p) => {
   need(u, 'owner');
   const b = (await db.query('select id, created_at, data from backups where id=$1', [+p.id || 0])).rows[0];
