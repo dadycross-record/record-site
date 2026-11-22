@@ -1933,7 +1933,7 @@ route('GET', '/api/admin/backups/:id', async (req, res, u, body, p) => {
 
 /* ---------- static files ---------- */
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.woff': 'font/woff', '.woff2': 'font/woff2',
-  '.txt': 'text/plain; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.ico': 'image/x-icon', '.json': 'application/json', '.xml': 'application/xml' };
+  '.txt': 'text/plain; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.ico': 'image/x-icon', '.mp4': 'video/mp4', '.json': 'application/json', '.xml': 'application/xml' };
 const fileCache = new Map();
 function serveStatic(req, res, pathname) {
   let rel = decodeURIComponent(pathname);
