@@ -228,18 +228,6 @@ a.btn{text-decoration:none}
 }
 @media(prefers-reduced-motion:reduce){.ev.comp-card{transition:none}}
 
-.race-reels-post{display:grid;grid-template-columns:minmax(0,1fr) minmax(170px,240px);align-items:center;gap:22px;margin-top:14px;padding:20px;border-left:3px solid var(--accent)}
-.race-reels-post .race-post-copy{min-width:0;gap:12px}
-.race-reels-post h2{margin:0;font-family:var(--f-display);font-size:clamp(21px,4vw,29px);line-height:1.18}
-.race-reels-post p{margin:0}
-.race-reels-post .race-post-deadline{color:var(--accent);font-weight:750}
-.race-reels-post .btn{align-self:flex-start;max-width:100%;height:auto;min-height:44px;padding-block:10px;white-space:normal;text-align:center}
-.race-reels-post video{display:block;width:100%;aspect-ratio:9/16;background:#080909;object-fit:contain;border-radius:10px}
-@media(max-width:560px){
- .race-reels-post{grid-template-columns:1fr;padding:16px}
- .race-reels-post video{width:min(100%,285px);justify-self:center}
-}
-
 /* tabs */
 .tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px;overflow-x:auto}
 .tabs button{flex:1;min-width:max-content;border:0;background:none;border-radius:9px;padding:9px 12px;font-weight:600;font-size:13px;color:var(--muted)}
@@ -1198,20 +1186,6 @@ function evCount(ev){
    All other competitions continue using the original CrossFit leaderboard. */
 const RACE_EVENT_ID = "evmvwkp907";
 const isRaceEvent = ev => !!ev && ev.id===RACE_EVENT_ID;
-function raceReelsPost(ev){
-  const date = ev.regTo ? new Date(ev.regTo+"T12:00:00Z").toLocaleDateString("ru-RU", {day:"numeric",month:"long",timeZone:"UTC"}) : "";
-  const open = registrationIsOpen(ev);
-  return `<article class="card race-reels-post" aria-labelledby="race-post-title">
-    <div class="race-post-copy stack">
-      <h2 id="race-post-title">RECORD RACE. Встречаемся на старте!</h2>
-      <p>${esc(dateRange(ev))} в Центре спорта «Рекорд» в Пивоварихе. Можно выступить индивидуально, в паре или в эстафете.</p>
-      <p class="muted small">В ролике Пакмен показывает путь от старта до финиша и порядок всех восьми станций.</p>
-      ${open && date ? `<p class="race-post-deadline">${esc(date)} — последний день регистрации</p><p class="muted tiny">По иркутскому времени</p>` : ""}
-      ${open ? `<button class="btn" data-go="divisions" data-ev="${esc(ev.id)}">Зарегистрироваться на гонку</button>` : '<p class="muted small">Регистрация закрыта</p>'}
-    </div>
-    <video controls playsinline preload="none" aria-label="Маршрут Пакмена на RECORD RACE" poster="/media/record-race-reels-poster.jpg" src="/media/record-race-reels.mp4"></video>
-  </article>`;
-}
 const RACE_CASH_INFO = "Оплата участия — только наличными в Центре спорта «Рекорд». После подачи заявки необходимо внести взнос. Регистрация подтверждается организатором после оплаты.";
 const RACE_FORMATS=[["individual","Личный"],["pair","Пары"],["relay","Эстафета"],["kids","Дети"],["first","Первый старт"],["forces","Силовые ведомства"]];
 const RACE_AGES=[[16,24],[25,29],[30,34],[35,39],[40,44],[45,49],[50,54],[55,59],[60,64],[65,69],[70,74],[75,79],[80,84],[85,89]];
@@ -1450,7 +1424,6 @@ event(){
         ${ev.submitTo?`<dt>Сдача результатов</dt><dd>до ${dHuman(ev.submitTo)}, 23:59</dd>`:""}
       </dl>
     </div>
-    ${isRaceEvent(ev)?raceReelsPost(ev):""}
     ${isRaceEvent(ev)?`<div class="card" style="border-left:3px solid var(--accent);margin-top:12px"><b>Время старта</b><p class="small" style="margin:8px 0 0">Точное время стартов волн сообщается каждому участнику индивидуально после окончания регистрации.</p><div class="muted small" style="margin-top:6px">После публикации заходов дата, время, номер захода и стартовый номер будут доступны в разделе «Мои старты».</div></div>`:""}
     ${evQuick(ev, secs)}
     ${evCount(ev)}
