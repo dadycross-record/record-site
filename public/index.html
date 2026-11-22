@@ -394,6 +394,12 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 @media(max-width:480px){.cover-editor .cover-actions .btn{flex:1 1 auto}.cover-editor .cover-controls{gap:7px}}
 #cropZ{accent-color:var(--accent)}
 .teambox{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px}.teambox .arow{gap:8px}.inp.sm{height:34px;padding:0 8px;font-size:13px;width:auto}
+@media(max-width:600px){
+ .teambox .arow{flex-wrap:wrap}
+ .teambox .arow>.sp{flex:0 0 100%;overflow-wrap:anywhere}
+ .teambox .arow>.row{min-width:0;max-width:100%}
+ .teambox .arow select{max-width:100%}
+}
 .waiver{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.waiver .inp{flex:1;min-width:200px}
 .crq{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--line)}.crq:last-child{border-bottom:0}.crq-act{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .crewadd-box summary{cursor:pointer;list-style:none}.crewadd-box summary::-webkit-details-marker{display:none}.tbl.crew tr.tot td{border-top:2px solid var(--line)}
