@@ -228,6 +228,18 @@ a.btn{text-decoration:none}
 }
 @media(prefers-reduced-motion:reduce){.ev.comp-card{transition:none}}
 
+.race-reels-post{display:grid;grid-template-columns:minmax(0,1fr) minmax(170px,240px);align-items:center;gap:22px;margin-top:14px;padding:20px;border-left:3px solid var(--accent)}
+.race-reels-post .race-post-copy{min-width:0;gap:12px}
+.race-reels-post h2{margin:0;font-family:var(--f-display);font-size:clamp(21px,4vw,29px);line-height:1.18}
+.race-reels-post p{margin:0}
+.race-reels-post .race-post-deadline{color:var(--accent);font-weight:750}
+.race-reels-post .btn{align-self:flex-start;max-width:100%;height:auto;min-height:44px;padding-block:10px;white-space:normal;text-align:center}
+.race-reels-post video{display:block;width:100%;aspect-ratio:9/16;background:#080909;object-fit:contain;border-radius:10px}
+@media(max-width:560px){
+ .race-reels-post{grid-template-columns:1fr;padding:16px}
+ .race-reels-post video{width:min(100%,285px);justify-self:center}
+}
+
 /* tabs */
 .tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px;overflow-x:auto}
 .tabs button{flex:1;min-width:max-content;border:0;background:none;border-radius:9px;padding:9px 12px;font-weight:600;font-size:13px;color:var(--muted)}
@@ -1113,6 +1125,9 @@ const NAV = [["home","Главная"],["events","Старты"],["leaderboard",
 function topnav(){ const cur = ROOT_TAB[S.route]; return `<nav class="topnav" aria-label="Разделы">${NAV.map(([k,l])=>`<button data-tab="${k}" ${cur===k?'aria-current="page"':""}>${l}</button>`).join("")}</nav>`; }
 const WIDTH = {adminAthlete:"mid",adminResults:"wide",club:"wide",adminClub:"mid",home:"wide",events:"wide",leaderboard:"wide",admin:"wide",adminPeople:"wide",orders:"wide",messages:"mid",divisions:"wide",event:"mid",teamJoin:"mid"};
 const statusChip = s => ({open:'<span class="chip open">Регистрация открыта</span>',live:'<span class="chip live">Идёт</span>',ended:'<span class="chip ended">Завершён</span>',draft:'<span class="chip neutral">Черновик</span>'}[s]);
+const eventStatusChip = ev => isRaceEvent(ev) && ev.status==="open" && !registrationIsOpen(ev)
+  ? '<span class="chip neutral">Регистрация закрыта</span>'
+  : statusChip(ev.status);
 const isPub = e => e.status!=="draft";
 const isStaffView = () => ["owner","admin","judge"].includes(S.viewAs);
 const lbEvents = () => {
@@ -1140,8 +1155,12 @@ const person = () => personOf(S.who);
 const athleteAge = (ev, p=person(), div=null) => !p || !p.dob ? NaN : ev.ageMode==="year" ? (+ev.date.slice(0,4) - +p.dob.slice(0,4)) : ageOn(p.dob, (div?.days?.[0] || ev.date));
 /* a guest sees every category but can enter none; the profile (and children in it) decides what opens */
 const WHY_LOGIN = "Войдите, чтобы записаться", WHY_PROFILE = "Заполните анкету участника";
+function registrationIsOpen(ev){
+  if (isRaceEvent(ev)) return ["open","live"].includes(ev.status) && (!ev.regTo || TODAY<=ev.regTo);
+  return ev.permanent ? ["open","live"].includes(ev.status) : (ev.status==="open" || (ev.status==="live" && TODAY<=ev.regTo));
+}
 function eligibility(ev, d){
-  if (ev.permanent ? !["open","live"].includes(ev.status) : (ev.status!=="open" && !(ev.status==="live" && TODAY<=ev.regTo))) return "Регистрация закрыта";
+  if (!registrationIsOpen(ev)) return "Регистрация закрыта";
   if (!USER) return WHY_LOGIN;
   const p = person();
   if (!profileReady() || !p || !p.dob || !p.gender) return WHY_PROFILE;
@@ -1170,14 +1189,29 @@ function evCount(ev){
   if (ev.status==="ended") return `<div class="count">${cell(n,"участвовали")}${cell(ev.divisions.length,"категорий")}${cell(ev.workouts.length,"заданий")}</div>`;
   if (ev.status==="live") return `<div class="count">${ev.submitTo?cell(left(ev.submitTo),"дней на сдачу результатов"):cell(evDays(ev).length,"дней старта")}${TODAY<=ev.regTo?cell(left(ev.regTo),"дней на регистрацию"):cell("—","регистрация закрыта")}${cell(n,"уже записались")}</div>`;
   if (ev.status==="draft") return "";
-  return `<div class="count">${cell(left(ev.date),"дней до старта")}${cell(left(ev.regTo),"дней на регистрацию")}${cell(n,"уже записались")}</div>`;
+  return `<div class="count">${cell(left(ev.date),"дней до старта")}${isRaceEvent(ev)&&!registrationIsOpen(ev)?cell("—","регистрация закрыта"):cell(left(ev.regTo),"дней на регистрацию")}${cell(n,"уже записались")}</div>`;
 }
 
 /* ---------- screens ---------- */
 
 /* RECORD RACE uses one finish time and two independent standings (absolute and age).
    All other competitions continue using the original CrossFit leaderboard. */
-const isRaceEvent = ev => !!ev && ev.id==="evmvwkp907";
+const RACE_EVENT_ID = "evmvwkp907";
+const isRaceEvent = ev => !!ev && ev.id===RACE_EVENT_ID;
+function raceReelsPost(ev){
+  const date = ev.regTo ? new Date(ev.regTo+"T12:00:00Z").toLocaleDateString("ru-RU", {day:"numeric",month:"long",timeZone:"UTC"}) : "";
+  const open = registrationIsOpen(ev);
+  return `<article class="card race-reels-post" aria-labelledby="race-post-title">
+    <div class="race-post-copy stack">
+      <h2 id="race-post-title">RECORD RACE. Встречаемся на старте!</h2>
+      <p>${esc(dateRange(ev))} в Центре спорта «Рекорд» в Пивоварихе. Можно выступить индивидуально, в паре или в эстафете.</p>
+      <p class="muted small">В ролике Пакмен показывает путь от старта до финиша и порядок всех восьми станций.</p>
+      ${open && date ? `<p class="race-post-deadline">${esc(date)} — последний день регистрации</p><p class="muted tiny">По иркутскому времени</p>` : ""}
+      ${open ? `<button class="btn" data-go="divisions" data-ev="${esc(ev.id)}">Зарегистрироваться на гонку</button>` : '<p class="muted small">Регистрация закрыта</p>'}
+    </div>
+    <video controls playsinline preload="none" aria-label="Маршрут Пакмена на RECORD RACE" poster="/media/record-race-reels-poster.jpg" src="/media/record-race-reels.mp4"></video>
+  </article>`;
+}
 const RACE_CASH_INFO = "Оплата участия — только наличными в Центре спорта «Рекорд». После подачи заявки необходимо внести взнос. Регистрация подтверждается организатором после оплаты.";
 const RACE_FORMATS=[["individual","Личный"],["pair","Пары"],["relay","Эстафета"],["kids","Дети"],["first","Первый старт"],["forces","Силовые ведомства"]];
 const RACE_AGES=[[16,24],[25,29],[30,34],[35,39],[40,44],[45,49],[50,54],[55,59],[60,64],[65,69],[70,74],[75,79],[80,84],[85,89]];
@@ -1371,14 +1405,14 @@ home(){
     <span class="kicker">Сезон ${yr} · Иркутск</span>
     <div class="word">${LOGO}</div>
     <div class="under"><p class="hsub">Регистрация, результаты и лидерборд в одном месте.</p></div>
-    <div class="row"><button class="btn" data-go="divisions" data-ev="${ev.id}">Записаться на старт</button><button class="btn ghost" data-tab-go="leaderboard">Лидерборд</button></div>
+    <div class="row">${registrationIsOpen(ev)?`<button class="btn" data-go="divisions" data-ev="${ev.id}">Записаться на старт</button>`:""}<button class="btn ghost" data-tab-go="leaderboard">Лидерборд</button></div>
   </section>
   <h2 class="sec">Сезон ${yr}</h2>
   <div class="count" style="margin-top:0"><div><b>${people}</b><span>участников стартов за ${yr} год</span></div><div><b>${held.length}</b><span>стартов проведено в ${yr} году</span></div></div>
   <h2 class="sec">Ближайший старт</h2>
   <button class="card next" data-go="event" data-ev="${ev.id}" style="text-align:left;width:100%">
     <div class="datebox"><b>${+d}</b><span>${MONS[+m-1]}</span></div>
-    <div><div class="row wrap" style="gap:6px">${statusChip(ev.status)}</div>
+    <div><div class="row wrap" style="gap:6px">${eventStatusChip(ev)}</div>
       <div style="font-family:var(--f-display);font-weight:600;font-size:16px;text-transform:uppercase;margin:6px 0 2px">${ev.name}</div>
       <div class="muted small">${dateRange(ev)}${durTxt(ev)} · ${ev.city}</div></div>
   </button>
@@ -1405,7 +1439,7 @@ event(){
   let body = cs ? `<div class="card">${textHtml(cs.text) || '<span class="muted">Раздел пока пустой</span>'}</div>` : "";
   if (t==="info") body = `${ev.cover?`<div class="evcover" style="background-image:url(${ev.cover})"></div>`:""}
     <div class="card stack">
-      <div class="row">${statusChip(ev.status)}<span class="sp"></span><span class="muted tiny">${ev.format==="online"?"Онлайн":"Очный"}</span></div>
+      <div class="row">${eventStatusChip(ev)}<span class="sp"></span><span class="muted tiny">${ev.format==="online"?"Онлайн":"Очный"}</span></div>
       <div style="font-family:var(--f-display);font-weight:800;font-size:24px;line-height:1.05;text-transform:uppercase">${esc(ev.name)}</div>
       ${ev.en?`<div class="muted small">${esc(ev.en)}</div>`:""}
       <dl class="kv" style="margin:6px 0 0">
@@ -1416,6 +1450,7 @@ event(){
         ${ev.submitTo?`<dt>Сдача результатов</dt><dd>до ${dHuman(ev.submitTo)}, 23:59</dd>`:""}
       </dl>
     </div>
+    ${isRaceEvent(ev)?raceReelsPost(ev):""}
     ${isRaceEvent(ev)?`<div class="card" style="border-left:3px solid var(--accent);margin-top:12px"><b>Время старта</b><p class="small" style="margin:8px 0 0">Точное время стартов волн сообщается каждому участнику индивидуально после окончания регистрации.</p><div class="muted small" style="margin-top:6px">После публикации заходов дата, время, номер захода и стартовый номер будут доступны в разделе «Мои старты».</div></div>`:""}
     ${evQuick(ev, secs)}
     ${evCount(ev)}
@@ -1464,10 +1499,10 @@ event(){
       : multi ? days.map(d=>{ const ws=ev.workouts.filter(w=>(w.day||days[0])===d); return ws.length ? `<h2 class="sec">${dayLabel(ev,d)}</h2><div class="stack">${ws.map(card).join("")}</div>` : ""; }).join("")
       : wodGroups(ev).map(g=>`${g.title?`<h2 class="sec">${esc(g.title)}</h2>`:""}<div class="stack">${g.ws.map(card).join("")}</div>`).join(""));
   }
-  const canReg = ev.permanent ? ["open","live"].includes(ev.status) : (ev.status==="open" || (ev.status==="live" && TODAY<=ev.regTo));
+  const canReg = registrationIsOpen(ev);
   const selfCanReg = ev.divisions.some(d=>{ const w=S.who; S.who="me"; const ok=!eligibility(ev,d); S.who=w; return ok; });
   const childCanReg = ME.kids.some(k=>ev.divisions.some(d=>{ const w=S.who; S.who=k.id; const ok=!eligibility(ev,d); S.who=w; return ok; }));
-  return {title:ev.name, html:`<div class="row" style="margin-bottom:12px">${statusChip(ev.status)}</div><div class="tabs" role="tablist">${tabsHtml}</div><div style="margin-top:14px">${body}</div>
+  return {title:ev.name, html:`<div class="row" style="margin-bottom:12px">${eventStatusChip(ev)}</div><div class="tabs" role="tablist">${tabsHtml}</div><div style="margin-top:14px">${body}</div>
    <div class="sticky-cta" style="bottom:64px">${ev.status==="ended"?`<button class="btn block" data-lbev="${esc(ev.id)}">Открыть лидерборд</button>`:hasReg(ev.id)&&canReg&&childCanReg&&!selfCanReg?`<div class="grid2"><button class="btn dark" data-go="orders">Мои старты</button><button class="btn" data-go="divisions" data-ev="${ev.id}">Записать ребёнка</button></div>`:hasReg(ev.id)&&!(canReg&&selfCanReg)?`<button class="btn block dark" data-go="orders">Вы зарегистрированы · Мои старты</button>`:hasReg(ev.id)&&canReg?`<div class="grid2"><button class="btn dark" data-go="orders">Мои старты</button><button class="btn" data-go="divisions" data-ev="${ev.id}">Ещё категория</button></div>`:canReg?`<button class="btn block" data-go="divisions" data-ev="${ev.id}">Зарегистрироваться</button>`:`<button class="btn block" disabled>${ev.status==="draft"?"Черновик — участники его не видят":"Регистрация закрыта"}</button>`}</div><div style="height:70px"></div>`, after:()=>{ const b=document.querySelector('#view .tabs [aria-selected="true"]'); if (b && b.parentElement) b.parentElement.scrollLeft = b.offsetLeft - 8; }};
 },
 divisions(){
@@ -1661,7 +1696,7 @@ leaderboard(){
   if (ev0.permanent){ if (L.month!=="year" && !(ev0.months||[]).some(m=>m.id===L.month)) L.month = curMonth(ev0).id; month = L.month; }
   let ev = month==="year" ? leagueYear(ev0, L.div).ev : lbEv(ev0, month);
   const mpills = ev0.permanent ? `<div class="pills" role="tablist" style="margin-top:10px">${(ev0.months||[]).map(m=>`<button role="tab" aria-selected="${month===m.id}" data-lbm="${m.id}">${monthTitle(m.id)}${m.done?"":" · идёт"}</button>`).join("")}<button role="tab" aria-selected="${month==="year"}" data-lbm="year">Таблица года</button></div>` : "";
-  const head = `<div class="card" style="padding:12px 14px"><button class="selbtn" data-act="evsheet"><div><div class="row" style="gap:6px;margin-bottom:6px">${statusChip(ev.status)}${ev.status==="draft"?'<span class="chip neutral">видите только вы</span>':""}</div><b>${esc(ev.name)}</b></div><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button></div>
+  const head = `<div class="card" style="padding:12px 14px"><button class="selbtn" data-act="evsheet"><div><div class="row" style="gap:6px;margin-bottom:6px">${eventStatusChip(ev)}${ev.status==="draft"?'<span class="chip neutral">видите только вы</span>':""}</div><b>${esc(ev.name)}</b></div><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button></div>
    <div class="utabs" role="tablist" style="margin-top:10px">${[["ind","Атлеты"],["team","Команды"],["aff","Клубы"]].map(([k,t])=>`<button role="tab" aria-selected="${L.tab===k}" data-lbt="${k}">${t}</button>`).join("")}</div>${L.tab==="aff"?"":mpills}`;
 
   if (L.tab==="aff") return {title:null, html: head + affBoard(ev0,month)};
@@ -1902,7 +1937,7 @@ function evCard(ev, archived=false, competition=false){
   const media=archived?"":ev.cover?`<div class="cover" style="background-image:url(${ev.cover})"></div>`:'<div class="band"></div>';
   const date=eventDateBox(ev);
   const ticker=ev.permanent?"":(ev.cardDateText||((dateRange(ev)||"")+" "+String(ev.date||"").slice(0,4))).toLocaleUpperCase("ru");
-  const status=ended?'<span class="chip ended">Завершён</span>':statusChip(ev.status);
+  const status=ended?'<span class="chip ended">Завершён</span>':eventStatusChip(ev);
   return `<button class="ev ${ended?"dim":""} ${archived?"archive":""}" data-go="event" data-ev="${ev.id}">${media}<div class="in">
    ${!archived&&ticker?`<div class="ev-ticker">${esc(ticker)}</div>`:""}<div class="ev-main ${date?"":"no-date"}">${date}<div class="ev-details">
    <div class="ev-status">${status}<span class="sp"></span>${archived?"":`<span class="muted tiny ev-format">${ev.format==="online"?"Онлайн":"Очный"}</span>`}</div>
@@ -4281,8 +4316,15 @@ function openInvite(){ if (!/^#join=[A-Za-z0-9]+$/.test(location.hash)) return f
 function openKidInvite(){ if (!/^#kid=[a-z0-9]+$/.test(location.hash)) return false; S.kidInv={token:location.hash.slice(5)}; S.route="kidInvite"; S.p={}; history.replaceState(null,"",location.pathname); return true; }
 // Rebuild yearly archives after midnight in Irkutsk, including an already open page.
 setInterval(()=>{const now=new Date(Date.now()+8*3600e3).toISOString().slice(0,10);if(now>TODAY){const rollover=now.slice(0,4)!==TODAY.slice(0,4);TODAY=now;if(rollover&&LOADED)render();}},60000);
-openInvite(); openKidInvite();
-window.addEventListener("hashchange", ()=>{ if (openInvite() || openKidInvite()) render(); });
+function openRacePost(){
+  if (location.hash!=="#race") return false;
+  const params={ev:RACE_EVENT_ID,t:"info"};
+  if (LOADED) go("event",params);
+  else { S.route="event"; S.p=params; }
+  return true;
+}
+openInvite(); openKidInvite(); openRacePost();
+window.addEventListener("hashchange", ()=>{ if (!openRacePost() && (openInvite() || openKidInvite())) render(); });
 if (location.hash==="#comp") S.route="home";
 render();
 (async()=>{
@@ -4290,7 +4332,7 @@ render();
   catch(e){ LOAD_ERR = "Не получилось загрузить сайт. Обновите страницу через минуту"; render(); return; }
   try { await loadSession(); } catch(_){ USER=null; }
   LOADED = true;
-  const fresh = /^#(join|kid)=/.test(location.hash) || S.route==="invite" || S.route==="kidInvite";
+  const fresh = location.hash==="#race" || /^#(join|kid)=/.test(location.hash) || S.route==="invite" || S.route==="kidInvite";
   const y = fresh ? null : navRestore();
   try { render(); } catch(e){ console.error(e); HIST.list=[]; HIST.cur=-1; S.route="club"; S.p={}; S.stack=[]; render(); }
   if (y) setTimeout(()=>window.scrollTo(0, y), 50);
