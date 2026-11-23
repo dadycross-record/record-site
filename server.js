@@ -9,6 +9,7 @@ const zlib = require('zlib');
 const { Pool } = require('./lib/pg');
 const { raceBoard } = require('./lib/race-leaderboard');
 const raceHeats = require('./lib/race-heats');
+const recordCup = require('./data/record-cup-teams-2026.json');
 const mail = require('./lib/mail');
 const tg = require('./lib/tg');
 
@@ -224,6 +225,15 @@ async function init() {
     await db.query('insert into content(id, data, updated_by) values (1, $1, $2)', [seed, 'seed']);
     console.log('content seeded');
   }
+  await db.query(
+    `update content set data = jsonb_set(data, '{EVENTS}',
+       coalesce(data->'EVENTS', '[]'::jsonb) || jsonb_build_array($1::jsonb))
+     where id = 1 and not exists (
+       select 1 from jsonb_array_elements(coalesce(data->'EVENTS', '[]'::jsonb)) as event
+       where event->>'id' = $2
+     )`,
+    [recordCup.event, recordCup.event.id]
+  );
   await db.query('delete from sessions where expires_at < now()');
   await db.query('delete from login_codes where expires_at < now()');
 }
@@ -288,6 +298,13 @@ async function publicContent() {
   }));
   await loadGyms();
   const ALLRES = await liveResults(EVENTS);
+  const cupEvent = EVENTS.find(ev => ev.id === recordCup.event.id && ev.publishedArchive && ev.status === 'ended');
+  for (const division of cupEvent?.divisions || []) {
+    const rows = recordCup.results[division.id];
+    if (!rows) continue;
+    division.taken = rows.length;
+    ALLRES[`${cupEvent.id}:${division.id}`] = rows;
+  }
   const drafts = new Set(EVENTS.filter(e => e.status === 'draft').map(e => e.id));
   const RESULTS = Object.fromEntries(Object.entries(ALLRES).filter(([k]) => !drafts.has(k.split(/[:@]/)[0])));
   lastDraftResults = Object.fromEntries(Object.entries(ALLRES).filter(([k]) => drafts.has(k.split(/[:@]/)[0])));
