@@ -6,16 +6,15 @@ const archive = require('../data/record-cup-teams-2026.json');
 
 const archiveResults = Object.values(archive.results).flat();
 
-test('RECORD CUP preserves 97 historical team results and exactly two names for verified pairs', () => {
-  assert.equal(archiveResults.length, 97);
+test('RECORD CUP archives 96 complete teams after removing the incomplete entry', () => {
+  assert.equal(archiveResults.length, 96);
   const withMembers = archiveResults.filter(row => Array.isArray(row.team));
-  assert.equal(withMembers.length, 96);
-  assert.equal(withMembers.filter(row => row.team.length === 2).length, 94);
-  assert.equal(withMembers.filter(row => row.team.length === 1).length, 2);
-  assert.equal(archive.results['kids-6-7-m'].find(row => row.n === 'МиниСпартанцы').lineupUnverified, 'РоманиТукаленко');
+  assert.equal(withMembers.length, 95);
+  assert.ok(withMembers.every(row => row.team.length === 2));
+  assert.equal(archive.results['kids-10-12-m'].some(row => row.n.startsWith('Гугу-Гага')), false);
+  assert.deepEqual(archive.results['kids-6-7-m'].find(row => row.n === 'МиниСпартанцы').team, ['Покутнев Владимир', 'Роман Тукаленко']);
   assert.equal(archive.results['am-mm35'].find(row => row.n === 'Авантюристы').team, undefined);
   for (const row of withMembers) {
-    assert.ok(row.team.length === 1 || row.team.length === 2);
     assert.ok(row.team.every(name => typeof name === 'string' && name.trim().split(/\s+/).length >= 2));
   }
 });
