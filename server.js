@@ -561,8 +561,8 @@ async function unlinkedHistoryForPeople(people) {
   if (!events.length) return [];
   const rows = (await db.query(`select pub, event_id, div_id, person, team from registrations
     where user_id is null and athlete_user is null and who in ('me','offline')
-      and status in ('paid','refund_requested') and event_id = any($1::text[])`,
-    [events.map(e => e.id)])).rows;
+      and status in ('paid','refund_requested') and event_id in (select jsonb_array_elements_text($1::jsonb))`,
+    [JSON.stringify(events.map(e => e.id))])).rows;
   return candidates.flatMap(x => archiveHistory.historyForLegacyRows(rows, x.person, events, x.who));
 }
 

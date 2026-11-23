@@ -43,6 +43,11 @@ test('Client and server expose the same history in athlete and organizer account
   const html = fs.readFileSync(require.resolve('../public/index.html'),'utf8');
   const source=fs.readFileSync(require.resolve('../src/index.src.html'),'utf8');
   assert.match(js,/async function unlinkedHistoryForPeople/);
+  // lib/pg encodes JS arrays as JSON strings: ::text[] rejects this shape.
+  // PostgreSQL must decode the JSON array before filtering historical events.
+  assert.match(js,/event_id in \(select jsonb_array_elements_text\(\$1::jsonb\)\)/);
+  assert.match(js,/JSON\.stringify\(events\.map\(e => e\.id\)\)/);
+  assert.doesNotMatch(js,/event_id = any\(\$1::text\[\]\)/);
   assert.match(js,/\.\.\.\(await unlinkedHistoryForPeople\(/);
   assert.match(js,/archived: \[\.\.\.archiveHistory\.historyForPerson/);
   assert.match(html,/function archivedHistoryCards\(history\)/);
