@@ -1983,7 +1983,7 @@ function row(r, ev, wi){
     ${wcols}${right}<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="split"><table><thead><tr><th>Комплекс</th><th>Место</th><th>Результат</th>${r.wp&&usesPoints(EVENTS.find(e=>e.id===ev.id)||{})?"<th>Баллы</th>":""}</tr></thead><tbody>
     ${ev.workouts.map((w,i)=>`<tr><td>${w.name.split(" · ")[0]}</td><td class="mono ${r.r[i]!=null&&r.wr[i]===1?"first":""}">${r.r[i]==null||r.wr[i]==null?"—":"#"+r.wr[i]}</td><td class="mono">${fmtRes(w.type,r.r[i])}</td>${r.wp&&usesPoints(EVENTS.find(e=>e.id===ev.id)||{})?`<td class="mono">${r.wp[i]}</td>`:""}</tr>`).join("")}
-    </tbody></table>${r.team?"":`<div class="muted tiny" style="margin-top:8px">${esc(r.a)}</div>`}</div></div>`;
+    </tbody></table>${ev.publishedArchive ? (Array.isArray(r.team) && r.team.length===2 ? `<div class="muted small" style="margin-top:12px"><b>Состав команды</b><div style="margin-top:6px">1. ${esc(r.team[0])}</div><div>2. ${esc(r.team[1])}</div></div>` : `<div class="muted tiny" style="margin-top:12px">Состав команды пока не подтверждён</div>`) : (r.team?"":`<div class="muted tiny" style="margin-top:8px">${esc(r.a)}</div>`)}</div></div>`;
 }
 function clubStandings(ev, month=null){
   const map=new Map();

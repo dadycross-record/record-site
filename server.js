@@ -299,6 +299,12 @@ async function publicContent() {
   await loadGyms();
   const ALLRES = await liveResults(EVENTS);
   const cupEvent = EVENTS.find(ev => ev.id === recordCup.event.id && ev.publishedArchive && ev.status === 'ended');
+  // Refresh immutable archived competition descriptions from the versioned file;
+  // the database event is inserted only once and must not freeze later protocol updates.
+  if (cupEvent) {
+    cupEvent.workouts = recordCup.event.workouts;
+    cupEvent.sections = recordCup.event.sections;
+  }
   for (const division of cupEvent?.divisions || []) {
     const rows = recordCup.results[division.id];
     if (!rows) continue;
