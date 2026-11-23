@@ -552,6 +552,20 @@ route('GET', '/api/content', async (req, res) => {
   return undefined;
 });
 
+/* Published historical results whose participants registered before they had
+ * an account: read-only name matching, never a database reassignment. */
+async function unlinkedHistoryForPeople(people) {
+  const candidates = people.filter(x => archiveHistory.profileKey(x.person));
+  if (!candidates.length) return [];
+  const events = ((await rawContent()).EVENTS || []).filter(e => e.status === 'ended' && !e.publishedArchive);
+  if (!events.length) return [];
+  const rows = (await db.query(`select pub, event_id, div_id, person, team from registrations
+    where user_id is null and athlete_user is null and who in ('me','offline')
+      and status in ('paid','refund_requested') and event_id = any($1::text[])`,
+    [events.map(e => e.id)])).rows;
+  return candidates.flatMap(x => archiveHistory.historyForLegacyRows(rows, x.person, events, x.who));
+}
+
 route('GET', '/api/session', async (req, res, u) => {
   if (!u) return { user: null, mailReady: mail.configured() || DEV_LOG_CODES };
   const orders = await myOrders(u.id);
@@ -560,6 +574,10 @@ route('GET', '/api/session', async (req, res, u) => {
   const archivedHistory = [
     ...archiveHistory.historyForPerson(recordCup, u.profile || {}, 'self'),
     ...(u.kids || []).flatMap(k => archiveHistory.historyForPerson(recordCup, k, k.id)),
+    ...(await unlinkedHistoryForPeople([
+      { person: u.profile || {}, who: 'self' },
+      ...(u.kids || []).map(k => ({ person: k, who: k.id })),
+    ])),
   ];
   const scores = (await db.query('select reg_id, workout_id, value, video, state from scores where reg_id in (select jsonb_array_elements_text($1::jsonb))', [JSON.stringify(orders.map(o => o.id))])).rows;
   return {
@@ -1273,7 +1291,7 @@ route('POST', '/api/admin/athlete', async (req, res, u, body) => {
     const kidRegs = (await db.query(`${regSel} where r.user_id=$1 and r.who<>'me' order by r.created_at desc`, [x.id])).rows;
     const crew = (await db.query('select * from crew where user_id=$1 order by created_at desc', [x.id])).rows;
     return { type, user: userCard(x), kids: kids.map(k => ({ id: k.id, first: k.first, last: k.last, dob: k.dob, gender: k.gender, affiliate: k.affiliate, size:k.size, print:k.print, others: k.others })),
-      fromKid, regs: regsOut(regs), kidRegs: regsOut(kidRegs), archived: archiveHistory.historyForPerson(recordCup, x.profile || {}), crew: crew.map(c => ({ event: c.event_id, role: c.role, status: c.status })) };
+      fromKid, regs: regsOut(regs), kidRegs: regsOut(kidRegs), archived: [...archiveHistory.historyForPerson(recordCup, x.profile || {}), ...(await unlinkedHistoryForPeople([{ person: x.profile || {}, who: 'self' }]))], crew: crew.map(c => ({ event: c.event_id, role: c.role, status: c.status })) };
   }
   if (type === 'kid') {
     const k = (await db.query('select * from kids where id=$1', [id])).rows[0];
@@ -1282,7 +1300,7 @@ route('POST', '/api/admin/athlete', async (req, res, u, body) => {
     const owner = k.owner_user ? (await db.query('select * from users where id=$1', [k.owner_user])).rows[0] : null;
     const regs = (await db.query(`${regSel} where r.who=$1 order by r.created_at desc`, [k.id])).rows;
     return { type, kid: { id: k.id, first: k.first, last: k.last, dob: k.dob, gender: k.gender, affiliate: k.affiliate, size:k.size, print:k.print, created: k.created_at },
-      parents: parents.map(y => ({ ...userCard(y), linked: y.linked })), owner: owner ? userCard(owner) : null, regs: regsOut(regs), archived: archiveHistory.historyForPerson(recordCup, k) };
+      parents: parents.map(y => ({ ...userCard(y), linked: y.linked })), owner: owner ? userCard(owner) : null, regs: regsOut(regs), archived: [...archiveHistory.historyForPerson(recordCup, k), ...(await unlinkedHistoryForPeople([{ person: k, who: 'self' }]))] };
   }
   if (type === 'guest') {
     let key; try { key = JSON.parse(id); } catch (_) { throw bad('Неверный запрос'); }
