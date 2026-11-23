@@ -3395,16 +3395,26 @@ function scoreTargets(){
     if (ws.length) out.push({o, ev, ws}); });
   return out;
 }
+function archivedPerformance(h) {
+  if (!h.pub) return { place:h.place, pts:h.pts, workouts:h.workouts||[] };
+  const board=leaderboard(h.event,h.div);
+  const record=(board.rows||[]).find(row=>(row.k||[]).includes(h.pub));
+  if (!record) return { place:null, pts:null, workouts:[] };
+  return { place:record.place, pts:record.pts, workouts:(board.ev?.workouts||[]).map((w,i)=>({
+    id:w.id, name:w.name, type:w.type, result:record.r[i], place:record.wr[i]
+  })) };
+}
 function archivedHistoryCards(history) {
   if (!history || !history.length) return '';
   return history.map(h => {
-    const workouts = (h.workouts || []).map(w => `<tr><td>${esc(w.name || '')}</td><td class="mono">${w.result == null ? '—' : esc(String(w.result))}</td><td class="mono">${w.place == null ? '—' : '#' + esc(String(w.place))}</td></tr>`).join('');
+    const res=archivedPerformance(h);
+    const workouts = (res.workouts || []).map(w => `<tr><td>${esc(w.name || '')}</td><td class="mono">${w.result == null ? '—' : esc(fmtRes(w.type||'time',w.result))}</td><td class="mono">${w.place == null ? '—' : '#' + esc(String(w.place))}</td></tr>`).join('');
     return `<section class="card stack" style="margin-top:12px;gap:8px">
       <div class="sp"><div><b>${esc(h.eventName || h.event || 'Соревнование')}</b><div class="muted tiny">${h.date ? dShort(h.date) : ''} · ${esc(h.category || '')}</div></div><span class="chip neutral">Архив</span></div>
-      <div class="small">Команда: <b>${esc(h.team || '')}</b></div>
-      <div class="row wrap" style="gap:12px"><div class="small">Итоговое место: <b>${h.place == null ? '—' : '#' + esc(String(h.place))}</b></div><div class="small">Сумма мест: <b>${h.pts == null ? '—' : esc(String(h.pts))}</b></div></div>
+      ${h.team?`<div class="small">Команда: <b>${esc(h.team)}</b></div>`:""}
+      <div class="row wrap" style="gap:12px"><div class="small">Итоговое место: <b>${res.place == null ? '—' : '#' + esc(String(res.place))}</b></div><div class="small">Сумма мест: <b>${res.pts == null ? '—' : esc(String(res.pts))}</b></div></div>
       ${workouts ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Комплекс</th><th>Результат</th><th>Место</th></tr></thead><tbody>${workouts}</tbody></table></div>` : ''}
-      <div class="muted tiny">Выступление сопоставлено по ФИО из архива. Если это не ваше выступление, обратитесь к организатору.</div>
+      <div class="muted tiny">Историческое выступление сопоставлено по ФИО; совпадение не подтверждает личность. При ошибке свяжитесь с организатором.</div>
       <button class="btn sm ghost" data-lbopen="${esc(h.event)}|${esc(h.div)}">Открыть лидерборд</button>
     </section>`;
   }).join('');
@@ -3423,7 +3433,7 @@ function performanceGroups(){
 function performanceStats(orders, archive=[]){
   const active = orders.filter(o=>ACTIVE_ST.includes(o.status));
   const archived = archive.filter(h=>!active.some(o=>o.event===h.event&&o.div===h.div));
-  const places = [...active.map(myPlace),...archived.map(h=>h.place)].filter(p=>Number.isFinite(p)&&p>0);
+  const places = [...active.map(myPlace),...archived.map(h=>archivedPerformance(h).place)].filter(p=>Number.isFinite(p)&&p>0);
   return {starts:active.length+archived.length, upcoming:active.filter(o=>{const e=EVENTS.find(x=>x.id===o.event);return e&&e.status!=="ended";}).length,best:places.length?Math.min(...places):null};
 }
 function performanceCard(group){
@@ -4084,7 +4094,7 @@ document.addEventListener("click", e=>{
   if (ds.startPeriod){ S.p={...S.p,period:ds.startPeriod}; return render(); }
   if (ds.hideStart){ if(!confirm("Убрать заявку из вашего списка? Результаты и история старта сохранятся."))return; const [kind,id]=ds.hideStart.split(":"); api("POST","/api/starts/hide",{kind,id}).then(r=>{ME.hiddenStarts=r.hidden;render();}).catch(err=>toast(err.message));return; }
   if (ds.profilePerformer){ S.profilePerformer=ds.profilePerformer;return render(); }
-  if (ds.performer){ go("orders",{performer:ds.performer}); return; }
+  if (ds.performer){ const g=performanceGroups().find(p=>p.id===ds.performer); const onlyArchive=g?.archive?.length&&!g.orders.some(o=>!pastStart(o.event)); go("orders",{performer:ds.performer,period:onlyArchive?"ended":"current"}); return; }
   if (ds.go) return go(ds.go,{});
   if (ds.evf){ S.p={f:ds.evf}; return render(); }
   if (ds.evt){ S.p={...S.p,t:ds.evt}; return render(); }
