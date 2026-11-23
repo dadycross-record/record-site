@@ -1979,7 +1979,7 @@ function row(r, ev, wi){
   const open = S.lb.open===id;
   return `<div class="lr ${cls} ${r.me?"me":""} ${open?"open":""}"><button data-row="${esc(id)}" aria-expanded="${open}">
     <span class="rk">${place}</span><span class="av">${esc(initials)}</span>
-    <span class="nm"><b>${esc(r.n)}${r.me?' <span class="chip warn" style="height:18px;font-size:10px;vertical-align:2px">Вы</span>':""}</b><span>${r.team?esc(r.team.join(" · ")):esc(r.a)}</span></span>
+    <span class="nm"><b>${esc(r.n)}${r.me?' <span class="chip warn" style="height:18px;font-size:10px;vertical-align:2px">Вы</span>':""}</b><span>${r.team?esc(r.team.join(" · ")):esc(r.a||'')}</span></span>
     ${wcols}${right}<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="split"><table><thead><tr><th>Комплекс</th><th>Место</th><th>Результат</th>${r.wp&&usesPoints(EVENTS.find(e=>e.id===ev.id)||{})?"<th>Баллы</th>":""}</tr></thead><tbody>
     ${ev.workouts.map((w,i)=>`<tr><td>${w.name.split(" · ")[0]}</td><td class="mono ${r.r[i]!=null&&r.wr[i]===1?"first":""}">${r.r[i]==null||r.wr[i]==null?"—":"#"+r.wr[i]}</td><td class="mono">${fmtRes(w.type,r.r[i])}</td>${r.wp&&usesPoints(EVENTS.find(e=>e.id===ev.id)||{})?`<td class="mono">${r.wp[i]}</td>`:""}</tr>`).join("")}
