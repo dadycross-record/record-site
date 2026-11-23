@@ -753,7 +753,7 @@ const RESULTS = {
 };
 
 /* orders: one preseeded online registration */
-let ORDERS = [], MYCREW = [], MYTEAMS = [];
+let ORDERS = [], MYCREW = [], MYTEAMS = [], ARCHIVE_HISTORY = [];
 /* promo codes: pct = percent off the entry fee, rub = fixed roubles off; event "all" = any start */
 let PROMOS = [];
 /* who may open the organizer panel: owner (everything), admin (everything except access), judge (result review only) */
@@ -1410,13 +1410,14 @@ me(){
    <h2 class="sec">Мои выступления</h2>
    <div class="pills profile-performers" role="tablist" aria-label="Участник">${groups.map(g=>`<button role="tab" aria-selected="${g.id===selected.id}" data-profile-performer="${esc(g.id)}">${g.id==="self"?esc(nm):esc(g.name)}</button>`).join("")}</div>
    ${performanceCard({...selected,name:selected.id==="self"?"Моя статистика":selected.name})}
+   ${(selected.archive||[]).length?`<h2 class="sec">Архивные выступления</h2>${archivedHistoryCards(selected.archive)}`:""}
    ${profileReady()?"":`<div class="rule" style="margin-top:12px">Заполните анкету участника — без неё нельзя записаться на старт. <button class="linkbtn" data-go="profile" data-edit="1">Заполнить</button></div>`}
    ${(USER.headEvents||[]).length&&!["owner","admin","judge"].includes(S.viewAs)?`<button class="btn block" data-go="admin" style="margin-top:12px">Результаты · главный судья</button>`:""}
    <h2 class="sec">Сервис</h2>
    <div class="menu">
     ${["owner","admin","judge"].includes(S.viewAs)?`<button data-go="admin"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span class="sp">${S.viewAs==="judge"?"Панель судьи":"Панель организатора"}</span><span class="chip warn">${ROLE_L[S.viewAs]}</span></button>`:""}
     ${S.viewAs==="owner"?`<button data-go="adminCrewStats"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg><span class="sp">Команда старта</span></button>`:MYCREW.some(c=>["judge","head_judge"].includes(c.role)&&["request","confirmed"].includes(c.status)&&EVENTS.some(e=>e.id===c.event&&["open","live"].includes(e.status)))?`<button data-go="crewManage"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg><span class="sp">Команда старта</span></button>`:""}
-    <button data-go="orders"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/></svg><span class="sp">Мои старты</span><span class="chip neutral">${ORDERS.filter(o=>!historyHidden("order",o.id)).length+MYCREW.filter(c=>!historyHidden("crew",c.id)).length}</span></button>
+    <button data-go="orders"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/></svg><span class="sp">Мои старты</span><span class="chip neutral">${ORDERS.filter(o=>!historyHidden("order",o.id)).length+MYCREW.filter(c=>!historyHidden("crew",c.id)).length+ARCHIVE_HISTORY.length}</span></button>
     ${canScore?`<button data-go="score"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M6 9l6-6 6 6M4 21h16"/></svg><span class="sp">Сдать результат</span><span class="chip live">идёт приём</span></button>`:""}
     <button data-go="profile"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4zM8 9h8M8 13h8M8 17h5"/></svg><span class="sp">Анкета участника</span></button>
     <button data-act="logout"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg><span class="sp">Выйти</span></button>
@@ -1503,7 +1504,8 @@ orders(){
   const groups=performanceGroups().filter(g=>!selected||g.id===selected);
   const crew=selected?[]:MYCREW.filter(c=>!historyHidden("crew",c.id)&&(pastStart(c.event)===(period==="ended")));
   const rows=groups.filter(g=>g.orders.some(visible)).map(g=>`<section><h2 class="sec">${esc(g.name)}</h2>${datedFeed(g.orders.filter(visible),orderCard,o=>EVENTS.find(e=>e.id===o.event))}</section>`).join("");
-  return {title:selected?(groups[0]?.name||"Выступления"):"Мои старты",html:`<div class="tabs" role="tablist">${[["current","Актуальные"],["ended","Завершённые"]].map(([id,title])=>`<button role="tab" aria-selected="${id===period}" data-start-period="${id}">${title}</button>`).join("")}</div>${rows}${myCrewList(crew)}${!rows&&!crew.length?'<div class="empty">В этом разделе заявок пока нет</div>':""}`};
+  const archivedRows=period==="ended"?groups.filter(g=>(g.archive||[]).length).map(g=>`<section><h2 class="sec">${esc(g.name)} · Архивные выступления</h2>${archivedHistoryCards(g.archive)}</section>`).join(""):"";
+  return {title:selected?(groups[0]?.name||"Выступления"):"Мои старты",html:`<div class="tabs" role="tablist">${[["current","Актуальные"],["ended","Завершённые"]].map(([id,title])=>`<button role="tab" aria-selected="${id===period}" data-start-period="${id}">${title}</button>`).join("")}</div>${rows}${archivedRows}${myCrewList(crew)}${!rows&&!archivedRows&&!crew.length?'<div class="empty">В этом разделе заявок пока нет</div>':""}`};
 },
 score(){
   const T = scoreTargets();
@@ -2683,10 +2685,10 @@ adminAthlete(){
   const search = `<input class="inp" id="athQ" type="search" placeholder="Фамилия, имя, email или телефон" value="${esc(A.q)}" autocomplete="off">
     <div class="muted tiny" style="margin:6px 0 12px">Ищем по взрослым аккаунтам, детям и участникам без аккаунта (например, из импортированных результатов).</div>`;
   if (A.card) return {title:"Профиль атлета", html: A.card.loading ? '<div class="muted">Загружаю…</div>' : athleteCard(A.card)};
-  const TL = {user:"аккаунт", kid:"ребёнок", guest:"без аккаунта"};
+  const TL = {user:"аккаунт", kid:"ребёнок", guest:"без аккаунта", archive:"архив"};
   const list = A.list===null ? (A.q.trim().length>=2 ? '<div class="muted">Ищу…</div>' : '<div class="empty">Начните вводить — от двух букв</div>')
     : A.list.length ? `<div class="stack" style="gap:8px">${A.list.map((x,i)=>`<button class="card row" data-athopen="${i}" style="text-align:left;width:100%;gap:12px;justify-content:space-between">
-        <div><b>${esc(x.name)}</b><div class="muted tiny">${x.dob?dShort(x.dob)+" · "+ageNow(x.dob)+" "+yNom(ageNow(x.dob))+" · ":""}${x.email?esc(x.email)+" · ":""}${x.type==="kid"?`взрослые: ${esc((x.parents||[]).join(", ")||"нет")}${x.moved?" · профиль передан атлету":""} · `:""}${x.kids?`детей: ${x.kids} · `:""}стартов: ${x.regs}</div></div>
+        <div><b>${esc(x.name)}</b><div class="muted tiny">${x.dob?dShort(x.dob)+" · "+ageNow(x.dob)+" "+yNom(ageNow(x.dob))+" · ":""}${x.email?esc(x.email)+" · ":""}${x.type==="kid"?`взрослые: ${esc((x.parents||[]).join(", ")||"нет")}${x.moved?" · профиль передан атлету":""} · `:""}${x.kids?`детей: ${x.kids} · `:""}${x.type==="archive"?"архивных выступлений: "+x.archived:"стартов: "+x.regs}</div></div>
         <span class="chip ${x.type==="user"?"ok":x.type==="kid"?"warn":"neutral"}">${TL[x.type]}</span></button>`).join("")}</div>`
     : '<div class="empty">Никого не нашли</div>';
   return {title:"Проверить атлета", html: search + list};
@@ -3019,6 +3021,7 @@ async function loadSession(){
   Object.keys(ME).forEach(k=>{ if (k!=="kids") ME[k]=""; }); ME.gender="M"; ME.kids=[];
   if (USER){ Object.assign(ME, USER.profile||{}); ME.kids = USER.kids||[]; ME.email = USER.email; ME.avatar = USER.avatar||""; ORDERS = s.orders||[]; MYSCORES = s.scores||[]; MYCREW = s.crew||[]; MYTEAMS = s.teams||[]; }
   else { ORDERS = []; MYSCORES = []; MYCREW = []; MYTEAMS = []; }
+  ARCHIVE_HISTORY = Array.isArray(s.archivedHistory) ? s.archivedHistory : [];
   S.viewAs = USER ? USER.role : "guest";
   markMe();
   if (USER && (["owner","admin","judge"].includes(USER.role)||(USER.headEvents||[]).length)) await loadAdmin();
@@ -3043,23 +3046,39 @@ function scoreTargets(){
     if (ws.length) out.push({o, ev, ws}); });
   return out;
 }
+function archivedHistoryCards(history) {
+  if (!history || !history.length) return '';
+  return history.map(h => {
+    const workouts = (h.workouts || []).map(w => `<tr><td>${esc(w.name || '')}</td><td class="mono">${w.result == null ? '—' : esc(String(w.result))}</td><td class="mono">${w.place == null ? '—' : '#' + esc(String(w.place))}</td></tr>`).join('');
+    return `<section class="card stack" style="margin-top:12px;gap:8px">
+      <div class="sp"><div><b>${esc(h.eventName || h.event || 'Соревнование')}</b><div class="muted tiny">${h.date ? dShort(h.date) : ''} · ${esc(h.category || '')}</div></div><span class="chip neutral">Архив</span></div>
+      <div class="small">Команда: <b>${esc(h.team || '')}</b></div>
+      <div class="row wrap" style="gap:12px"><div class="small">Итоговое место: <b>${h.place == null ? '—' : '#' + esc(String(h.place))}</b></div><div class="small">Сумма мест: <b>${h.pts == null ? '—' : esc(String(h.pts))}</b></div></div>
+      ${workouts ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Комплекс</th><th>Результат</th><th>Место</th></tr></thead><tbody>${workouts}</tbody></table></div>` : ''}
+      <div class="muted tiny">Выступление сопоставлено по ФИО из архива. Если это не ваше выступление, обратитесь к организатору.</div>
+      <button class="btn sm ghost" data-lbopen="${esc(h.event)}|${esc(h.div)}">Открыть лидерборд</button>
+    </section>`;
+  }).join('');
+}
 function performanceGroups(){
   const self = o => typeof o.self === "boolean" ? o.self : o.who === "me";
-  const groups = [{id:"self", name:"Мои выступления", orders:ORDERS.filter(self)}];
-  const children = new Map((ME.kids||[]).map(k=>[k.id,{id:k.id,name:[k.first,k.last].filter(Boolean).join(" "),orders:[]}]));
+  const archive = typeof ARCHIVE_HISTORY === "undefined" ? [] : ARCHIVE_HISTORY;
+  const groups = [{id:"self", name:"Мои выступления", orders:ORDERS.filter(self), archive:archive.filter(h=>h.who==="self")}];
+  const children = new Map((ME.kids||[]).map(k=>[k.id,{id:k.id,name:[k.first,k.last].filter(Boolean).join(" "),orders:[],archive:archive.filter(h=>h.who===k.id)}]));
   ORDERS.filter(o=>!self(o)).forEach(o=>{
-    if (!children.has(o.who)) children.set(o.who,{id:o.who,name:[(o.person||{}).first,(o.person||{}).last].filter(Boolean).join(" ")||"Участник",orders:[]});
+    if (!children.has(o.who)) children.set(o.who,{id:o.who,name:[(o.person||{}).first,(o.person||{}).last].filter(Boolean).join(" ")||"Участник",orders:[],archive:archive.filter(h=>h.who===o.who)});
     children.get(o.who).orders.push(o);
   });
   return groups.concat([...children.values()]);
 }
-function performanceStats(orders){
+function performanceStats(orders, archive=[]){
   const active = orders.filter(o=>ACTIVE_ST.includes(o.status));
-  const places = active.map(myPlace).filter(p=>Number.isFinite(p)&&p>0);
-  return {starts:active.length, upcoming:active.filter(o=>{const e=EVENTS.find(x=>x.id===o.event);return e&&e.status!=="ended";}).length,best:places.length?Math.min(...places):null};
+  const archived = archive.filter(h=>!active.some(o=>o.event===h.event&&o.div===h.div));
+  const places = [...active.map(myPlace),...archived.map(h=>h.place)].filter(p=>Number.isFinite(p)&&p>0);
+  return {starts:active.length+archived.length, upcoming:active.filter(o=>{const e=EVENTS.find(x=>x.id===o.event);return e&&e.status!=="ended";}).length,best:places.length?Math.min(...places):null};
 }
 function performanceCard(group){
-  const stats=performanceStats(group.orders);
+  const stats=performanceStats(group.orders,group.archive||[]);
   return `<section class="card" style="margin-top:12px" data-performance="${esc(group.id)}"><h2 style="font-size:17px;margin:0">${esc(group.name)}</h2><div class="stats"><div><b>${stats.starts}</b><span>Стартов</span></div><div><b>${stats.upcoming}</b><span>Впереди</span></div><div><b class="${stats.best&&stats.best<=3?`prize-place prize-${stats.best}`:"acc"}">${stats.best?"#"+stats.best:"—"}</b><span>Лучшее место</span></div></div><button class="btn sm ghost" style="margin-top:12px" data-performer="${esc(group.id)}">Посмотреть выступления</button></section>`;
 }
 function myPlace(o){
@@ -3203,6 +3222,7 @@ function athleteCard(C){
       ${C.kids.length?`<div class="card" style="padding:4px 14px">${C.kids.map(k=>`<button class="arow linkrow" data-athkid="${k.id}" style="width:100%;text-align:left"><div class="sp"><b>${esc(k.last)} ${esc(k.first)}</b><div class="muted tiny">${k.dob?dShort(k.dob)+" · "+ageNow(k.dob)+" "+yNom(ageNow(k.dob)):""}${k.affiliate?" · "+esc(k.affiliate):""} · ${k.others.length?"также ведёт: "+esc(k.others.map(o=>o.name||o.email).join(", ")):"ведёт только этот взрослый"}</div></div><span class="muted">›</span></button>`).join("")}</div>`:'<div class="muted small">Детей в профиле нет</div>'}
       ${C.fromKid.length?`<div class="rule" style="margin-top:10px">Этот профиль раньше был детским и передан атлету: ${C.fromKid.map(k=>`<button class="linkbtn" data-athkid="${k.id}">${esc(k.last)} ${esc(k.first)}</button>`).join(", ")}. История выступлений из детского профиля — ниже.</div>`:""}
       <h2 class="sec">Старты атлета · ${C.regs.length}</h2>${athRegsTable(C.regs, owner)}
+      ${(C.archived||[]).length?`<h2 class="sec">Архивные выступления · ${C.archived.length}</h2>${archivedHistoryCards(C.archived)}`:""}
       ${C.kidRegs.length?`<h2 class="sec">Записи детей, которые оформил этот взрослый · ${C.kidRegs.length}</h2>${athRegsTable(C.kidRegs, owner, true)}`:""}
       ${C.crew.length?`<h2 class="sec">В команде стартов</h2><div class="card" style="padding:4px 14px">${C.crew.map(c=>`<div class="arow"><div class="sp"><b>${esc((EVENTS.find(e=>e.id===c.event)||{name:c.event}).name)}</b><div class="muted tiny">${esc((CREW_ROLE[c.role]||[c.role])[0])} · ${c.status==="confirmed"?"подтверждён":c.status==="request"?"заявка":esc(c.status)}</div></div></div>`).join("")}</div>`:""}`;
   }
@@ -3214,13 +3234,21 @@ function athleteCard(C){
       <h2 class="sec">Родители и законные представители · ${C.parents.length}</h2>
       ${C.parents.length?`<div class="card" style="padding:4px 14px">${C.parents.map(y=>userRef(y,"доступ с "+dShort(String(y.linked).slice(0,10)))).join("")}</div>`:`<div class="muted small">${C.owner?"Профиль передан атлету — у взрослых больше нет доступа":"Нет взрослых с доступом"}</div>`}
       <h2 class="sec">Старты · ${C.regs.length}</h2>${athRegsTable(C.regs, owner)}
+      ${(C.archived||[]).length?`<h2 class="sec">Архивные выступления · ${C.archived.length}</h2>${archivedHistoryCards(C.archived)}`:""}
       ${C.regs.length?`<div class="muted tiny" style="margin-top:6px">Записывали: ${esc([...new Set(C.regs.map(o=>o.email||"—"))].join(", "))}</div>`:""}`;
+  }
+  if (C.type==="archive"){
+    const name=C.archivePerson.name;
+    return back+head(av("",name),name,'<span class="chip neutral">архивный участник</span>')
+      + '<div class="rule">Атлет найден в опубликованном архиве, аккаунт пока не подтверждён.</div>'
+      + `<h2 class="sec">Архивные выступления · ${C.archived.length}</h2>${archivedHistoryCards(C.archived)}`;
   }
   const g=C.guest, name=`${g.last} ${g.first}`, p0=(C.regs[0]||{}).person||{};
   return back + athleteEditor(C) + head(av("",name), name, '<span class="chip neutral">без аккаунта</span>')
     + `<div class="rule" style="margin-bottom:12px">Атлет есть только в заявках и результатах: аккаунт удалён или результаты импортированы. Данные — из заявок.</div>`
     + kv([["Дата рождения",g.dob?dShort(g.dob):"не указана"],["Клуб",p0.affiliate||"—"],["Телефон",tel(p0.phone)||"—",1]])
-    + `<h2 class="sec">Старты · ${C.regs.length}</h2>${athRegsTable(C.regs, owner)}`;
+    + `<h2 class="sec">Старты · ${C.regs.length}</h2>${athRegsTable(C.regs, owner)}`
+    + ((C.archived||[]).length?`<h2 class="sec">Архивные выступления · ${C.archived.length}</h2>${archivedHistoryCards(C.archived)}`:"");
 }
 function athOpen(type, id){ ATH_EDIT=null; const A=adm.ath; A.card={loading:true}; api("POST","/api/admin/athlete",{type,id}).then(r=>{ if(type==="kid"&&r.parents?.length&&!r.owner){return api("POST","/api/admin/athlete",{type:"user",id:r.parents[0].id}).then(parent=>{A.card=parent;render();window.scrollTo(0,0);});} A.card=r; render(); window.scrollTo(0,0); }).catch(err=>{ A.card=null; toast(err.message); render(); }); }
 let athTimer=null;
@@ -3813,7 +3841,7 @@ document.addEventListener("submit", e=>{
     if (v.kids.some(k=>!k.first||!k.last||!k.dob)) er.kids="У каждого ребёнка нужны имя, фамилия и дата рождения";
     if (Object.keys(er).length){ S.p={...S.p,e:er}; return render(); }
     S.p={...S.p,busy:true,e:{}}; render();
-    api("PUT","/api/profile",{profile:v,kids:v.kids}).then(r=>{ Object.assign(ME,r.profile); ME.kids=r.kids; USER.profile=r.profile; USER.kids=r.kids; const then=S.p.then; toast("Анкета сохранена"); if (then) back(); else go("profile",{},false); })
+    api("PUT","/api/profile",{profile:v,kids:v.kids}).then(async r=>{ Object.assign(ME,r.profile); ME.kids=r.kids; USER.profile=r.profile; USER.kids=r.kids; try{ await loadSession(); }catch(err){ console.warn("Не удалось обновить архивную историю:",err); } const then=S.p.then; toast("Анкета сохранена"); if (then) back(); else go("profile",{},false); })
       .catch(err=>{ S.p={...S.p,busy:false,e:{send:err.message}}; render(); });
     return;
   }
