@@ -10,6 +10,7 @@ const { Pool } = require('./lib/pg');
 const { raceBoard } = require('./lib/race-leaderboard');
 const raceHeats = require('./lib/race-heats');
 const recordCup = require('./data/record-cup-teams-2026.json');
+const archiveHistory = require('./lib/archive-history');
 const mail = require('./lib/mail');
 const tg = require('./lib/tg');
 
@@ -551,13 +552,37 @@ route('GET', '/api/content', async (req, res) => {
   return undefined;
 });
 
+/* Published historical results whose participants registered before they had
+ * an account: read-only name matching, never a database reassignment. */
+async function unlinkedHistoryForPeople(people) {
+  const candidates = people.filter(x => archiveHistory.profileKey(x.person));
+  if (!candidates.length) return [];
+  const events = ((await rawContent()).EVENTS || []).filter(e => e.status === 'ended' && !e.publishedArchive);
+  if (!events.length) return [];
+  const rows = (await db.query(`select pub, event_id, div_id, person, team from registrations
+    where user_id is null and athlete_user is null and who in ('me','offline')
+      and status in ('paid','refund_requested') and event_id = any($1::text[])`,
+    [events.map(e => e.id)])).rows;
+  return candidates.flatMap(x => archiveHistory.historyForLegacyRows(rows, x.person, events, x.who));
+}
+
 route('GET', '/api/session', async (req, res, u) => {
   if (!u) return { user: null, mailReady: mail.configured() || DEV_LOG_CODES };
   const orders = await myOrders(u.id);
+  // Read-only historical results: resolved again on every login and after a
+  // profile change, including children managed by this authenticated adult.
+  const archivedHistory = [
+    ...archiveHistory.historyForPerson(recordCup, u.profile || {}, 'self'),
+    ...(u.kids || []).flatMap(k => archiveHistory.historyForPerson(recordCup, k, k.id)),
+    ...(await unlinkedHistoryForPeople([
+      { person: u.profile || {}, who: 'self' },
+      ...(u.kids || []).map(k => ({ person: k, who: k.id })),
+    ])),
+  ];
   const scores = (await db.query('select reg_id, workout_id, value, video, state from scores where reg_id in (select jsonb_array_elements_text($1::jsonb))', [JSON.stringify(orders.map(o => o.id))])).rows;
   return {
     user: { email: u.email, role: u.role, headEvents:await headJudgeEvents(u), profile: u.profile, kids: u.kids, avatar: u.avatar || '' },
-    orders: orders.map(o => ['blocked', 'cancelled'].includes(o.status) ? o : { ...o, note: '' }), scores,
+    orders: orders.map(o => ['blocked', 'cancelled'].includes(o.status) ? o : { ...o, note: '' }), scores, archivedHistory,
     teams: await myTeams(u.id),
     crew: (await db.query('select id, event_id, role, status, avail, info from crew where user_id=$1 order by created_at', [u.id])).rows
       .map(c => ({ id: Number(c.id), event: c.event_id, role: c.role, status: c.status, withdrawn: c.status==='declined' && !!(c.info||{}).withdrawn, avail: c.avail || [] })),
@@ -1230,10 +1255,23 @@ route('POST', '/api/admin/athletes', async (req, res, u, body) => {
   const regHay = `${NORM_SQL("person->>'last'")} || ' ' || ${NORM_SQL("person->>'first'")}`;
   const guests = (await db.query(`select person->>'last' last, person->>'first' first, coalesce(person->>'dob','') dob, count(*)::int regs from registrations
     where user_id is null and athlete_user is null and who in ('me','offline') and ${words.map((_, i) => `${regHay} like $${i + 1}`).join(' and ')} group by 1,2,3 order by 1,2 limit 20`, words)).rows;
+  // Search includes athletes who appear only in historical archive results;
+  // do not create registrations or artificial user accounts for them.
+  const known = new Set([
+    ...users.map(x => archiveHistory.profileKey(x.profile || {})),
+    ...kids.map(k => archiveHistory.profileKey(k)),
+    ...guests.map(g => archiveHistory.profileKey(g)),
+  ]);
+  const archiveOnly = archiveHistory.archivePeople(recordCup)
+    .filter(p => !known.has(p.id) && words.length > 0
+      && q.toLowerCase().replace(/ё/g,'е').trim().split(/\s+/).every(token =>
+        archiveHistory.normalized(p.name).includes(archiveHistory.normalized(token))))
+    .slice(0, 25);
   return { list: [
     ...users.map(x => ({ type: 'user', id: String(x.id), name: `${x.profile.last || ''} ${x.profile.first || ''}`.trim() || x.email, dob: x.profile.dob || '', email: x.email, kids: x.kids, regs: x.regs })),
     ...kids.map(k => ({ type: 'kid', id: k.id, name: `${k.last} ${k.first}`, dob: k.dob, parents: k.parents, regs: k.regs, moved: !!k.owner_user })),
     ...guests.map(g => ({ type: 'guest', id: JSON.stringify([g.last || '', g.first || '', g.dob]), name: `${g.last || ''} ${g.first || ''}`.trim(), dob: g.dob, regs: g.regs })),
+    ...archiveOnly.map(p => ({ type: 'archive', id: p.id, name: p.name, dob: '', regs: 0, archived: p.starts })),
   ] };
 });
 route('POST', '/api/admin/athlete', async (req, res, u, body) => {
@@ -1253,7 +1291,7 @@ route('POST', '/api/admin/athlete', async (req, res, u, body) => {
     const kidRegs = (await db.query(`${regSel} where r.user_id=$1 and r.who<>'me' order by r.created_at desc`, [x.id])).rows;
     const crew = (await db.query('select * from crew where user_id=$1 order by created_at desc', [x.id])).rows;
     return { type, user: userCard(x), kids: kids.map(k => ({ id: k.id, first: k.first, last: k.last, dob: k.dob, gender: k.gender, affiliate: k.affiliate, size:k.size, print:k.print, others: k.others })),
-      fromKid, regs: regsOut(regs), kidRegs: regsOut(kidRegs), crew: crew.map(c => ({ event: c.event_id, role: c.role, status: c.status })) };
+      fromKid, regs: regsOut(regs), kidRegs: regsOut(kidRegs), archived: [...archiveHistory.historyForPerson(recordCup, x.profile || {}), ...(await unlinkedHistoryForPeople([{ person: x.profile || {}, who: 'self' }]))], crew: crew.map(c => ({ event: c.event_id, role: c.role, status: c.status })) };
   }
   if (type === 'kid') {
     const k = (await db.query('select * from kids where id=$1', [id])).rows[0];
@@ -1262,12 +1300,17 @@ route('POST', '/api/admin/athlete', async (req, res, u, body) => {
     const owner = k.owner_user ? (await db.query('select * from users where id=$1', [k.owner_user])).rows[0] : null;
     const regs = (await db.query(`${regSel} where r.who=$1 order by r.created_at desc`, [k.id])).rows;
     return { type, kid: { id: k.id, first: k.first, last: k.last, dob: k.dob, gender: k.gender, affiliate: k.affiliate, size:k.size, print:k.print, created: k.created_at },
-      parents: parents.map(y => ({ ...userCard(y), linked: y.linked })), owner: owner ? userCard(owner) : null, regs: regsOut(regs) };
+      parents: parents.map(y => ({ ...userCard(y), linked: y.linked })), owner: owner ? userCard(owner) : null, regs: regsOut(regs), archived: [...archiveHistory.historyForPerson(recordCup, k), ...(await unlinkedHistoryForPeople([{ person: k, who: 'self' }]))] };
   }
   if (type === 'guest') {
     let key; try { key = JSON.parse(id); } catch (_) { throw bad('Неверный запрос'); }
     const regs = (await db.query(`${regSel} where r.user_id is null and r.athlete_user is null and r.who in ('me','offline') and coalesce(r.person->>'last','')=$1 and coalesce(r.person->>'first','')=$2 and coalesce(r.person->>'dob','')=$3 order by r.created_at desc`, key.slice(0, 3).map(String))).rows;
-    return { type, guest: { last: key[0], first: key[1], dob: key[2] }, regs: regsOut(regs) };
+    return { type, guest: { last: key[0], first: key[1], dob: key[2] }, regs: regsOut(regs), archived: archiveHistory.historyForPerson(recordCup, { last: key[0], first: key[1], dob: key[2] }) };
+  }
+  if (type === 'archive') {
+    const match = archiveHistory.archivePeople(recordCup).find(p => p.id === id);
+    if (!match) throw bad('Архивный атлет не найден');
+    return { type, archivePerson: { name: match.name }, archived: archiveHistory.historyForArchiveName(recordCup, id), regs: [] };
   }
   throw bad('Неверный запрос');
 });
