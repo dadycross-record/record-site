@@ -3416,7 +3416,7 @@ function orderPerformanceDetails(o){
     const row=board.rows.find(r=>(r.k||[]).includes(o.pub));
     if(!row||!row.r.some(v=>v!=null))return "";
     const details=workoutResultDetails((board.ev?.workouts||[]).map((w,i)=>({name:w.name,type:w.type,result:row.r[i],place:row.wr?.[i]})));
-    return (m&&details?`<div class="muted small" style="margin-top:8px">${esc(monthTitle(m))}</div>`:"")+(row.pts!=null?`<div class="small" style="margin-top:8px">Итоговая сумма баллов: <b>${esc(String(row.pts))}</b></div>`:"")+details;
+    return (m&&details?`<div class="muted small" style="margin-top:8px">${esc(monthTitle(m))}</div>`:"")+(row.pts!=null?`<div class="small" style="margin-top:8px">Баллы: <b>${esc(String(row.pts))}</b></div>`:"")+details;
   }).join("");
 }
 function historyTeamMembers(h) {
@@ -3448,7 +3448,7 @@ function archivedHistoryCards(history) {
     return `<section class="card stack" style="margin-top:12px;gap:8px">
       <div class="sp"><div><b>${esc(h.eventName || h.event || 'Соревнование')}</b><div class="muted tiny">${h.date ? dShort(h.date) : ''} · ${esc(h.category || '')}</div></div><span class="chip neutral">Архив</span></div>
       ${h.team?`<div class="small">Команда: <b>${esc(h.team)}</b></div>${historyTeamLine(h)}`:""}
-      <div class="row wrap" style="gap:12px"><div class="small">Итоговое место: <b>${res.place == null ? '—' : '#' + esc(String(res.place))}</b></div><div class="small">Итоговая сумма баллов: <b>${res.pts == null ? '—' : esc(String(res.pts))}</b></div></div>
+      <div class="row wrap" style="gap:12px"><div class="small">Итоговое место: <b>${res.place == null ? '—' : esc(String(res.place)) + '-е место'}</b></div><div class="small"><b>${res.pts == null ? '—' : esc(String(res.pts))}</b> баллов</div></div>
       ${workouts}
       <div class="muted tiny">Историческое выступление сопоставлено по ФИО; совпадение не подтверждает личность. При ошибке свяжитесь с организатором.</div>
       <button class="btn sm ghost" data-lbopen="${esc(h.event)}|${esc(h.div)}">Открыть лидерборд</button>
