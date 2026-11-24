@@ -1725,7 +1725,6 @@ me(){
    <h2 class="sec">Мои выступления</h2>
    <div class="pills profile-performers" role="tablist" aria-label="Участник">${groups.map(g=>`<button role="tab" aria-selected="${g.id===selected.id}" data-profile-performer="${esc(g.id)}">${g.id==="self"?esc(nm):esc(g.name)}</button>`).join("")}</div>
    ${performanceCard({...selected,name:selected.id==="self"?"Моя статистика":selected.name})}
-   ${(selected.archive||[]).length?`<h2 class="sec">Архивные выступления</h2>${archivedHistoryCards(selected.archive)}`:""}
    ${profileReady()?"":`<div class="rule" style="margin-top:12px">Заполните анкету участника — без неё нельзя записаться на старт. <button class="linkbtn" data-go="profile" data-edit="1">Заполнить</button></div>`}
    ${(USER.headEvents||[]).length&&!["owner","admin","judge"].includes(S.viewAs)?`<button class="btn block" data-go="admin" style="margin-top:12px">Результаты · главный судья</button>`:""}
    <h2 class="sec">Сервис</h2>
@@ -1814,13 +1813,18 @@ messages(){
   </div>`};
 },
 orders(){
-  const period=S.p.period||"current", selected=S.p.performer;
+  const period=S.p.period||"current", groups=performanceGroups(), selected=groups.find(g=>g.id===(S.p.performer||"self"))||groups[0];
   const visible=o=>!historyHidden("order",o.id)&&(pastStart(o.event)===(period==="ended"));
-  const groups=performanceGroups().filter(g=>!selected||g.id===selected);
-  const crew=selected?[]:MYCREW.filter(c=>!historyHidden("crew",c.id)&&(pastStart(c.event)===(period==="ended")));
-  const rows=groups.filter(g=>g.orders.some(visible)).map(g=>`<section><h2 class="sec">${esc(g.name)}</h2>${datedFeed(g.orders.filter(visible),orderCard,o=>EVENTS.find(e=>e.id===o.event))}</section>`).join("");
-  const archivedRows=period==="ended"?groups.filter(g=>(g.archive||[]).length).map(g=>`<section><h2 class="sec">${esc(g.name)} · Архивные выступления</h2>${archivedHistoryCards(g.archive)}</section>`).join(""):"";
-  return {title:selected?(groups[0]?.name||"Выступления"):"Мои старты",after:()=>{const R=raceView();if(groups.some(g=>g.orders.some(o=>o.event==="evmvwkp907"))&&!R.heatData&&!R.heatLoading&&!R.heatError)raceHeatsLoad("evmvwkp907");},html:`<div class="tabs" role="tablist">${[["current","Актуальные"],["ended","Завершённые"]].map(([id,title])=>`<button role="tab" aria-selected="${id===period}" data-start-period="${id}">${title}</button>`).join("")}</div>${rows}${archivedRows}${myCrewList(crew)}${!rows&&!archivedRows&&!crew.length?'<div class="empty">В этом разделе заявок пока нет</div>':""}`};
+  const orders=selected.orders.filter(visible);
+  const archive=period==="ended"?(selected.archive||[]).filter(h=>!selected.orders.some(o=>o.event===h.event&&o.div===h.div&&((h.pub&&o.pub===h.pub)||(!h.pub&&h.team&&o.team===h.team)))):[];
+  const items=[...orders.map(o=>({kind:"order",data:o,event:o.event})),...archive.map(h=>({kind:"archive",data:h,event:h.event}))];
+  const rows=datedFeed(items,x=>x.kind==="order"?orderCard(x.data):archivedHistoryCards([x.data]),x=>EVENTS.find(e=>e.id===x.event)||(x.kind==="archive"?{date:x.data.date,status:"ended"}:null));
+  const crew=selected.id==="self"?MYCREW.filter(c=>!historyHidden("crew",c.id)&&(pastStart(c.event)===(period==="ended"))):[];
+  const nm=[ME.first,ME.last].filter(Boolean).join(" ")||"Я";
+  return {title:"Мои старты",after:()=>{const R=raceView();if(orders.some(o=>o.event==="evmvwkp907")&&!R.heatData&&!R.heatLoading&&!R.heatError)raceHeatsLoad("evmvwkp907");},html:`
+  <div class="pills profile-performers" role="tablist" aria-label="Участник">${groups.map(g=>`<button role="tab" aria-selected="${g.id===selected.id}" data-orders-performer="${esc(g.id)}" title="${esc(g.id==="self"?nm:g.name)}">${esc(g.id==="self"?"Я":g.name)}</button>`).join("")}</div>
+  <div class="tabs" role="tablist" style="margin-top:12px">${[["current","Актуальные"],["ended","Завершённые"]].map(([id,title])=>`<button role="tab" aria-selected="${id===period}" data-start-period="${id}">${title}</button>`).join("")}</div>
+  ${items.length?rows:""}${myCrewList(crew)}${!items.length&&!crew.length?'<div class="empty">В этом разделе стартов пока нет</div>':""}`};
 },
 score(){
   const T = scoreTargets();
@@ -2071,7 +2075,7 @@ function orderCard(o){
   const scoring = scoreTargets().some(t=>t.o.id===o.id);
   return `<div class="order"><div class="hd"><span class="small">${ev.date?dateRange(ev):""} · ${ev.format==="online"?"Онлайн":"Очный"}</span>${ev.status==="ended"?statusChip("ended"):ev.status==="live"?statusChip("live"):""}${stMap[o.status]||""}</div>
    <div class="bd"><div style="font-family:var(--f-display);font-weight:600;font-size:16px;text-transform:uppercase">${esc(ev.name)}</div>
-   <dl class="kv small" style="margin:10px 0 0"><dt>Участник</dt><dd>${esc(p.last||"")} ${esc(p.first||"")}</dd><dt>Категория</dt><dd>${esc(isRaceEvent(ev)?raceDivTitle(d):d.name)}${o.team?` · ${esc(o.team)}`:""}</dd><dt>${o.status==="new"?"К оплате":"Взнос"}</dt><dd class="mono">${o.waiver?`бесплатно · ${esc(o.waiver)}`:fmtRub(o.status==="new"?o.due:o.paid)}</dd><dt>Лидерборд</dt><dd>${orderLeaderboard(o)}</dd>${!o.publish && o.mine!==false?`<dt>Публикация</dt><dd><button class="linkbtn" data-pubtoggle="${o.id}">Дать согласие на публикацию</button></dd>`:""}</dl></div>
+   <dl class="kv small" style="margin:10px 0 0"><dt>Участник</dt><dd>${esc(p.last||"")} ${esc(p.first||"")}</dd><dt>Категория</dt><dd>${esc(isRaceEvent(ev)?raceDivTitle(d):d.name)}${o.team?` · ${esc(o.team)}`:""}</dd><dt>${o.status==="new"?"К оплате":"Взнос"}</dt><dd class="mono">${o.waiver?`бесплатно · ${esc(o.waiver)}`:fmtRub(o.status==="new"?o.due:o.paid)}</dd><dt>Лидерборд</dt><dd>${orderLeaderboard(o)}</dd>${!o.publish && o.mine!==false?`<dt>Публикация</dt><dd><button class="linkbtn" data-pubtoggle="${o.id}">Дать согласие на публикацию</button></dd>`:""}</dl>${orderPerformanceDetails(o)}</div>
    ${heatInfo}
    ${o.mine===false?`<div class="rule" style="margin-top:10px">Заявку оформил другой взрослый из профиля ребёнка — оплата, отмена и возврат у него.</div>`:""}
    ${["new","paid","pending","reserve"].includes(o.status)&&o.mine!==false?`<div class="acts">${scoring?`<button class="btn sm" data-go="score">Сдать результат</button>`:""}<button class="btn sm ghost" data-go="profile">Анкета</button>${ev.status!=="ended"?`<button class="btn sm ghost" data-refund="${o.id}">${o.paid>0?"Запросить возврат":"Отменить заявку"}</button>`:""}</div>`:""}
@@ -3395,6 +3399,26 @@ function scoreTargets(){
     if (ws.length) out.push({o, ev, ws}); });
   return out;
 }
+function workoutResultDetails(workouts) {
+  if (!workouts?.some(w=>w.result!=null)) return "";
+  const rows=workouts.map(w=>{
+    const result=w.result==null?"—":w.type==="protocol"||w.type==="place"?String(w.result):fmtRes(w.type||"time",w.result);
+    return `<tr><td>${esc(w.name||"")}</td><td style="overflow-wrap:anywhere">${esc(result)}</td><td class="mono">${w.result==null||w.place==null?"—":esc(String(w.place))+"-е"}</td></tr>`;
+  }).join("");
+  return `<details class="performance-details" style="margin-top:10px"><summary class="btn sm ghost" style="cursor:pointer;list-style:none;display:flex;justify-content:space-between;gap:8px;width:100%;white-space:normal">Результаты комплексов <span aria-hidden="true">⌄</span></summary><div class="tbl-wrap" style="margin-top:8px"><table class="tbl" style="width:100%;table-layout:fixed"><thead><tr><th style="width:34%">Комплекс</th><th style="width:46%">Результат</th><th>Место</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
+}
+function orderPerformanceDetails(o){
+  const ev=EVENTS.find(e=>e.id===o.event);
+  if(!ev||ev.status!=="ended"||!o.pub) return "";
+  const months=ev.permanent?(ev.months||[]).map(m=>m.id):[undefined];
+  return months.map(m=>{
+    const board=leaderboard(ev.id,o.div,m);
+    const row=board.rows.find(r=>(r.k||[]).includes(o.pub));
+    if(!row||!row.r.some(v=>v!=null))return "";
+    const details=workoutResultDetails((board.ev?.workouts||[]).map((w,i)=>({name:w.name,type:w.type,result:row.r[i],place:row.wr?.[i]})));
+    return (m&&details?`<div class="muted small" style="margin-top:8px">${esc(monthTitle(m))}</div>`:"")+details;
+  }).join("");
+}
 function archivedPerformance(h) {
   if (!h.pub) return { place:h.place, pts:h.pts, workouts:h.workouts||[] };
   const board=leaderboard(h.event,h.div);
@@ -3408,12 +3432,12 @@ function archivedHistoryCards(history) {
   if (!history || !history.length) return '';
   return history.map(h => {
     const res=archivedPerformance(h);
-    const workouts = (res.workouts || []).map(w => `<tr><td>${esc(w.name || '')}</td><td class="mono">${w.result == null ? '—' : esc(fmtRes(w.type||'time',w.result))}</td><td class="mono">${w.place == null ? '—' : '#' + esc(String(w.place))}</td></tr>`).join('');
+    const workouts=workoutResultDetails(res.workouts);
     return `<section class="card stack" style="margin-top:12px;gap:8px">
       <div class="sp"><div><b>${esc(h.eventName || h.event || 'Соревнование')}</b><div class="muted tiny">${h.date ? dShort(h.date) : ''} · ${esc(h.category || '')}</div></div><span class="chip neutral">Архив</span></div>
       ${h.team?`<div class="small">Команда: <b>${esc(h.team)}</b></div>`:""}
       <div class="row wrap" style="gap:12px"><div class="small">Итоговое место: <b>${res.place == null ? '—' : '#' + esc(String(res.place))}</b></div><div class="small">Сумма мест: <b>${res.pts == null ? '—' : esc(String(res.pts))}</b></div></div>
-      ${workouts ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Комплекс</th><th>Результат</th><th>Место</th></tr></thead><tbody>${workouts}</tbody></table></div>` : ''}
+      ${workouts}
       <div class="muted tiny">Историческое выступление сопоставлено по ФИО; совпадение не подтверждает личность. При ошибке свяжитесь с организатором.</div>
       <button class="btn sm ghost" data-lbopen="${esc(h.event)}|${esc(h.div)}">Открыть лидерборд</button>
     </section>`;
@@ -4091,10 +4115,11 @@ document.addEventListener("click", e=>{
   }
   if (ds.go==="teamCreate"||ds.go==="teamJoin") return go(ds.go,{});
   if (ds.go==="profile" && ds.edit) return go("profile",{edit:true});
+  if (ds.ordersPerformer){ S.p={...S.p,performer:ds.ordersPerformer}; return render(); }
   if (ds.startPeriod){ S.p={...S.p,period:ds.startPeriod}; return render(); }
   if (ds.hideStart){ if(!confirm("Убрать заявку из вашего списка? Результаты и история старта сохранятся."))return; const [kind,id]=ds.hideStart.split(":"); api("POST","/api/starts/hide",{kind,id}).then(r=>{ME.hiddenStarts=r.hidden;render();}).catch(err=>toast(err.message));return; }
   if (ds.profilePerformer){ S.profilePerformer=ds.profilePerformer;return render(); }
-  if (ds.performer){ const g=performanceGroups().find(p=>p.id===ds.performer); const onlyArchive=g?.archive?.length&&!g.orders.some(o=>!pastStart(o.event)); go("orders",{performer:ds.performer,period:onlyArchive?"ended":"current"}); return; }
+  if (ds.performer){ go("orders",{performer:ds.performer,period:"ended"}); return; }
   if (ds.go) return go(ds.go,{});
   if (ds.evf){ S.p={f:ds.evf}; return render(); }
   if (ds.evt){ S.p={...S.p,t:ds.evt}; return render(); }
