@@ -1337,7 +1337,7 @@ async function finderWrite(ev,body){
 document.addEventListener("change",e=>{if(e.target.id==="finderCategory"){finderState.category=e.target.value;render();}if(e.target.id==="finderCompatible"){finderState.compatible=e.target.checked;render();}});
 document.addEventListener("input",e=>{if(e.target.id==="finderQuery"){finderState.q=e.target.value;const pos=e.target.selectionStart;render();const el=document.getElementById("finderQuery");el?.focus();el?.setSelectionRange(pos,pos);}});
 function finderTabs(ev){return '<div class="tabs">'+[["all","Все участники"],...(finderEnabled(ev)?[["search","Поиск команды"]]:[]),["results","Результаты"]].map(([v,l])=>'<button data-finder-tab="'+v+'" aria-selected="'+(raceView().mode===v)+'">'+l+'</button>').join("")+'</div>';}
-function finderCompatible(ev,t){const d=ev.divisions.find(x=>x.id===t.div),p=ME;if(!USER||!p?.dob||!p?.gender)return true;if(!d)return false;const a=athleteAge(ev,p,d);if((d.g&&d.g!=="any"&&d.g!==p.gender)||(d.min&&a<d.min)||(d.max&&a>d.max)||regConflict(ev,d,"me"))return false;if(t.memberG?.length===1&&/mix/.test(d.id)&&t.size===2&&t.memberG[0]===p.gender.toLowerCase())return false;return true;}
+function finderCompatible(ev,t){const d=ev.divisions.find(x=>x.id===t.div),p=ME;if(!USER||!p?.dob||!p?.gender)return true;if(!d)return false;const a=athleteAge(ev,p,d);if((d.g&&d.g!=="any"&&d.g!==p.gender)||(d.min&&a<d.min)||(d.max&&a>d.max)||regConflict(ev,d,"me"))return false;if(d.mix&&(t.memberG||[]).filter(g=>g===p.gender.toLowerCase()).length>=Number(d.mix[p.gender.toLowerCase()]||0))return false;if(ORDERS.some(o=>o.event===ev.id&&o.div===t.div&&o.team===t.name&&(o.who||"me")==="me"&&[...ACTIVE_ST,"pending","reserve"].includes(o.status)))return false;return true;}
 function finderScreen(ev,top){
  const F=finderState,D=F.event===ev.id?F.data:null;
  if(!D)return {title:null,html:top+'<div class="card stack">'+esc(F.error||"Загружаем участников…")+'<button class="btn sm ghost" data-finder-refresh>Обновить</button></div>',after:()=>{if(!F.loading&&!F.error)finderLoad(ev)}};
@@ -4154,7 +4154,7 @@ document.addEventListener("click", e=>{
     if(ds.finderCaptain)return finderWrite(ev,{action:"captain",team:Number(ds.finderCaptain)});
     if(ds.finderRemove)return finderWrite(ev,{action:"remove",id:ds.finderRemove});
     if(ds.finderInvite)return finderWrite(ev,{action:"invite",id:ds.finderInvite,team:Number(ds.finderCap)});
-    if(ds.finderJoin){const t=finderState.data?.teams.find(t=>String(t.id)===ds.finderJoin&&t.open),div=ev.divisions.find(d=>d.id===t?.div);if(!t||!div)return;S.who="me";if(!profileReady())return go("profile",{edit:true,then:"leaderboard"});const why=eligibility(ev,div);if(why)return toast(why);S.reg={ev,div,team:t.name,newTeam:false,teamReq:{mode:"join",name:t.name},who:"me",f:{size:"L",promo:"",promoOk:false,promoMsg:"",c1:false,c2:false,c3:false}};return go("form",{});}
+    if(ds.finderJoin){const t=finderState.data?.teams.find(t=>String(t.id)===ds.finderJoin&&t.open),div=ev.divisions.find(d=>d.id===t?.div);if(!t||!div)return;S.who="me";if(!profileReady())return go("profile",{edit:true,then:"leaderboard"});const why=eligibility(ev,div);if(why)return toast(why);if(!finderCompatible(ev,t))return toast("Эта команда вам не подходит или вы уже подали заявку");S.reg={ev,div,team:t.name,newTeam:false,teamReq:{mode:"join",name:t.name},who:"me",f:{size:"L",promo:"",promoOk:false,promoMsg:"",c1:false,c2:false,c3:false}};return go("form",{});}
   }
   if(ds.raceManage){
     S.lb.ev=ds.raceManage;S.lb.w=-1;S.lb.q="";S.lb.tab="ind";
