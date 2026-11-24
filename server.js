@@ -1106,6 +1106,8 @@ route('POST','/api/team-finder/:id',async(req,res,u,body,p)=>{
  if(d.g&&d.g!=='any'&&d.g!==person.gender)throw bad('Категория не подходит');
  const age=ev.ageMode==='year'?+String(ev.date).slice(0,4)-+person.dob.slice(0,4):ageOn(person.dob,((d.days||[])[0]||ev.date||today()));
  if((d.min&&age<d.min)||(d.max&&age>d.max))throw bad('Возраст не соответствует категории');
+ const existing=(await db.query(`select team,div_id from registrations where who=$2 and (who<>'me' or user_id=$1) and event_id=$3 and team is not null and status in ${INTEAM}`,[u.id,who,ev.id])).rows;
+ if(existing.length&&body.repeat!==true)throw bad('Вы уже участвуете в команде. Для поиска другой команды подтвердите повторное участие.');
  if(body.consent!==true)throw bad('Подтвердите публикацию имени в списке поиска');
  await db.query('insert into team_finder_ads(id,event_id,user_id,div_id,who,name) values($1,$2,$3,$4,$5,$6) on conflict(id) do update set name=excluded.name',['seek:'+sha(ev.id+':'+u.id+':'+who+':'+d.id).slice(0,40),ev.id,u.id,d.id,who,shortName(person)]);
  return {ok:true};
