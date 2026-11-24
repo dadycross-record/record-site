@@ -661,6 +661,8 @@ h2.ch{font-family:var(--f-display);font-weight:800;font-size:clamp(24px,7vw,40px
 
 .heat-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.heat-tools .inp{width:auto;min-width:110px;height:38px;font-size:13px}.heat-tools input{flex:1;min-width:160px}.heat-scroll{overflow:auto;max-height:65vh;border:1px solid var(--line);border-radius:10px}.heat-table{border-collapse:separate;border-spacing:0;width:100%;font-size:13px}.heat-table th{position:sticky;top:0;background:var(--surface-2);z-index:1;text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase}.heat-table th,.heat-table td{padding:5px 9px;border-bottom:1px solid var(--line);vertical-align:middle}.heat-table td.heat-id,.heat-table td.heat-time{white-space:nowrap}.heat-table .heat-number{width:66px;min-width:0;height:34px;padding:4px 8px;font-size:14px}.heat-table .heat-save .btn{min-height:34px;white-space:nowrap}.heat-table .heat-name{overflow-wrap:anywhere}.heat-table tbody tr:nth-child(even){background:rgba(255,255,255,.025)}.heat-table tr[hidden]{display:none!important}
 @media(max-width:767px){.heat-tools{display:grid;grid-template-columns:1fr 1fr}.heat-tools .inp{width:100%;min-width:0;height:44px;font-size:16px}.heat-tools input{grid-column:1/-1}.heat-scroll{overflow:visible;max-height:none;border:0}.heat-table,.heat-table tbody{display:block}.heat-table thead{display:none}.heat-table tbody tr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px 8px;padding:10px 0;border-bottom:1px solid var(--line)}.heat-table td{display:block;padding:0;border:0;min-width:0}.heat-table .heat-name{grid-column:1/-1;grid-row:1;font-size:14px}.heat-table .heat-cat{grid-column:1/-1;color:var(--muted);font-size:12px}.heat-table .heat-id{grid-column:1/-1;color:var(--muted);font-size:11px}.heat-table .heat-time,.heat-table .heat-wave,.heat-table .heat-lane{align-self:end}.heat-table td[data-label]:not(.heat-id):before{content:attr(data-label);display:block;color:var(--muted);font-size:11px;margin-bottom:4px}.heat-table .heat-number{width:100%;height:44px;font-size:16px}.heat-table .heat-save{grid-column:1/-1;text-align:right}.heat-table .heat-save .btn{min-height:44px}.heat-table tbody tr:nth-child(even){background:none}}
+
+.finder-links{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.finder-telegram{color:#70c9ed!important;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.finder-home{display:flex;align-items:center;gap:12px}.finder-home>.next{flex:1;min-width:0}.finder-home>.finder-links{flex:0 0 auto;flex-direction:column}.finder-highlight{border-color:var(--accent)}.finder-list{display:grid;gap:8px}.finder-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--line);border-radius:10px;flex-wrap:wrap}.finder-item>*{min-width:0;overflow-wrap:anywhere}@media(max-width:767px){.finder-home{display:block}.finder-links>*{flex:1;white-space:normal}.finder-item{gap:8px}.finder-item .btn{min-height:44px}}
 </style>
 
 </head>
@@ -1315,11 +1317,49 @@ function raceDivTitle(d){
  return /^race26-(ind-(f|m)|pair-(f|m|mix))$/.test(d.id) ? name+" · категория OPEN" : name;
 }
 
+function finderCfg(ev){return {enabled:ev?.teamFinder?.enabled??(ev?.id==="evmvwkp907"),telegram:ev?.teamFinder?.telegram??(ev?.id==="evmvwkp907"?"https://t.me/+V5RwvOXYmRAyNWQy":"")};}
+function finderEnabled(ev){return !!ev&&finderCfg(ev).enabled&&registrationIsOpen(ev);}
+function finderTelegram(ev){const url=finderCfg(ev).telegram;return finderEnabled(ev)&&/^https:\/\/t\.me\/[A-Za-z0-9_+/-]+$/.test(url)?'<a class="btn sm ghost finder-telegram" href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">Telegram · поиск команды</a>':"";}
+function finderLinks(ev,team){return finderEnabled(ev)?'<div class="finder-links"><button class="btn sm ghost" data-finder-open="'+esc(ev.id)+'">'+(team?"Найти партнёра":"Найти команду")+'</button>'+finderTelegram(ev)+'</div>':"";}
+const finderState={event:"",data:null,loading:false,error:"",q:""};
+async function finderLoad(ev){
+ if(!ev||finderState.loading)return;finderState.loading=true;finderState.error="";
+ try{finderState.data=await api("GET","/api/team-finder/"+encodeURIComponent(ev.id));finderState.event=ev.id;}
+ catch(e){finderState.error=e.message||"Не удалось загрузить список";}
+ finally{finderState.loading=false;if(S.route==="leaderboard"&&S.lb.ev===ev.id)render();}
+}
+async function finderWrite(ev,body){
+ if(finderState.busy)return;finderState.busy=true;
+ try{await api("POST","/api/team-finder/"+encodeURIComponent(ev.id),body);toast("Готово");await finderLoad(ev);}
+ catch(e){toast(e.message);}
+ finally{finderState.busy=false;}
+}
+document.addEventListener("input",e=>{if(e.target.id==="finderQuery"){finderState.q=e.target.value;const pos=e.target.selectionStart;render();const el=document.getElementById("finderQuery");el?.focus();el?.setSelectionRange(pos,pos);}});
+function finderTabs(ev){return '<div class="tabs">'+[["all","Все участники"],...(finderEnabled(ev)?[["search","Поиск команды"]]:[]),["results","Результаты"]].map(([v,l])=>'<button data-finder-tab="'+v+'" aria-selected="'+(raceView().mode===v)+'">'+l+'</button>').join("")+'</div>';}
+function finderScreen(ev,top){
+ const F=finderState,D=F.event===ev.id?F.data:null;
+ if(!D)return {title:null,html:top+'<div class="card stack">'+esc(F.error||"Загружаем участников…")+'<button class="btn sm ghost" data-finder-refresh>Обновить</button></div>',after:()=>{if(!F.loading&&!F.error)finderLoad(ev)}};
+ const name=id=>raceDivTitle(ev.divisions.find(d=>d.id===id)),matches=(...v)=>v.join(" ").toLowerCase().includes(F.q.toLowerCase());
+ const opts=ev.divisions.filter(d=>d.type==="team").map(d=>'<option value="'+esc(d.id)+'">'+esc(name(d.id))+'</option>').join("");
+ const mine=D.mine||[],open=D.teams.filter(t=>t.open),caps=MYTEAMS.filter(t=>t.event===ev.id&&t.captain&&t.members.filter(m=>m.role==="main").length<(ev.divisions.find(d=>d.id===t.div)?.size||0));
+ const remove=id=>'<button class="btn sm ghost" data-finder-remove="'+esc(id)+'">Закрыть поиск</button>';
+ const item=(a,b)=>'<div class="finder-item">'+a+b+'</div>';
+ const title=(n,sub)=>'<div><b>'+esc(n)+'</b><div class="muted small">'+esc(sub)+'</div></div>';
+ let content="";
+ if(raceView().mode==="all"){
+ content='<h2 class="sec">Все участники · '+(D.participants.length+D.teams.reduce((a,t)=>a+t.count,0))+'</h2><div class="finder-list">'+D.participants.filter(t=>matches(t.name,name(t.div))).map(t=>item(title(t.name,name(t.div)),"")).join("")+D.teams.filter(t=>matches(t.name,name(t.div),...t.members)).map(t=>item(title(t.name,name(t.div)+" · "+t.count+"/"+t.size+" · "+t.members.join(" · ")),t.open?'<button class="btn sm ghost" data-finder-join="'+t.id+'">Подать заявку</button>':"")).join("")+'</div>';
+ }else{
+ content='<div class="card stack finder-highlight"><h2 style="margin:0">Поиск команды</h2><div class="row wrap"><b>'+D.seeking.length+' · ищут команду</b><b>'+open.length+' · открытый набор</b></div>'+finderTelegram(ev)+(USER?'<details class="card"><summary style="cursor:pointer;font-weight:700">Хочу в команду</summary><div class="stack" style="margin-top:12px"><label class="f">Участник<select class="inp" id="finderWho"><option value="me">Я</option>'+(ME.kids||[]).map(k=>'<option value="'+esc(k.id)+'">'+esc(k.last+" "+k.first)+'</option>').join("")+'</select></label><label class="f">Категория<select class="inp" id="finderDiv">'+opts+'</select></label><label class="check"><input type="checkbox" id="finderConsent"> Согласен показать имя и первую букву фамилии в списке поиска.</label><button class="btn" data-finder-seek>Разместить заявку</button></div></details>':'<button class="btn" data-finder-seek>Хочу в команду</button>')+caps.map(t=>item(title(t.name,name(t.div)),mine.some(a=>String(a.team)===String(t.id))?remove("team:"+t.id):'<button class="btn sm ghost" data-finder-captain="'+t.id+'">Открыть набор</button>')).join("")+'</div><h2 class="sec">Команды ищут партнёров</h2><div class="finder-list">'+(open.filter(t=>matches(t.name,name(t.div))).map(t=>item(title(t.name,name(t.div)+" · "+t.count+"/"+t.size),'<button class="btn sm ghost" data-finder-join="'+t.id+'">Подать заявку</button>')).join("")||'<div class="muted small">Нет открытых команд.</div>')+'</div><h2 class="sec">Атлеты ищут команду</h2><div class="finder-list">'+(D.seeking.filter(t=>matches(t.name,name(t.div))).map(t=>item(title(t.name,name(t.div)),t.mine?remove(t.id):caps.filter(c=>c.div===t.div).map(c=>'<button class="btn sm ghost" data-finder-invite="'+esc(t.id)+'" data-finder-cap="'+c.id+'">Пригласить · '+esc(c.name)+'</button>').join(""))).join("")||'<div class="muted small">Пока нет заявок.</div>')+'</div>';
+ }
+ return {title:null,html:top+'<div class="row wrap" style="margin:10px 0"><input class="inp" id="finderQuery" placeholder="Имя, команда, категория" value="'+esc(F.q)+'"><button class="btn sm ghost" data-finder-refresh>Обновить</button></div>'+content};
+}
+
 function raceBoardScreen(ev){
  const R=raceView(), data=R.data&&R.data.eventId===ev.id?R.data:null;
  const staff=["owner","admin","judge"].includes(S.viewAs);
  const raceExportAllowed=!!USER && (["owner","admin"].includes(USER.role)||(USER.headEvents||[]).includes(ev.id));
- const top='<div class="card" style="padding:12px 14px"><button class="selbtn" data-act="evsheet"><div><b>'+esc(ev.name)+'</b><div class="muted tiny">ГОНКА · одно итоговое время · абсолютный и возрастной зачёт</div></div><span aria-hidden="true">⌄</span></button></div>';
+ const top='<div class="card" style="padding:12px 14px"><button class="selbtn" data-act="evsheet"><div><b>'+esc(ev.name)+'</b><div class="muted tiny">ГОНКА · одно итоговое время · абсолютный и возрастной зачёт</div></div><span aria-hidden="true">⌄</span></button></div>'+finderTabs(ev);
+ if(R.mode==="all"||(R.mode==="search"&&finderEnabled(ev)))return finderScreen(ev,top);
  if(!data){
    return {title:null,html:top+'<div class="card stack" style="margin-top:12px"><b>Гонка Рекорда</b><div class="muted">'+esc(R.error||"Загружаем результаты и возрастные категории…")+'</div><button class="btn sm" data-racerefresh="'+esc(ev.id)+'">Обновить</button></div>',after:()=>{if(!R.loading&&!R.error)raceLoad(ev.id)}};
  }
@@ -1421,12 +1461,12 @@ home(){
   <h2 class="sec">Сезон ${yr}</h2>
   <div class="count" style="margin-top:0"><div><b>${people}</b><span>участников стартов за ${yr} год</span></div><div><b>${held.length}</b><span>стартов проведено в ${yr} году</span></div></div>
   <h2 class="sec">Ближайший старт</h2>
-  <button class="card next" data-go="event" data-ev="${ev.id}" style="text-align:left;width:100%">
+  <div class="finder-home"><button class="card next" data-go="event" data-ev="${ev.id}" style="text-align:left;width:100%">
     <div class="datebox"><b>${+d}</b><span>${MONS[+m-1]}</span></div>
     <div><div class="row wrap" style="gap:6px">${eventStatusChip(ev)}</div>
       <div style="font-family:var(--f-display);font-weight:600;font-size:16px;text-transform:uppercase;margin:6px 0 2px">${ev.name}</div>
       <div class="muted small">${dateRange(ev)}${durTxt(ev)} · ${ev.city}</div></div>
-  </button>
+  </button>${finderLinks(ev)}</div>
   ${(()=>{ const lg=EVENTS.find(e=>e.permanent&&isPub(e)); if(!lg) return ""; const m=curMonth(lg), dl=Math.max(0,daysBetween(TODAY,monthEnd(m.id)));
     return `<h2 class="sec">Постоянный старт</h2><button class="card next" data-go="event" data-ev="${lg.id}" style="text-align:left;width:100%"><div class="datebox"><b>${dl}</b><span>дн.</span></div><div><div class="row wrap" style="gap:6px"><span class="chip live">Идёт ${MON_NOM[+m.id.slice(5,7)-1]}</span></div><div style="font-family:var(--f-display);font-weight:600;font-size:16px;text-transform:uppercase;margin:6px 0 2px">${esc(lg.name)}</div><div class="muted small">Итоги ${MON_GEN[+m.id.slice(5,7)-1]} через ${dl} ${plDays(dl)} · ${takenOf(lg)} участников</div></div></button>`; })()}
   <h2 class="sec">Все старты</h2>
@@ -1687,6 +1727,7 @@ done(){
    <div class="card kv" style="text-align:left;margin:16px 0"><dt>Заказ</dt><dd class="mono">${o.id}</dd><dt>${o.status==="paid"?"Взнос":"К оплате"}</dt><dd class="mono">${fmtRub(o.status==="paid"?o.paid:o.due)}</dd><dt>Email</dt><dd>${esc(USER?USER.email:"")}</dd></div>
    <p class="muted small">${o.status==="pending"?"Капитан команды получит письмо и подтвердит заявку. Платить взнос нужно после того, как он примет вас в основной состав. Статус — в «Моих стартах».":o.status==="reserve"?"Взнос платить не нужно, пока капитан не переведёт вас в основной состав. Статус — в «Моих стартах».":o.status==="paid"?"Статус и возврат — в разделе «Мои старты».":(isRaceEvent(ev)?esc(RACE_CASH_INFO)+" Статус заявки — в разделе «Мои старты».":"Организатор подтвердит заявку и подскажет, как оплатить взнос. Статус видно в разделе «Мои старты».")}${o.team&&o.role==="main"&&S.reg&&S.reg.newTeam?" Ссылка-приглашение для команды — в «Моих стартах», в карточке старта.":""}</p>
    ${invitation?`<div class="card stack" style="margin:14px 0;text-align:left"><b>Пригласите партнёра в команду</b><div class="muted small">Отправьте ссылку партнёру, чтобы он присоединился к вашему составу.</div><input class="inp mono" readonly value="${esc(invitation)}" aria-label="Ссылка-приглашение" style="font-size:13px"><button class="btn block" data-copyinv="${esc(captainTeam.invite)}">Скопировать ссылку</button></div>`:""}
+   ${finderLinks(ev,captainTeam?.id)}
    <div class="stack"><button class="btn block" data-tab-go="me" data-sub="orders">Мои старты</button><button class="btn block ghost" data-tab-go="home">На главную</button></div></div>`};
 },
 fail(){
@@ -2151,6 +2192,7 @@ function teamBox(o){
     ${!cap && o.status==="pending"?'<div class="muted small" style="margin-top:6px">Капитан ещё не подтвердил вашу заявку. Платить взнос пока не нужно.</div>':""}
     ${!cap && ["pending","reserve"].includes(o.status)?`<button class="btn sm ghost" style="margin-top:8px" data-teamwd="${o.id}">${o.status==="pending"?"Отозвать заявку":"Выйти из запаса"}</button>`:""}
     ${!cap && o.status==="reserve"?'<div class="muted small" style="margin-top:6px">Вы в запасе. Взнос платить не нужно, пока капитан не переведёт вас в основной состав.</div>':""}
+    ${cap&&main.length<size?finderLinks(ev,T.id):""}
     ${cap?`<div class="rule small" style="margin-top:10px">Ссылка-приглашение: по ней вступают сразу${main.length>=size?" (сейчас — в запас)":""}.<div class="row wrap" style="gap:6px;margin-top:6px"><code style="word-break:break-all">${esc(location.origin)}/#join=${esc(T.invite)}</code></div><div class="row wrap" style="gap:6px;margin-top:6px"><button class="btn sm" data-copyinv="${esc(T.invite)}">Скопировать ссылку</button><button class="btn sm ghost" data-tact="invite|" data-ti="${ti}">Новая ссылка</button></div></div>`:""}
   </div>`;
 }
@@ -2235,6 +2277,7 @@ function syncEv(){
   if (g("aDateEnd")) ev.dateEnd=g("aDateEnd").value||ev.date;
   (ev.docs||[]).forEach((d,i)=>{ const el=g("docT"+i); if (el) d.title=el.value; });
   if (g("aSheet")) ev.sheetUrl=g("aSheet").value.trim();
+  if(g("aFinder"))ev.teamFinder={enabled:g("aFinder").checked,telegram:g("aFinderTg").value.trim()};
   if (g("aCity")) ev.city=g("aCity").value;
   if (g("aPlace")) ev.place=g("aPlace").value;
 }
@@ -2949,6 +2992,7 @@ adminEvent(){
     ${EVENTS.some(e=>e.id===ev.id)?`<div class="row wrap" style="gap:8px"><button class="btn sm" data-adm-people="${ev.id}">Участники и заявки</button><button class="btn sm ghost" data-lbev="${ev.id}">Лидерборд</button>${isRaceEvent(ev)?`<button class="btn sm" data-race-event="${ev.id}">🏁 ГОНКА · зачёты</button><button class="btn sm ghost" data-race-manage="${ev.id}">Заходы · управление</button>`:""}</div>`:""}
     <h2 class="sec" style="margin-top:0">Основное</h2>
     <label class="f">Название<input class="inp ${E.name?"err":""}" id="aName" value="${esc(ev.name)}" placeholder="Например, Детская Гонка Рекорда"></label>${fErr(E.name)}
+    <div class="card stack"><b>Поиск команды</b><label class="check"><input type="checkbox" id="aFinder" ${finderCfg(ev).enabled?"checked":""}> Включить поиск команды</label><label class="f">Ссылка Telegram (пусто — скрыть)<input class="inp" id="aFinderTg" type="url" value="${esc(finderCfg(ev).telegram)}" placeholder="https://t.me/..."></label></div>
     <label class="f">Подзаголовок<input class="inp" id="aEn" value="${esc(ev.en||"")}" placeholder="RECORD KIDS"></label>
     <label class="f">Дата на плашке соревнования<input class="inp" id="aCardDate" value="${esc(ev.cardDateText||"")}" placeholder="12–13 ДЕКАБРЯ 2026"></label>
     <div class="muted tiny">Если оставить пустым, дата формируется автоматически из начала и окончания старта.</div>
@@ -4097,6 +4141,18 @@ document.addEventListener("click", e=>{
   if (ds.act==="cookies"){ cookieBar(true); return; }
   if (S.route==="adminEvent") syncEv(); else if (S.route==="adminDiv") syncDiv(); else if (S.route==="adminWod") syncWod(); else if (S.route==="adminSch") syncSch(); else if (S.route==="adminPromo") syncPromo(); else if (S.route==="admin") syncAcc();
   if (S.route==="club") syncTrial();
+  if(ds.finderOpen){S.lb.ev=ds.finderOpen;raceView().mode="search";finderState.data=null;finderState.error="";finderState.q="";return tab("leaderboard",true);}
+  if(ds.finderTab){raceView().mode=ds.finderTab;finderState.error="";finderState.q="";if(ds.finderTab!=="results")finderState.data=null;return render();}
+  if(ds.finderRefresh!==undefined){const ev=EVENTS.find(e=>e.id===S.lb.ev);return finderLoad(ev);}
+  if(ds.finderSeek!==undefined||ds.finderCaptain||ds.finderRemove||ds.finderInvite||ds.finderJoin){
+    const ev=EVENTS.find(e=>e.id===S.lb.ev);if(!ev)return;
+    if(!USER)return needLogin("Войдите, чтобы найти команду");
+    if(ds.finderSeek!==undefined){if(!profileReady())return go("profile",{edit:true,then:"leaderboard"});return finderWrite(ev,{action:"seek",who:document.getElementById("finderWho")?.value,div:document.getElementById("finderDiv")?.value,consent:!!document.getElementById("finderConsent")?.checked});}
+    if(ds.finderCaptain)return finderWrite(ev,{action:"captain",team:Number(ds.finderCaptain)});
+    if(ds.finderRemove)return finderWrite(ev,{action:"remove",id:ds.finderRemove});
+    if(ds.finderInvite)return finderWrite(ev,{action:"invite",id:ds.finderInvite,team:Number(ds.finderCap)});
+    if(ds.finderJoin){const t=finderState.data?.teams.find(t=>String(t.id)===ds.finderJoin&&t.open),div=ev.divisions.find(d=>d.id===t?.div);if(!t||!div)return;S.who="me";if(!profileReady())return go("profile",{edit:true,then:"leaderboard"});const why=eligibility(ev,div);if(why)return toast(why);S.reg={ev,div,team:t.name,newTeam:false,teamReq:{mode:"join",name:t.name},who:"me",f:{size:"L",promo:"",promoOk:false,promoMsg:"",c1:false,c2:false,c3:false}};return go("form",{});}
+  }
   if(ds.raceManage){
     S.lb.ev=ds.raceManage;S.lb.w=-1;S.lb.q="";S.lb.tab="ind";
     const R=raceView();R.data=null;R.heatData=null;R.mode="heats";R.kind="individual";R.age="all";
