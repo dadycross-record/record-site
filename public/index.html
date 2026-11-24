@@ -1229,16 +1229,19 @@ function raceHeatsLoad(eventId,force){
  }).catch(err=>{R.heatLoading=false;R.heatError=err.message||"Не удалось загрузить заходы";if(S.route==="leaderboard"||S.route==="orders")render();});
 }
 async function raceHeatsAction(ev,payload){
+ const state=raceView();if(state.heatSaving)return;state.heatSaving=true;
  try{
   await api("POST","/api/admin/race/heats/"+encodeURIComponent(ev),payload);
   const R=raceView();R.heatData=null;raceHeatsLoad(ev,true);
   toast("Настройки заходов сохранены");
- }catch(err){toast(err.message||"Не удалось сохранить изменения");}
+ }catch(err){toast(err.message||"Не удалось сохранить изменения");}finally{state.heatSaving=false;}
 }
 function filterHeatTable(di){
  const table=document.getElementById("heatTable"+di);if(!table)return;
  const q=(document.querySelector('[data-heat-query="'+di+'"]')?.value||"").trim().toLowerCase().replace(/ё/g,"е");
+ const state=raceView();state.heatFilters=state.heatFilters||{};
  const cat=document.querySelector('[data-heat-category="'+di+'"]')?.value||"",wave=document.querySelector('[data-heat-wave="'+di+'"]')?.value||"";
+ state.heatFilters[di]={q:document.querySelector('[data-heat-query="'+di+'"]')?.value||"",cat,wave};
  let count=0;const waves=new Set();
  for(const row of table.querySelectorAll("[data-heat-row]")){
   const ok=(!cat||row.dataset.category===cat)&&(!wave||row.dataset.wave===wave)&&q.split(/\s+/).every(t=>row.dataset.search.replace(/ё/g,"е").includes(t));
@@ -1296,9 +1299,15 @@ function raceHeatsScreen(ev,head){
   }
   body+='</section>';
  }
+ if(owner&&H.pending?.length)controls+='<div class="rule small">Не распределено: '+H.pending.length+' записей. Проверьте вместимость дня.</div>';
  if(owner&&H.hasUnpublishedChanges)controls+='<div class="rule small">Есть ручные изменения, которые ещё не видны атлетам. Используй «Полный перерасчёт и повторная публикация».</div>';
  if(!owner&&!Object.keys(H.days||{}).length)body='<div class="card muted small">Организатор пока не опубликовал заходы. Дата, время и стартовый номер появятся после публикации.</div>';
- return {title:null,html:head+header+controls+body};
+ return {title:null,html:head+header+controls+body,after:()=>{
+   for(const [di,f] of Object.entries(R.heatFilters||{})){
+    for(const [attr,val] of [["query",f.q],["category",f.cat],["wave",f.wave]]){const el=document.querySelector('[data-heat-'+attr+'="'+di+'"]');if(el)el.value=val;}
+    filterHeatTable(di);
+   }
+ }};
 }
 function raceDivTitle(d){
  if(!d)return "Категория";
