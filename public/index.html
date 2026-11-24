@@ -658,6 +658,9 @@ h2.ch{font-family:var(--f-display);font-weight:800;font-size:clamp(24px,7vw,40px
 
 
 @media (min-width: 768px){.history-lb-btn{align-self:flex-start!important;width:auto!important;max-width:100%;flex:0 0 auto!important}}
+
+.heat-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.heat-tools .inp{width:auto;min-width:110px;height:38px;font-size:13px}.heat-tools input{flex:1;min-width:160px}.heat-scroll{overflow:auto;max-height:65vh;border:1px solid var(--line);border-radius:10px}.heat-table{border-collapse:separate;border-spacing:0;width:100%;font-size:13px}.heat-table th{position:sticky;top:0;background:var(--surface-2);z-index:1;text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase}.heat-table th,.heat-table td{padding:5px 9px;border-bottom:1px solid var(--line);vertical-align:middle}.heat-table td.heat-id,.heat-table td.heat-time{white-space:nowrap}.heat-table .heat-number{width:66px;min-width:0;height:34px;padding:4px 8px;font-size:14px}.heat-table .heat-save .btn{min-height:34px;white-space:nowrap}.heat-table .heat-name{overflow-wrap:anywhere}.heat-table tbody tr:nth-child(even){background:rgba(255,255,255,.025)}.heat-table tr[hidden]{display:none!important}
+@media(max-width:767px){.heat-tools{display:grid;grid-template-columns:1fr 1fr}.heat-tools .inp{width:100%;min-width:0;height:44px;font-size:16px}.heat-tools input{grid-column:1/-1}.heat-scroll{overflow:visible;max-height:none;border:0}.heat-table,.heat-table tbody{display:block}.heat-table thead{display:none}.heat-table tbody tr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px 8px;padding:10px 0;border-bottom:1px solid var(--line)}.heat-table td{display:block;padding:0;border:0;min-width:0}.heat-table .heat-name{grid-column:1/-1;grid-row:1;font-size:14px}.heat-table .heat-cat{grid-column:1/-1;color:var(--muted);font-size:12px}.heat-table .heat-id{grid-column:1/-1;color:var(--muted);font-size:11px}.heat-table .heat-time,.heat-table .heat-wave,.heat-table .heat-lane{align-self:end}.heat-table td[data-label]:not(.heat-id):before{content:attr(data-label);display:block;color:var(--muted);font-size:11px;margin-bottom:4px}.heat-table .heat-number{width:100%;height:44px;font-size:16px}.heat-table .heat-save{grid-column:1/-1;text-align:right}.heat-table .heat-save .btn{min-height:44px}.heat-table tbody tr:nth-child(even){background:none}}
 </style>
 
 </head>
@@ -1226,12 +1229,28 @@ function raceHeatsLoad(eventId,force){
  }).catch(err=>{R.heatLoading=false;R.heatError=err.message||"Не удалось загрузить заходы";if(S.route==="leaderboard"||S.route==="orders")render();});
 }
 async function raceHeatsAction(ev,payload){
+ const state=raceView();if(state.heatSaving)return;state.heatSaving=true;
  try{
   await api("POST","/api/admin/race/heats/"+encodeURIComponent(ev),payload);
   const R=raceView();R.heatData=null;raceHeatsLoad(ev,true);
   toast("Настройки заходов сохранены");
- }catch(err){toast(err.message||"Не удалось сохранить изменения");}
+ }catch(err){toast(err.message||"Не удалось сохранить изменения");}finally{state.heatSaving=false;}
 }
+function filterHeatTable(di){
+ const table=document.getElementById("heatTable"+di);if(!table)return;
+ const q=(document.querySelector('[data-heat-query="'+di+'"]')?.value||"").trim().toLowerCase().replace(/ё/g,"е");
+ const state=raceView();state.heatFilters=state.heatFilters||{};
+ const cat=document.querySelector('[data-heat-category="'+di+'"]')?.value||"",wave=document.querySelector('[data-heat-wave="'+di+'"]')?.value||"";
+ state.heatFilters[di]={q:document.querySelector('[data-heat-query="'+di+'"]')?.value||"",cat,wave};
+ let count=0;const waves=new Set();
+ for(const row of table.querySelectorAll("[data-heat-row]")){
+  const ok=(!cat||row.dataset.category===cat)&&(!wave||row.dataset.wave===wave)&&q.split(/\s+/).every(t=>row.dataset.search.replace(/ё/g,"е").includes(t));
+  row.hidden=!ok;if(ok){count++;waves.add(row.dataset.wave);}
+ }
+ const counter=document.getElementById("heatCount"+di);if(counter)counter.textContent=count+" записей · "+waves.size+" заходов";
+}
+document.addEventListener("input",e=>{if(e.target.dataset.heatQuery!==undefined)filterHeatTable(e.target.dataset.heatQuery)});
+document.addEventListener("change",e=>{const d=e.target.dataset;if(d.heatCategory!==undefined||d.heatWave!==undefined)filterHeatTable(d.heatCategory??d.heatWave)});
 function raceHeatsScreen(ev,head){
  const R=raceView(),owner=!!USER&&USER.role==="owner",H=R.heatData&&R.heatData.eventId===ev.id?R.heatData:null;
  if(!H)return {title:null,html:head+'<div class="card stack" style="margin-top:12px"><b>Заходы по времени</b><div class="muted">'+esc(R.heatError||"Загружаю актуальные заходы…")+'</div><button class="btn sm" data-race-heats-refresh="'+esc(ev.id)+'">Обновить</button></div>',
@@ -1264,21 +1283,31 @@ function raceHeatsScreen(ev,head){
      '<div class="muted tiny">'+(pub?'Новые регистрации занимают свободные слоты или новый заход; опубликованное время остальных не сдвигается.':'Этот список видишь только ты. При новых регистрациях черновик пересчитывается автоматически.')+'</div>';
   }
   if(!rows.length)body+='<div class="muted small">Пока нет готовых регистраций'+(owner?' для черновика.':' или опубликованных заходов.')+'</div>';
-  for(const wave of waves){
-   const list=rows.filter(r=>r.wave===wave);
-   body+='<div class="race-wave"><div class="row wrap"><b>Заход '+wave+'</b><span class="mono small">'+esc(list[0].start)+'</span><span class="muted tiny">'+list.length+' / '+(list[0].team?3:6)+' '+(list[0].team?'команды':'мест')+'</span></div>';
-   body+=list.map((x,j)=>{
-    const index=di+'-'+wave+'-'+j,move=owner?
-      '<div class="race-move"><label>Заход<input class="inp" type="number" min="1" max="120" id="raceWave'+index+'" value="'+x.wave+'"></label><label>Дорожка<select class="inp" id="raceLane'+index+'">'+Array.from({length:x.team?3:6},(_,i)=>i+1).map(n=>'<option value="'+n+'"'+(n===x.lane?' selected':'')+'>'+n+'</option>').join("")+'</select></label><button class="btn sm ghost" data-race-move="'+esc(x.key)+'" data-race-di="'+di+'" data-race-index="'+index+'">Перенести</button></div>':"";
-    return '<div class="race-entrant"><span class="mono">'+x.lane+'</span><div><b>'+esc(x.name)+'</b><div class="muted tiny">'+esc(raceDivTitle(divs.get(x.divId)))+' · № '+esc(x.number)+' · '+esc(x.start)+'</div>'+move+'</div></div>';
-   }).join("");
-   body+='</div>';
+  if(rows.length){
+   const opts=(items)=>items.map(([v,t])=>'<option value="'+esc(v)+'">'+esc(t)+'</option>').join("");
+   const cats=[...new Set(rows.map(x=>x.divId))];
+   body+='<div class="heat-tools"><input class="inp" type="search" data-heat-query="'+di+'" placeholder="Фамилия, команда, номер" aria-label="Поиск участника"><select class="inp" data-heat-category="'+di+'" aria-label="Категория">'+opts([["","Все категории"],...cats.map(id=>[id,raceDivTitle(divs.get(id))])])+'</select><select class="inp" data-heat-wave="'+di+'" aria-label="Заход">'+opts([["","Все заходы"],...waves.map(w=>[String(w),"Заход "+w])])+'</select><span class="muted small" id="heatCount'+di+'">'+rows.length+' записей · '+waves.length+' заходов</span><button class="btn sm ghost" data-heat-export="'+di+'">Excel</button></div>';
+   body+='<div class="heat-scroll"><table class="heat-table" id="heatTable'+di+'"><thead><tr><th>№</th><th>Участник / команда</th><th>Категория</th><th>Время</th><th>Заход</th><th>Дорожка</th>'+(owner?'<th></th>':'')+'</tr></thead><tbody>';
+   const minutes=Number(time.slice(0,2))*60+Number(time.slice(3)), maxWave=Math.floor((1439-minutes)/10)+1;
+   for(const [j,x] of rows.entries()){
+    const index=di+'-'+j,cat=raceDivTitle(divs.get(x.divId)),members=Array.isArray(x.persons)?x.persons.map(p=>[p.person?.last,p.person?.first].filter(Boolean).join(" ")).filter(Boolean).join(" · "):"";
+    const waveInput=owner?'<input class="inp heat-number" aria-label="Заход '+esc(x.name)+'" type="number" min="1" max="'+maxWave+'" id="raceWave'+index+'" value="'+x.wave+'">':esc(x.wave);
+    const laneInput=owner?'<select class="inp heat-number" aria-label="Дорожка '+esc(x.name)+'" id="raceLane'+index+'">'+Array.from({length:x.team?3:6},(_,i)=>i+1).map(n=>'<option value="'+n+'"'+(n===x.lane?' selected':'')+'>'+n+'</option>').join("")+'</select>':esc(x.lane);
+    body+='<tr data-heat-row data-category="'+esc(x.divId)+'" data-wave="'+x.wave+'" data-search="'+esc([x.name,members,x.number,cat].join(" ").toLowerCase())+'"><td class="mono heat-id" data-label="Номер">'+esc(x.number)+'</td><td class="heat-name"><b>'+esc(x.name)+'</b>'+(members?'<div class="muted tiny">'+esc(members)+'</div>':'')+'</td><td class="heat-cat">'+esc(cat)+'</td><td class="mono heat-time" data-label="Время">'+esc(x.start)+'</td><td class="heat-wave" data-label="Заход">'+waveInput+'</td><td class="heat-lane" data-label="Дорожка">'+laneInput+'</td>'+(owner?'<td class="heat-save"><button class="btn sm ghost" data-race-move="'+esc(x.key)+'" data-race-di="'+di+'" data-race-index="'+index+'">Перенести</button></td>':'')+'</tr>';
+   }
+   body+='</tbody></table></div>';
   }
   body+='</section>';
  }
+ if(owner&&H.pending?.length)controls+='<div class="rule small">Не распределено: '+H.pending.length+' записей. Проверьте вместимость дня.</div>';
  if(owner&&H.hasUnpublishedChanges)controls+='<div class="rule small">Есть ручные изменения, которые ещё не видны атлетам. Используй «Полный перерасчёт и повторная публикация».</div>';
  if(!owner&&!Object.keys(H.days||{}).length)body='<div class="card muted small">Организатор пока не опубликовал заходы. Дата, время и стартовый номер появятся после публикации.</div>';
- return {title:null,html:head+header+controls+body};
+ return {title:null,html:head+header+controls+body,after:()=>{
+   for(const [di,f] of Object.entries(R.heatFilters||{})){
+    for(const [attr,val] of [["query",f.q],["category",f.cat],["wave",f.wave]]){const el=document.querySelector('[data-heat-'+attr+'="'+di+'"]');if(el)el.value=val;}
+    filterHeatTable(di);
+   }
+ }};
 }
 function raceDivTitle(d){
  if(!d)return "Категория";
@@ -4098,6 +4127,11 @@ document.addEventListener("click", e=>{
     const msg=mode==="full"?"Выполнить полный перерасчёт и повторно опубликовать заходы "+day+"? Время и номер у уже опубликованных атлетов могут измениться.":"Опубликовать заходы "+day+"? Атлеты увидят своё время, заход и стартовый номер.";
     if(!window.confirm(msg))return;
     return raceHeatsAction(ev.id,{action:"publish",day,full:mode==="full"});
+  }
+  if(ds.heatExport!==undefined){
+    const ev=EVENTS.find(x=>x.id===S.lb.ev),day=[...new Set([ev.date,ev.dateEnd||ev.date])][Number(ds.heatExport)],rows=raceView().heatData?.days?.[day]||[];
+    const data=[["Номер","Участник / команда","Категория","Время","Заход","Дорожка"],...rows.map(x=>[x.number,x.name,raceDivTitle(ev.divisions.find(d=>d.id===x.divId)),x.start,x.wave,x.lane])];
+    return downloadXlsx("record-race-"+day+".xlsx",[{name:"Заходы",rows:data,cols:[16,35,32,12,12,12]}]);
   }
   if(ds.raceMove){
     if(USER?.role!=="owner")return;
