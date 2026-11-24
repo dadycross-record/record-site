@@ -1644,10 +1644,16 @@ route('DELETE', '/api/crew/apply/:id', async (req, res, u, body, p) => {
 
 route('POST', '/api/starts/hide', async (req,res,u,body)=>{
   need(u);
-  const kind=body.kind,id=str(body.id,60);
+  const kind=body.kind,id=str(body.id,300);
   let item;
   if(kind==='order') item=(await db.query("select event_id, status from registrations where id=$1 and (user_id=$2 or athlete_user=$2 or who in (select kid_id from kid_guardians where user_id=$2))",[id,u.id])).rows[0];
   else if(kind==='crew' && /^\d+$/.test(id)) item=(await db.query('select event_id,status from crew where id=$1 and user_id=$2',[id,u.id])).rows[0];
+  if(kind==='archive') {
+    const people=[{person:u.profile||{},who:'self'},...(u.kids||[]).map(k=>({person:k,who:k.id}))];
+    const entries=[...people.flatMap(p=>archiveHistory.historyForPerson(recordCup,p.person,p.who)),...(await unlinkedHistoryForPeople(people))];
+    const h=entries.find(h=>h.who+'|'+h.id===id);
+    if(h) item={event_id:h.event,status:'paid'};
+  }
   if(!item) throw bad('Заявка не найдена');
   const ev=((await rawContent()).EVENTS||[]).find(e=>e.id===item.event_id);
   const inactive=kind==='crew'?item.status==='declined':['cancelled','blocked','refunded'].includes(item.status);
