@@ -146,6 +146,7 @@ const SCHEMA = `
 create table if not exists content (id int primary key, data jsonb not null, updated_at timestamptz not null default now(), updated_by text);
 create table if not exists race_heat_plans (event_id text primary key, plan jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now(), updated_by text);
 create table if not exists users (id bigserial primary key, email text unique not null, created_at timestamptz not null default now(), profile jsonb not null default '{}', kids jsonb not null default '[]');
+create table if not exists team_finder_ads (id text primary key,event_id text not null,user_id bigint not null references users(id) on delete cascade,div_id text not null,who text not null,team_id bigint,name text not null,created_at timestamptz not null default now());
 create table if not exists login_codes (email text primary key, code_hash text not null, expires_at timestamptz not null, attempts int not null default 0, sent_at timestamptz not null default now());
 create table if not exists sessions (token_hash text primary key, user_id bigint not null references users(id) on delete cascade, created_at timestamptz not null default now(), expires_at timestamptz not null);
 create table if not exists staff (email text primary key, name text not null, role text not null, created_at timestamptz not null default now());
@@ -1054,6 +1055,49 @@ route('POST', '/api/team/messages', async (req, res, u, body) => {
 });
 
 // teams of a category for the search screen: short names only, signed-in athletes only
+/* Team search is opt-in and independent of competition registration. */
+const finderConfig=ev=>({enabled:ev.teamFinder?.enabled??ev.id==='evmvwkp907',telegram:ev.teamFinder?.telegram??(ev.id==='evmvwkp907'?'https://t.me/+V5RwvOXYmRAyNWQy':'')});
+async function finderEvent(id){
+ const ev=((await rawContent()).EVENTS||[]).find(e=>e.id===id);
+ if(!ev||ev.status==='draft')throw bad('Старт не найден');
+ return ev;
+}
+const finderOpen=ev=>finderConfig(ev).enabled&&['open','live'].includes(ev.status)&&(!ev.regTo||today()<=ev.regTo);
+route('GET','/api/team-finder/:id',async(req,res,u,body,p)=>{
+ const ev=await finderEvent(p.id),enabled=finderOpen(ev);
+ const regs=(await db.query(`select id, pub, div_id, team, person, user_id, publish from registrations where event_id=$1 and status in ${ACTIVE} order by created_at`,[ev.id])).rows;
+ const teams=(await db.query('select id,div_id,name,captain_reg from teams where event_id=$1',[ev.id])).rows;
+ const ads=enabled?(await db.query("select id,user_id,div_id,who,team_id,name from team_finder_ads where event_id=$1 order by created_at",[ev.id])).rows:[];
+ const roster=teams.map(t=>{const d=ev.divisions.find(d=>d.id===t.div_id),members=regs.filter(r=>r.team===t.name&&r.div_id===t.div_id);return {id:t.id,div:t.div_id,name:t.name,size:Number(d?.size)||2,count:members.length,members:members.map(r=>shortName(r.person)),open:enabled&&members.length>0&&members.length<(Number(d?.size)||2)&&ads.some(a=>String(a.team_id)===String(t.id)&&String(a.user_id)===String(members.find(r=>r.id===t.captain_reg)?.user_id))};}).filter(t=>t.count);
+ const seeking=ads.filter(a=>!a.team_id&&ev.divisions.some(d=>d.id===a.div_id&&d.type==='team')).map(a=>({id:a.id,div:a.div_id,name:a.name,mine:!!u&&String(a.user_id)===String(u.id)}));
+ return {enabled,participants:regs.filter(r=>!r.team).map(r=>({name:shortName(r.person),div:r.div_id})),teams:roster,seeking,mine:u?ads.filter(a=>String(a.user_id)===String(u.id)).map(a=>({id:a.id,div:a.div_id,who:a.who,team:a.team_id})):[]};
+});
+route('POST','/api/team-finder/:id',async(req,res,u,body,p)=>{
+ need(u);limit('finder:'+u.id,30,60000);
+ const ev=await finderEvent(p.id);
+ if(body.action==='remove'){
+  await db.query('delete from team_finder_ads where id=$1 and user_id=$2 and event_id=$3',[str(body.id,100),u.id,ev.id]);return {ok:true};
+ }
+ if(!finderOpen(ev))throw bad('Поиск команды закрыт');
+ if(body.action==='captain'){
+  const t=(await db.query('select t.id,t.div_id,t.name,r.user_id from teams t join registrations r on r.id=t.captain_reg where t.id=$1 and t.event_id=$2 and r.user_id=$3',[Number(body.team)||0,ev.id,u.id])).rows[0];
+  if(!t)throw bad('Только капитан может открыть набор');
+  const d=ev.divisions.find(d=>d.id===t.div_id),roster=await teamRoster(db.query.bind(db),ev.id,t.div_id,t.name);
+  if(!d||roster.filter(r=>['new','paid','refund_requested'].includes(r.status)).length>=Number(d.size))throw bad('Команда уже сформирована');
+  await db.query('insert into team_finder_ads(id,event_id,user_id,div_id,who,team_id,name) values($1,$2,$3,$4,$5,$6,$7) on conflict(id) do nothing',['team:'+t.id,ev.id,u.id,t.div_id,'me',t.id,t.name]);return {ok:true};
+ }
+ if(body.action!=='seek')throw bad('Неизвестное действие');
+ const d=ev.divisions.find(d=>d.id===body.div&&d.type==='team');
+ const who=body.who==='me'?'me':str(body.who,30),person=who==='me'?u.profile:(u.kids||[]).find(k=>k.id===who);
+ if(!d||!person?.first||!person?.last||!person?.dob)throw bad('Выберите категорию и заполните анкету');
+ if(d.g&&d.g!=='any'&&d.g!==person.gender)throw bad('Категория не подходит');
+ const age=ageOn(person.dob,((d.days||[])[0]||ev.date||today()));
+ if((d.min&&age<d.min)||(d.max&&age>d.max))throw bad('Возраст не соответствует категории');
+ if(body.consent!==true)throw bad('Подтвердите публикацию имени в списке поиска');
+ await db.query('insert into team_finder_ads(id,event_id,user_id,div_id,who,name) values($1,$2,$3,$4,$5,$6) on conflict(id) do update set name=excluded.name',['seek:'+ev.id+':'+u.id+':'+who+':'+d.id,ev.id,u.id,d.id,who,shortName(person)]);
+ return {ok:true};
+});
+
 route('GET', '/api/teams', async (req, res, u, body, p, qs) => {
   need(u);
   const url = new URL(req.url, 'http://x'), ev = str(url.searchParams.get('event'), 60), div = str(url.searchParams.get('div'), 60);
