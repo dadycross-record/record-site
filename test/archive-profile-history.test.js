@@ -50,7 +50,10 @@ test('Client and server expose the same history in athlete and organizer account
   assert.doesNotMatch(js,/event_id = any\(\$1::text\[\]\)/);
   assert.match(js,/\.\.\.\(await unlinkedHistoryForPeople\(/);
   assert.match(js,/archived: \[\.\.\.archiveHistory\.historyForPerson/);
-  assert.match(html,/function archivedHistoryCards\(history\)/);
+  assert.match(html,/function archivedHistoryCards\(history, personal=false\)/);
+  assert.match(html,/historyRemove\("archive",h\.who\+"\|"\+h\.id\)/);
+  assert.match(html,/historyHidden\("archive",h\.who\+"\|"\+h\.id\)/);
+  assert.match(js,/entries\.find\(h=>h\.who\+'\|'\+h\.id===id\)/);
   assert.match(html,/function archivedPerformance\(h\)/);
   assert.match(html,/Архивные выступления/);
   assert.match(html,/async r=>\{ Object\.assign\(ME,r\.profile\)/);
