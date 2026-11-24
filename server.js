@@ -907,7 +907,7 @@ route('POST', '/api/register', async (req, res, u, body) => {
         limit('team-join:' + u.id, 20, 3600e3);
         teamRow = t.mode === 'invite'
           ? (await q('select * from teams where invite=$1 and event_id=$2 and div_id=$3', [str(t.invite, 40), ev.id, div.id])).rows[0]
-          : (await q('select * from teams where event_id=$1 and div_id=$2 and name=$3', [ev.id, div.id, nm(t.name, 20).toUpperCase()])).rows[0];
+          : (await q('select * from teams where event_id=$1 and div_id=$2 and name=$3', [ev.id, div.id, nm(t.name, 30).toUpperCase()])).rows[0];
         if (!teamRow) throw bad(t.mode === 'invite' ? 'Приглашение устарело — попросите у капитана новую ссылку' : 'Такой команды нет');
         const main = (await q(`select count(*)::int n from registrations where event_id=$1 and div_id=$2 and team=$3 and status in ${ACTIVE}`, [ev.id, div.id, teamRow.name])).rows[0].n;
         if (!main) throw bad('Такой команды нет');
@@ -1086,15 +1086,28 @@ route('POST','/api/team-finder/:id',async(req,res,u,body,p)=>{
   if(!d||roster.filter(r=>['new','paid','refund_requested'].includes(r.status)).length>=Number(d.size))throw bad('Команда уже сформирована');
   await db.query('insert into team_finder_ads(id,event_id,user_id,div_id,who,team_id,name) values($1,$2,$3,$4,$5,$6,$7) on conflict(id) do nothing',['team:'+t.id,ev.id,u.id,t.div_id,'me',t.id,t.name]);return {ok:true};
  }
+ if(body.action==='invite'){
+  const ad=(await db.query('select user_id,div_id,who from team_finder_ads where id=$1 and event_id=$2 and team_id is null',[str(body.id,100),ev.id])).rows[0];
+  if(!ad)throw bad('Объявление уже закрыто');
+  const t=(await db.query('select t.id,t.div_id,t.name,t.invite from teams t join registrations r on r.id=t.captain_reg where t.id=$1 and t.event_id=$2 and r.user_id=$3',[Number(body.team)||0,ev.id,u.id])).rows[0];
+  if(!t||t.div_id!==ad.div_id)throw bad('Выберите свою команду этой категории');
+  const d=ev.divisions.find(d=>d.id===t.div_id),members=(await teamRoster(db.query.bind(db),ev.id,t.div_id,t.name)).filter(r=>['new','paid','refund_requested'].includes(r.status));
+  if(!d||members.length>=Number(d.size))throw bad('Команда уже сформирована');
+  if(!mail.configured())throw bad('Отправка писем недоступна');
+  const recipient=(await db.query('select email from users where id=$1',[ad.user_id])).rows[0];
+  if(!recipient)throw bad('Атлет не найден');
+  await mail.send({to:recipient.email,subject:'Рекорд: приглашение в команду',text:'Вас приглашает команда «'+t.name+'» ('+ev.name+' · '+d.name+'). Чтобы самостоятельно оформить участие, откройте '+SITE_URL()+'/#join='+t.invite+' . Если приглашение не подходит, проигнорируйте письмо.'});
+  return {ok:true};
+ }
  if(body.action!=='seek')throw bad('Неизвестное действие');
  const d=ev.divisions.find(d=>d.id===body.div&&d.type==='team');
  const who=body.who==='me'?'me':str(body.who,30),person=who==='me'?u.profile:(u.kids||[]).find(k=>k.id===who);
  if(!d||!person?.first||!person?.last||!person?.dob)throw bad('Выберите категорию и заполните анкету');
  if(d.g&&d.g!=='any'&&d.g!==person.gender)throw bad('Категория не подходит');
- const age=ageOn(person.dob,((d.days||[])[0]||ev.date||today()));
+ const age=ev.ageMode==='year'?+String(ev.date).slice(0,4)-+person.dob.slice(0,4):ageOn(person.dob,((d.days||[])[0]||ev.date||today()));
  if((d.min&&age<d.min)||(d.max&&age>d.max))throw bad('Возраст не соответствует категории');
  if(body.consent!==true)throw bad('Подтвердите публикацию имени в списке поиска');
- await db.query('insert into team_finder_ads(id,event_id,user_id,div_id,who,name) values($1,$2,$3,$4,$5,$6) on conflict(id) do update set name=excluded.name',['seek:'+ev.id+':'+u.id+':'+who+':'+d.id,ev.id,u.id,d.id,who,shortName(person)]);
+ await db.query('insert into team_finder_ads(id,event_id,user_id,div_id,who,name) values($1,$2,$3,$4,$5,$6) on conflict(id) do update set name=excluded.name',['seek:'+sha(ev.id+':'+u.id+':'+who+':'+d.id).slice(0,40),ev.id,u.id,d.id,who,shortName(person)]);
  return {ok:true};
 });
 
