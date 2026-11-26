@@ -2090,6 +2090,42 @@ function serveStatic(req, res, pathname) {
   return true;
 }
 
+/* Event documents: real HTTP URLs for Safari/iOS and other browsers. */
+async function serveEventFile(req,res,url,match){
+  const eventId=decodeURIComponent(match[1]),docId=decodeURIComponent(match[2]);
+  const row=(await db.query("select d as doc from content c cross join lateral jsonb_array_elements(c.data->'EVENTS') e cross join lateral jsonb_array_elements(coalesce(e->'docs','[]'::jsonb)) d where c.id=1 and e->>'id'=$1 and e->>'status'<>'draft' and d->>'id'=$2 limit 1",[eventId,docId])).rows[0];
+  if(!row)throw new HttpError(404,'Файл не найден');
+  const doc=row.doc, name=String(doc.name||'file').replace(/[\u0000-\u001f\u007f/\\]/g,'_').slice(0,240);
+  const ext=path.extname(name).toLowerCase();
+  const safeTypes={'.pdf':'application/pdf','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.mp4':'video/mp4','.mov':'video/quicktime','.docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','.xlsx':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','.zip':'application/zip'};
+  const type=safeTypes[ext]||'application/octet-stream';
+  const data=String(doc.data||'');
+  let bytes;
+  const encoded=/^data:[^,]*;base64,([A-Za-z0-9+/=\s]+)$/i.exec(data);
+  if(encoded)bytes=Buffer.from(encoded[1],'base64');
+  else if(/^\/media\/[A-Za-z0-9._-]+$/.test(data)){
+    try{bytes=fs.readFileSync(path.join(PUBLIC,data));}catch(_){throw new HttpError(404,'Файл не найден');}
+  }else throw new HttpError(404,'Файл не найден');
+  if(!bytes.length)throw new HttpError(404,'Файл пуст');
+  const inline=url.searchParams.get('inline')==='1'&&['application/pdf','image/png','image/jpeg','image/webp','image/gif','video/mp4','video/quicktime'].includes(type);
+  const ascii='record-document'+(safeTypes[ext]?ext:'.bin');
+  const filename=encodeURIComponent(name).replace(/['()*]/g,c=>'%'+c.charCodeAt(0).toString(16).toUpperCase());
+  const headers={'Content-Type':type,'Content-Disposition':(inline?'inline':'attachment')+'; filename="'+ascii+'"; filename*=UTF-8\'\''+filename,'Cache-Control':'no-store','Accept-Ranges':'bytes','X-Content-Type-Options':'nosniff'};
+  let start=0,end=bytes.length-1,status=200;
+  const range=req.headers.range;
+  if(range){
+    const m=/^bytes=(\d*)-(\d*)$/.exec(range);
+    if(m&&(m[1]||m[2])){
+      if(!m[1]){const suffix=Number(m[2]);start=Math.max(0,bytes.length-suffix);}
+      else{start=Number(m[1]);if(m[2])end=Math.min(end,Number(m[2]));}
+      if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start>=bytes.length||start>end){res.writeHead(416,{...headers,'Content-Range':'bytes */'+bytes.length,'Content-Length':0});res.end();return;}
+      status=206;headers['Content-Range']='bytes '+start+'-'+end+'/'+bytes.length;
+    }else{res.writeHead(416,{...headers,'Content-Range':'bytes */'+bytes.length,'Content-Length':0});res.end();return;}
+  }
+  headers['Content-Length']=end-start+1;
+  res.writeHead(status,headers);res.end(req.method==='HEAD'?undefined:bytes.subarray(start,end+1));
+}
+
 const PRIMARY = 'https://recordirk.ru';
 const MIRRORS = new Set(['www.recordirk.ru', 'record-site-5b6fbf.pipecore.io', 'xn--d1abpqbfcddho.xn--p1ai', 'www.xn--d1abpqbfcddho.xn--p1ai', 'рекордспорт.рф', 'www.рекордспорт.рф']);
 /* the main page with search-engine verification tags that the organizer pastes in the panel */
@@ -2198,6 +2234,8 @@ const server = http.createServer(async (req, res) => {
     const host = String(req.headers.host || '').toLowerCase().replace(/:\d+$/, '');
     if (MIRRORS.has(host) && !pathname.startsWith('/.well-known/')) { res.writeHead(301, { Location: PRIMARY + req.url }); res.end(); return; }
     if (pathname === '/' || pathname === '/index.html') { await serveIndex(req, res); return; }
+    const eventFile=/^\/event-files\/([^/]+)\/([^/]+)$/.exec(pathname);
+    if(eventFile){await serveEventFile(req,res,url,eventFile);return;}
     if (serveStatic(req, res, pathname)) return;
     if (!path.extname(pathname)) { await serveIndex(req, res, 404); return; }
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Не найдено');
