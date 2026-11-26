@@ -1513,7 +1513,7 @@ event(){
     ${evCount(ev)}
     ${crewInvite(ev)}
     ${ev.refund.length && !ev.hideRefund?`<h2 class="sec">Возврат взноса</h2><div class="card refund">${ev.refund.map(([p,t,k])=>`<div><span class="chip ${k}">${p}</span><span>${t}</span></div>`).join("")}<div class="muted tiny">Время иркутское (UTC+8). Возврат оформляется в «Моих стартах».</div></div>`:""}
-    ${(ev.docs||[]).length?`<h2 class="sec">Документы</h2><div class="card" style="padding:4px 14px">${ev.docs.map(d=>`<div class="arow"><span class="chip neutral">${extOf(d.name)}</span><div class="sp"><b>${esc(d.title||d.name)}</b><div class="muted tiny">${esc(d.name)} · ${fmtSize(d.size)}</div></div><a class="btn sm" href="${d.data}" download="${esc(d.name)}">Скачать</a></div>`).join("")}</div>`:""}
+    ${(ev.docs||[]).length?`<h2 class="sec">Документы</h2><div class="card" style="padding:4px 14px">${ev.docs.map(d=>`<div class="arow"><span class="chip neutral">${extOf(d.name)}</span><div class="sp"><b>${esc(d.title||d.name)}</b><div class="muted tiny">${esc(d.name)} · ${fmtSize(d.size)}</div></div><div class="row wrap" style="gap:6px"><a class="btn sm" href="/event-files/${encodeURIComponent(ev.id)}/${encodeURIComponent(d.id)}">Скачать</a>${/\.(pdf|png|jpe?g|webp|gif|mp4|mov)$/i.test(d.name||"")?`<a class="btn sm ghost" href="/event-files/${encodeURIComponent(ev.id)}/${encodeURIComponent(d.id)}?inline=1" target="_blank" rel="noopener">Открыть</a>`:""}</div></div>`).join("")}</div>`:""}
     ${ev.publishedArchive?"":`<h2 class="sec">Как участвовать</h2>
     <div class="card timeline">
       <div class="it"><b>1</b><div><strong>Выберите категорию</strong><div class="muted small">Формат, пол и возраст. Неподходящие категории приложение не даст выбрать.</div></div></div>
