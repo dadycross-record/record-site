@@ -1566,7 +1566,7 @@ event(){
 divisions(){
   const ev = EVENTS.find(e=>e.id===S.p.ev), type = S.p.type || "ind";
   const race=isRaceEvent(ev), level=S.who!=="me"?"standard":(S.p.raceLevel||"standard");
-  const proIds=new Set(["race26-ind-fpro","race26-ind-mpro","race26-pair-fpro","race26-pair-mpro","race26-pair-mixpro"]);
+  const proIds=new Set(["race26-ind-fpro","race26-ind-mpro","race26-pair-fpro","race26-pair-mpro"]);
   const source=ev.divisions.filter(d=>d.type===type);
   const hasPro=race&&source.some(d=>proIds.has(d.id))&&S.who==="me";
   const ds=hasPro?source.filter(d=>level==="pro"?proIds.has(d.id):!proIds.has(d.id)):source;
