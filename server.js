@@ -316,8 +316,14 @@ async function publicContent() {
   const drafts = new Set(EVENTS.filter(e => e.status === 'draft').map(e => e.id));
   const RESULTS = Object.fromEntries(Object.entries(ALLRES).filter(([k]) => !drafts.has(k.split(/[:@]/)[0])));
   lastDraftResults = Object.fromEntries(Object.entries(ALLRES).filter(([k]) => drafts.has(k.split(/[:@]/)[0])));
-  const json = JSON.stringify({ EVENTS, SITE: c.SITE || {}, TEAMS, RESULTS, GYMS, today: today() });
-  cache = { at:Date.now(),json, gz: zlib.gzipSync(json), etag: '"' + sha(json).slice(0, 20) + '"' };
+  const payload = { EVENTS, SITE: c.SITE || {}, TEAMS, RESULTS, GYMS, today: today() };
+  const compact = { ...payload, EVENTS: EVENTS.map(ev => {
+    const {coverSource, ...event} = ev;
+    if (Array.isArray(event.docs)) event.docs = event.docs.map(({data, ...doc}) => doc);
+    return event;
+  }) };
+  const json = JSON.stringify(compact);
+  cache = { at:Date.now(), payload, compact: {json, gz:zlib.gzipSync(json), etag:'"' + sha(json).slice(0,20) + '"'}, full:null };
   return cache;
 }
 
@@ -546,10 +552,16 @@ route('POST','/api/admin/race/heats/:id',async(req,res,u,body,params)=>{
 
 route('GET', '/api/content', async (req, res) => {
   const c = await publicContent();
-  if (req.headers['if-none-match'] === c.etag) { res.writeHead(304, { ETag: c.etag }); res.end(); return undefined; }
+  const compact = new URL(req.url,'http://localhost').searchParams.get('compact') === '1';
+  if (!compact && !c.full) {
+    const json=JSON.stringify(c.payload);
+    c.full={json, gz:zlib.gzipSync(json), etag:'"' + sha(json).slice(0,20) + '"'};
+  }
+  const out=compact?c.compact:c.full;
+  if (req.headers['if-none-match'] === out.etag) { res.writeHead(304, { ETag: out.etag, Vary:'Accept-Encoding' }); res.end(); return undefined; }
   const gz = wantsGzip(req);
-  res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache', ETag: c.etag, Vary: 'Accept-Encoding', ...(gz ? { 'Content-Encoding': 'gzip' } : {}) });
-  res.end(gz ? c.gz : c.json);
+  res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache', ETag: out.etag, Vary: 'Accept-Encoding', ...(gz ? { 'Content-Encoding': 'gzip' } : {}) });
+  res.end(gz ? out.gz : out.json);
   return undefined;
 });
 
