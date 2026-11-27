@@ -179,10 +179,10 @@ a.btn{text-decoration:none}
 
 
 /* Competition calendar · RECORD visual direction 3. No color filter on photos. */
-.ev.comp-card{display:block;isolation:isolate;position:relative;width:100%;min-height:290px;overflow:hidden;border:1px solid #f2f1ee;border-radius:10px;text-align:left;color:#fff;background:#101112;transition:border-color .2s ease,transform .2s ease}
+.ev.comp-card{display:block;isolation:isolate;position:relative;width:100%;min-height:290px;overflow:hidden;border:1px solid #777570;border-radius:10px;text-align:left;color:#fff;background:#101112;transition:border-color .2s ease,transform .2s ease}
 .ev.comp-card::after{display:none}
 .ev.comp-card:focus-visible{outline:3px solid #fff;outline-offset:3px}
-.ev.comp-card:hover{border-color:#fff}
+.ev.comp-card:hover{border-color:#9b9994}
 .ev.comp-card .comp-photo{position:absolute;inset:0;z-index:0;background-size:cover;background-position:center center;background-repeat:no-repeat;filter:none}
 .ev.comp-card .comp-shade{position:absolute;inset:0;z-index:1;pointer-events:none;background:linear-gradient(90deg,rgba(0,0,0,.87) 0%,rgba(0,0,0,.54) 44%,rgba(0,0,0,.09) 100%),linear-gradient(0deg,rgba(0,0,0,.48),transparent 60%)}
 .ev.comp-card.comp-without-photo{background:radial-gradient(ellipse at 80% 30%,#44474a 0%,#1c1d1f 31%,#101010 75%),repeating-linear-gradient(115deg,#1a1a1a 0 16px,#252525 16px 18px,#171717 18px 34px)}
@@ -200,7 +200,7 @@ a.btn{text-decoration:none}
 .ev.comp-card.comp-featured .comp-name{font-size:clamp(28px,6vw,52px);max-width:650px}
 .ev.comp-card.comp-featured .comp-date{background:#c82732;padding:11px 20px 11px 17px;clip-path:polygon(3% 0,100% 0,97% 100%,0 100%);text-align:left;max-width:none;box-sizing:border-box}
 .ev.comp-card.comp-featured .comp-info{max-width:80%}
-.ev.comp-card.comp-archive{min-height:148px;border-color:rgba(255,255,255,.82)}
+.ev.comp-card.comp-archive{min-height:148px;border-color:#777570}
 .ev.comp-card.comp-archive .comp-content{min-height:148px;padding:18px 22px;gap:15px}
 .ev.comp-card.comp-archive .comp-body{align-items:center}
 .ev.comp-card.comp-archive .comp-name{font-size:clamp(18px,3vw,27px);line-height:1.15}
@@ -699,6 +699,38 @@ h2.ch{font-family:var(--f-display);font-weight:800;font-size:clamp(24px,7vw,40px
 @media(max-width:380px){.club-week-day{padding:10px 7px}.club-week-day h3{font-size:12px}.club-week-slot{padding:6px 5px}}
 @media(min-width:660px){.club-week-days{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(min-width:1100px){.club-week-days{grid-template-columns:repeat(7,minmax(0,1fr));align-items:stretch}.club-week-day{padding:14px 9px}}
+
+
+/* Narrow Android viewports, including increased system font scaling. */
+@media(max-width:600px){
+  .top{gap:7px;padding-inline:10px}
+  .top .back{flex:0 0 36px}
+  .top .mark{min-width:0}
+  .top .mark .logo{max-width:100%;height:auto;max-height:17px}
+  .modesw{max-width:100%;gap:1px}
+  .modesw button{padding-inline:7px;font-size:11px;letter-spacing:0}
+  .hero .row{flex-wrap:wrap;gap:8px}
+  .hero .row .btn{flex:1 1 140px;min-width:0}
+  .row>.btn,.row>.btn.sm,.grid2>.btn,.arow>.btn{min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;line-height:1.2;height:auto;min-height:46px;padding-block:9px}
+  .row>.btn.sm,.arow>.btn.sm{min-height:36px;padding:7px 9px}
+  .row.wrap,.arow{flex-wrap:wrap}
+  .arow>.sp{flex:1 1 130px;overflow-wrap:anywhere}
+  .grid2,.admtabs{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .grid2>*,.admtabs>*,.filters>*{min-width:0;max-width:100%}
+  .admtabs button{overflow-wrap:anywhere;padding:10px}
+  .admtabs b{font-size:clamp(11px,3.2vw,15px)}
+  .finder-home{flex-direction:column;align-items:stretch}
+  .finder-home>.finder-links{flex-direction:row;flex-wrap:wrap}
+  .finder-home>.finder-links>*{flex:1 1 135px;min-width:0;white-space:normal}
+  .tabbar{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .tabbar button{min-width:0;letter-spacing:0;font-size:clamp(9px,2.7vw,10.5px);overflow-wrap:anywhere}
+}
+@media(max-width:380px){
+  .hero .row .btn{flex-basis:100%}
+  .top .modesw button{font-size:10px;padding-inline:5px}
+  .sticky-cta .grid2{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .sticky-cta .btn{min-width:0;height:auto;min-height:44px;white-space:normal;padding:8px;font-size:12px;line-height:1.2}
+}
 
 </style>
 
@@ -3647,8 +3679,13 @@ function markMe(){
   const mine = new Set(ORDERS.map(o=>o.pub));
   Object.values(allResults()).forEach(rows=>rows.forEach(r=>{ r.me = (r.k||[]).some(k=>mine.has(k)); }));
 }
-async function loadContent(){
-  const c = await api("GET","/api/content");
+let fullContentReady=false, fullContentTask=null, fullContentError="";
+async function loadContent(forceFull=false){
+  const full=forceFull||(canEdit()&&fullContentReady);
+  const c = await api("GET",full?"/api/content":"/api/content?compact=1");
+  // A public refresh started before opening the editor must never overwrite full document data.
+  if(!full&&fullContentReady)return;
+  fullContentReady=full;
   EVENTS.splice(0, EVENTS.length, ...(c.EVENTS||[]));
   Object.keys(TEAMS).forEach(k=>delete TEAMS[k]); Object.assign(TEAMS, c.TEAMS||{});
   Object.keys(RESULTS).forEach(k=>delete RESULTS[k]); Object.assign(RESULTS, c.RESULTS||{});
@@ -3656,7 +3693,7 @@ async function loadContent(){
   SITE = c.SITE || {}; if (!SITE.contacts) SITE.contacts = {...CONTACT_DEF}; if (!SITE.gallery) SITE.gallery = [];
   if (c.today) TODAY = c.today;
   markMe();
-  if (canEdit()) persist.last = contentJson();
+  if (canEdit()&&fullContentReady) persist.last = contentJson();
 }
 async function loadSession(){
   const s = await api("GET","/api/session");
@@ -3806,8 +3843,9 @@ async function submitReg(){
 /* organizer edits: the whole content document is saved on the server a moment after each change */
 const persist = { timer:null, last:"", busy:false, error:null, lastSaved:null };
 const contentJson = () => JSON.stringify({EVENTS, SITE, PROMOS:PROMOS.map(({used,...p})=>p)});
-function scheduleSave(){ if (!LOADED || !canEdit()) return; clearTimeout(persist.timer); persist.timer = setTimeout(saveNow, 700); }
+function scheduleSave(){ if (!LOADED || !canEdit() || !fullContentReady) return; clearTimeout(persist.timer); persist.timer = setTimeout(saveNow, 700); }
 async function saveNow(){
+  if (!canEdit() || !fullContentReady) return;
   if (persist.busy){ scheduleSave(); return; }
   const json = contentJson(); if (json===persist.last) return;
   persist.busy = true;
@@ -4319,6 +4357,16 @@ function evSheet(){
 function render(){
   if (!LOADED){ view.innerHTML = `<div class="loading">${LOAD_ERR?esc(LOAD_ERR):"Загружаю…"}</div>`; return; }
   if (LOGIN_ROUTES.includes(S.route) && !USER && S.route!=="me"){ S.after={route:S.route,p:S.p}; S.route="login"; S.p={}; }
+  if(canEdit()&&ADMIN_ROUTES.includes(S.route)&&!fullContentReady){
+    topEl.innerHTML=header("Панель организатора");
+    view.dataset.w="narrow";
+    document.getElementById("app").classList.remove("is-club");
+    view.innerHTML=fullContentError?'<div class="card stack"><p>'+esc(fullContentError)+'</p><button class="btn block" data-act="retry-full-content">Повторить</button></div>':'<div class="loading">Загружаю документы и настройки организатора…</div>';
+    if(!fullContentTask&&!fullContentError){
+      fullContentTask=loadContent(true).catch(e=>{fullContentError=e.message||"Не удалось загрузить данные организатора";}).finally(()=>{fullContentTask=null;render();});
+    }
+    return;
+  }
   const sameScreen = lastDrawn===S.route, keepY = window.scrollY;
   const out = allowed(S.route) ? SCREENS[S.route]() : SCREENS.noAccess();
   topEl.innerHTML = header(out.title);
@@ -4423,6 +4471,7 @@ document.addEventListener("click", e=>{
   if(ds.raceEdit){adm.evId=ds.raceEdit;return go("adminResults",{});}
   if (clubClick(t, ds)) return;
   if (adminClick(t, ds)) return;
+  if (ds.act==="retry-full-content"){fullContentError="";return render();}
   if (ds.act==="back") return back();
   if (ds.tab) return tab(ds.tab);
   if (ds.tabGo){ S.stack=[]; if(ds.sub){ S.route=ds.tabGo; S.p={}; if (!USER && ds.sub!=="orders"){ S.login={step:"email",email:"",ok:false,err:"",why:ds.sub==="admin"?"Вход для организаторов: используйте email, на который вам выдали доступ":""}; S.after={route:ds.sub,p:{}}; return go("login",{}); } go(ds.sub,{}); } else tab(ds.tabGo); return; }
@@ -4694,9 +4743,11 @@ window.addEventListener("hashchange", ()=>{ if (!openRacePost() && (openInvite()
 if (location.hash==="#comp") S.route="home";
 render();
 (async()=>{
+  const sessionTask=loadSession().catch(()=>{USER=null;S.viewAs="guest";});
   try { await loadContent(); }
   catch(e){ LOAD_ERR = "Не получилось загрузить сайт. Обновите страницу через минуту"; render(); return; }
-  try { await loadSession(); } catch(_){ USER=null; }
+  await sessionTask;
+  markMe();
   LOADED = true;
   const fresh = location.hash==="#race" || /^#(join|kid)=/.test(location.hash) || S.route==="invite" || S.route==="kidInvite";
   const y = fresh ? null : navRestore();
