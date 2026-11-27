@@ -1416,18 +1416,18 @@ function cleanClubSection(section,value){
  const fields=Object.hasOwn(CLUB_SECTION_FIELDS,section)?CLUB_SECTION_FIELDS[section]:null;
  if(!fields||!value||typeof value!=='object'||Array.isArray(value))throw bad('Неизвестный раздел');
  const clean={};
- const cell=v=>{if(typeof v!=='string'||v.length>3000)throw bad('Слишком длинное или неверное поле');return v.trim();};
+ const cell=(v,max=3000)=>{if(typeof v!=='string'||v.length>max)throw bad('Слишком длинное или неверное поле');return v.trim();};
  for(const [key,n] of Object.entries(fields)){
   const v=value[key];
   if(!n)clean[key]=cell(v);
   else{
    if(!Array.isArray(v)||v.length>80||v.some(r=>!Array.isArray(r)||r.length!==n))throw bad('Неверные строки раздела');
-   clean[key]=v.map(r=>r.map(cell)).filter(r=>r.some(Boolean));
+   clean[key]=v.map(r=>r.map((v,i)=>cell(v,section==='coaches'&&key==='cards'&&i===2?200000:3000))).filter(r=>r.some(Boolean));
   }
  }
  if(section==='schedule'&&(clean.rows.some(r=>!r[0]||!r[1]||!r[2])||clean.sections.some(r=>!r[0]||!r[1])))throw bad('Заполните название, дни и время тренировки');
  if(section==='prices'&&clean.rows.some(r=>!r[0]||!/^\d{1,8}$/.test(r[1])))throw bad('Укажите название и цену целым числом');
- if(section==='coaches'&&clean.cards.some(r=>!r[0]||(r[2]&&!/^(?:\/img\/[A-Za-z0-9._-]+|https:\/\/[A-Za-z0-9._~:/?#@!route('PUT', '/api/admin/content', async (req, res, u, body) => {%+=-]+)$/.test(r[2]))))throw bad('Некорректное имя или адрес фото');
+ if(section==='coaches'&&clean.cards.some(r=>!r[0]||(r[2]&&!(/^\/img\/[A-Za-z0-9._-]+$/.test(r[2])||r[2].length<=200000&&/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(r[2])))))throw bad('Некорректное имя или фото');
  if(section==='trial'&&['dirs','who','time'].some(k=>!clean[k].length||clean[k].some(r=>!r[0])))throw bad('Оставьте хотя бы один вариант в каждом списке');
  return clean;
 }
@@ -2259,7 +2259,7 @@ const server = http.createServer(async (req, res) => {
         if (origin && new URL(origin).host !== req.headers.host) throw new HttpError(403, 'Запрос с чужого сайта');
         if (!/^application\/json/.test(req.headers['content-type'] || '') && req.method !== 'DELETE') throw bad('Нужен JSON');
       }
-      const body = ['POST', 'PUT', 'PATCH'].includes(req.method) ? await readBody(req, pathname === '/api/admin/content' ? 40 * 1048576 : pathname === '/api/profile/avatar' ? 300 * 1024 : 64 * 1024) : {};
+      const body = ['POST', 'PUT', 'PATCH'].includes(req.method) ? await readBody(req, pathname === '/api/admin/content' ? 40 * 1048576 : pathname === '/api/admin/club-section' ? 4 * 1048576 : pathname === '/api/profile/avatar' ? 300 * 1024 : 64 * 1024) : {};
       const u = await sessionOf(req);
       const invoke=()=>r.fn(req,res,u,body,pathname.match(r.re).groups||{});
       const audited=req.method!=='GET'&&!pathname.startsWith('/api/auth/')&&!pathname.startsWith('/api/admin/backups')&&!['/api/admin/athletes','/api/admin/athlete','/api/kids/invite/info','/api/account/delete'].includes(pathname);
