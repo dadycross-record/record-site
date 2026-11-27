@@ -675,6 +675,34 @@ h2.ch{font-family:var(--f-display);font-weight:800;font-size:clamp(24px,7vw,40px
 .week-save{position:sticky;bottom:72px;background:var(--bg);padding:8px 0;z-index:2;text-align:center}
 @media(min-width:700px){.week-cell{height:30px}.week-grid{gap:4px}.week-save{bottom:8px}}
 
+
+/* Public club timetable: one card per weekday, parallel classes grouped under a time. */
+.club-week-legend{display:flex;flex-wrap:wrap;gap:8px 18px;list-style:none;padding:0;margin:16px 0;color:var(--fg);font-size:12px}
+.club-week-legend li{display:inline-flex;align-items:center;gap:7px;line-height:1.35}
+.club-week-dot{width:9px;height:9px;flex:none;border-radius:50%;background:var(--slot-color)}
+.club-week-functional{--slot-color:#F3F1EA;--slot-bg:rgba(243,241,234,.09)}
+.club-week-race{--slot-color:#F7B100;--slot-bg:rgba(247,177,0,.14)}
+.club-week-strength{--slot-color:#7FC9F4;--slot-bg:rgba(127,201,244,.10)}
+.club-week-kids{--slot-color:#A9D897;--slot-bg:rgba(169,216,151,.10)}
+.club-week-fight{--slot-color:#F3A58F;--slot-bg:rgba(243,165,143,.10)}
+.club-week-section{--slot-color:#C3B3F5;--slot-bg:rgba(195,179,245,.10)}
+.club-week-other{--slot-color:#BEBAB0;--slot-bg:rgba(190,186,176,.10)}
+.club-week-days{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:start}
+.club-week-day{min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 9px}
+.club-week-day h3{margin:0 0 12px;color:var(--fg);font-size:13px;font-weight:700;overflow-wrap:anywhere}
+.club-week-times{display:grid;gap:10px}
+.club-week-timegroup{display:grid;gap:5px;border-top:1px solid var(--line);padding-top:8px}
+.club-week-timegroup:first-child{border-top:0;padding-top:0}
+.club-week-time{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--fg);line-height:1.2}
+.club-week-slots{display:grid;gap:4px;list-style:none;padding:0;margin:0}
+.club-week-slot{min-width:0;display:grid;gap:2px;background:var(--slot-bg);border-left:3px solid var(--slot-color);border-radius:5px;padding:7px 6px;overflow-wrap:anywhere;line-height:1.3}
+.club-week-slot b{font-size:12px;color:var(--slot-color);font-weight:650}
+.club-week-slot span{font-size:11px;color:var(--muted)}
+.club-week-empty{color:var(--muted);font-size:12px;margin:0}
+@media(max-width:380px){.club-week-day{padding:10px 7px}.club-week-day h3{font-size:12px}.club-week-slot{padding:6px 5px}}
+@media(min-width:660px){.club-week-days{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(min-width:1100px){.club-week-days{grid-template-columns:repeat(7,minmax(0,1fr));align-items:stretch}.club-week-day{padding:14px 9px}}
+
 </style>
 
 </head>
@@ -3328,9 +3356,7 @@ SCREENS.club = function(){
   <section class="csec" id="schedule">
     <div class="ck">Когда приходить</div><h2 class="ch">Расписание</h2>
     <div class="rule" style="margin-bottom:12px"><b style="color:var(--fg)">Open Gym</b> — ${clubText("schedule","gym")}</div>
-    <div class="cgrid c3">${clubSchedule().map(b=>`<div class="ccard sched"><h3>${esc(b.t)}</h3>${b.rows.map(([t,h,n])=>`<div class="it"><b>${esc(t)}</b><div>${esc(h)}${n?`<br><span>${esc(n)}</span>`:""}</div></div>`).join("")}</div>`).join("")}</div>
-    <h3 style="font-family:var(--f-display);font-weight:600;font-size:14px;text-transform:uppercase;letter-spacing:.04em;margin:20px 0 8px">Секции</h3>
-    <div class="cgrid c4">${clubRows("schedule","sections").map(([h,t,w])=>`<div class="ccard"><span class="n">${esc(t)}</span><h3>${esc(h)}</h3><p>${esc(w)}</p></div>`).join("")}</div>
+    ${publicWeekSchedule()}
   </section>
 
   <section class="csec" id="prices">
@@ -3468,6 +3494,40 @@ function weekToggle(draft,day,time){
  const k=day+"|"+time;if(t.slots.has(k))t.slots.delete(k);else t.slots.set(k,[draft.note.trim()]);
  t.dirty=true;draft.dirty=true;return t.slots.has(k);
 }
+/* Public weekly timetable, based on the BAZA day-card layout.
+   Each training type retains its own entry even at an identical time. */
+function publicWeekData(rows,sections){
+ const draft=weekDraft(rows,sections,"");
+ const days=WEEK_DAYS.map((name,i)=>({name,short:WEEK_SHORT[i],slots:[]}));
+ const legacy=[];
+ for(const t of draft.types){
+  for(const [key,notes] of t.slots){const [day,time]=key.split("|");
+   for(const note of notes)days[+day].slots.push({name:t.name==="Группа"?"Функциональная тренировка":t.name,time,note,kind:t.kind});
+  }
+  for(const r of t.legacy)legacy.push(r);
+ }
+ for(const day of days)day.slots.sort((a,b)=>a.time.localeCompare(b.time)||a.name.localeCompare(b.name,"ru")||a.note.localeCompare(b.note,"ru"));
+ return {days,legacy};
+}
+function publicWeekTone(name,kind){
+ const n=name.toLowerCase();
+ if(/гонка|race/.test(n))return "race";
+ if(/дет|подрост|юнош/.test(n))return "kids";
+ if(/тяж[её]л|пауэр|силов/.test(n))return "strength";
+ if(/кикбокс|бокс|единобор/.test(n))return "fight";
+ if(/функционал|кроссфит|crossfit/.test(n))return "functional";
+ return kind==="section"?"section":"other";
+}
+function publicWeekSchedule(){
+ const {days,legacy}=publicWeekData(clubRows("schedule","rows"),clubRows("schedule","sections"));
+ const names=new Map();for(const day of days)for(const slot of day.slots)if(!names.has(slot.name))names.set(slot.name,publicWeekTone(slot.name,slot.kind));
+ const legend=names.size?'<ul class="club-week-legend" aria-label="Виды тренировок">'+[...names].map(([name,tone])=>'<li class="club-week-'+tone+'"><span class="club-week-dot"></span>'+esc(name)+'</li>').join("")+'</ul>':"";
+ return legend+'<div class="club-week-days">'+days.map(day=>{
+   const groups=new Map();for(const slot of day.slots){if(!groups.has(slot.time))groups.set(slot.time,[]);groups.get(slot.time).push(slot);}
+   return '<article class="club-week-day"><h3>'+esc(day.name)+'</h3>'+(groups.size?'<div class="club-week-times">'+[...groups].map(([time,slots])=>'<div class="club-week-timegroup"><div class="club-week-time">'+esc(time)+'</div><ul class="club-week-slots">'+slots.map(slot=>'<li class="club-week-slot club-week-'+publicWeekTone(slot.name,slot.kind)+'"><b>'+esc(slot.name)+'</b>'+(slot.note?'<span>'+esc(slot.note)+'</span>':'')+'</li>').join("")+'</ul></div>').join("")+'</div>':'<p class="club-week-empty">Нет занятий в расписании</p>')+'</article>';
+ }).join("")+'</div>'+(legacy.length?'<div class="rule small" style="margin-top:12px"><b>Дополнительное расписание</b>'+legacy.map(r=>'<div>'+esc(r.join(" · "))+'</div>').join("")+'</div>':'');
+}
+
 function weekLabel(t){return t.name==="Группа"?"Функциональные тренировки (Группа)":t.name;}
 function weekNotes(t){return t?[...t.slots].filter(([,n])=>n.some(Boolean)).sort(([a],[b])=>a.localeCompare(b)).map(([k,n])=>{const [day,time]=k.split("|");return WEEK_SHORT[+day]+" "+time+" — "+n.filter(Boolean).join("; ");}):[];}
 function weekEditor(){
