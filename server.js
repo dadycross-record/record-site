@@ -1406,7 +1406,7 @@ const CLUB_SECTION_FIELDS={
  hero:{kicker:0,slogan:0},about:{heading:0,intro:0,intro2:0,intro3:0,audience:2,facts:2},
  mission:{heading:0,intro:0,cards:2},values:{heading:0,cards:2},
  dirs:{talentTitle:0,talentText:0,adult:3,kids:3},coaches:{cards:6},
- schedule:{gym:0,rows:4,sections:3},prices:{intro:0,rows:4},
+ schedule:{gym:0,rows:4,sections:3,types:2},prices:{intro:0,rows:4},
  space:{heading:0,intro:0,comfort:0,floor0:1,floor1:1},photos:{heading:0},
  why:{heading:0,cards:2},tournaments:{heading:0,intro:0,extra:0,cards:2},
  forall:{heading:0,intro:0,cards:2},trial:{heading:0,intro:0,call:0,dirs:1,who:1,time:1},
@@ -1418,13 +1418,14 @@ function cleanClubSection(section,value){
  const clean={};
  const cell=(v,max=3000)=>{if(typeof v!=='string'||v.length>max)throw bad('Слишком длинное или неверное поле');return v.trim();};
  for(const [key,n] of Object.entries(fields)){
-  const v=value[key];
+  const v=section==='schedule'&&key==='types'?(value[key]??[]):value[key];
   if(!n)clean[key]=cell(v);
   else{
-   if(!Array.isArray(v)||v.length>80||v.some(r=>!Array.isArray(r)||r.length!==n))throw bad('Неверные строки раздела');
+   if(!Array.isArray(v)||v.length>(section==='schedule'?1000:80)||v.some(r=>!Array.isArray(r)||r.length!==n))throw bad('Неверные строки раздела');
    clean[key]=v.map(r=>r.map((v,i)=>cell(v,section==='coaches'&&key==='cards'&&i===2?200000:3000))).filter(r=>r.some(Boolean));
   }
  }
+ if(section==='schedule'&&clean.types.some(r=>!r[0]||r[0].length>100||!['group','section'].includes(r[1])))throw bad('Неверный вид тренировки');
  if(section==='schedule'&&(clean.rows.some(r=>!r[0]||!r[1]||!r[2])||clean.sections.some(r=>!r[0]||!r[1])))throw bad('Заполните название, дни и время тренировки');
  if(section==='prices'&&clean.rows.some(r=>!r[0]||!/^\d{1,8}$/.test(r[1])))throw bad('Укажите название и цену целым числом');
  if(section==='coaches'&&clean.cards.some(r=>!r[0]||(r[2]&&!(/^\/img\/[A-Za-z0-9._-]+$/.test(r[2])||r[2].length<=200000&&/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(r[2])))))throw bad('Некорректное имя или фото');
