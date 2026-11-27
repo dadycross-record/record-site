@@ -669,11 +669,11 @@ h2.ch{font-family:var(--f-display);font-weight:800;font-size:clamp(24px,7vw,40px
 .week-grid{display:grid;grid-template-columns:minmax(47px,.95fr) repeat(7,minmax(0,1fr));gap:3px;align-items:center;font-variant-numeric:tabular-nums}
 .week-head{text-align:center;font-size:12px;font-weight:700;color:var(--muted);padding:4px 0}
 .week-time{font-size:11px;line-height:1.1;overflow-wrap:anywhere;text-align:center;color:var(--muted)}
-.week-cell{height:27px;min-width:0;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--accent-ink);font-weight:800;font-size:15px;cursor:pointer;padding:0;touch-action:manipulation}
+.week-cell{height:32px;min-width:0;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--accent-ink);font-weight:800;font-size:15px;cursor:pointer;padding:0;touch-action:manipulation}
 .week-cell[aria-pressed="true"]{background:var(--accent);border-color:var(--accent)}
 .week-cell:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .week-save{position:sticky;bottom:72px;background:var(--bg);padding:8px 0;z-index:2;text-align:center}
-@media(min-width:700px){.week-cell{height:29px}.week-grid{gap:4px}.week-save{bottom:8px}}
+@media(min-width:700px){.week-cell{height:30px}.week-grid{gap:4px}.week-save{bottom:8px}}
 
 </style>
 
@@ -3469,12 +3469,13 @@ function weekToggle(draft,day,time){
  t.dirty=true;draft.dirty=true;return t.slots.has(k);
 }
 function weekLabel(t){return t.name==="Группа"?"Функциональные тренировки (Группа)":t.name;}
+function weekNotes(t){return t?[...t.slots].filter(([,n])=>n.some(Boolean)).sort(([a],[b])=>a.localeCompare(b)).map(([k,n])=>{const [day,time]=k.split("|");return WEEK_SHORT[+day]+" "+time+" — "+n.filter(Boolean).join("; ");}):[];}
 function weekEditor(){
  const d=S.p.weekEdit||(S.p.weekEdit=weekDraft(clubRows("schedule","rows"),clubRows("schedule","sections"),clubValue("schedule","gym"),[...new Set([...clubRows("dirs","adult"),...clubRows("dirs","kids")].map(r=>r[0])),"Функциональные тренировки","Гонка Рекорда","Кикбоксинг","Тяжёлая атлетика"],clubRows("schedule","types")));
  const t=d.types[d.selected];
  const hours=Array.from({length:24},(_,i)=>String(i).padStart(2,"0")+":00");
  const times=[...new Set([...hours,...(t?[...t.slots.keys()].map(k=>k.split("|")[1]).concat(t.extra):[])])].sort();
- const notes=t?[...t.slots].filter(([,n])=>n.some(Boolean)).map(([k,n])=>{const [day,time]=k.split("|");return WEEK_SHORT[+day]+" "+time+" — "+n.filter(Boolean).join("; ");}):[];
+ const notes=weekNotes(t);
  return {title:"Расписание и секции",html:
  '<div class="stack week-editor"><div class="muted small">Выберите тренировку, отметьте нужные часы и нажмите «Сохранить расписание».</div>'+
  '<div class="card stack" style="gap:8px"><label class="f">Вид тренировки<select class="inp" id="weekType" '+(d.busy?'disabled':'')+'>'+d.types.map((x,i)=>'<option value="'+i+'" '+(i===d.selected?'selected':'')+'>'+esc(weekLabel(x))+(x.kind==="section"?" · секция":"")+'</option>').join("")+'</select></label>'+
@@ -3483,7 +3484,7 @@ function weekEditor(){
  (t?'<div class="card week-grid-card"><div class="week-grid" role="group" aria-label="Недельное расписание '+esc(weekLabel(t))+'"><span class="week-head week-time">Время</span>'+WEEK_SHORT.map((x,i)=>'<span class="week-head" title="'+WEEK_DAYS[i]+'">'+x+'</span>').join("")+
  times.map(time=>'<span class="week-time">'+esc(time)+'</span>'+WEEK_SHORT.map((x,i)=>{const ns=t.slots.get(i+"|"+time),on=!!ns;return '<button type="button" class="week-cell" data-weekday="'+i+'" data-weektime="'+esc(time)+'" aria-label="'+WEEK_DAYS[i]+' '+esc(time)+'" aria-pressed="'+on+'" '+(d.busy?'disabled':'')+(ns?.some(Boolean)?' title="'+esc(ns.join("; "))+'"':'')+'>'+ (on?'✓':'')+'</button>';}).join("")).join("")+'</div></div>'+
  '<div class="row wrap" style="gap:8px"><label class="f sp">Другое время<input class="inp" id="weekExtra" placeholder="18:30 или 06:00–08:00" maxlength="20"></label><button type="button" class="btn sm ghost" data-weekextra style="align-self:flex-end">+ Время</button></div>'+
- '<details class="card"><summary style="cursor:pointer;font-weight:600">Тренер / примечания (необязательно)</summary><div class="stack" style="margin-top:8px"><label class="f">Для новых отметок<input class="inp" id="weekNote" value="'+esc(d.note)+'" placeholder="Например, Татьяна Матвеева"></label>'+(notes.length?'<div class="muted tiny">Существующие примечания сохранены:</div><div class="muted tiny">'+notes.map(esc).join("<br>")+'</div>':'')+'</div></details>'+
+ '<details class="card"><summary style="cursor:pointer;font-weight:600">Тренер / примечания (необязательно)</summary><div class="stack" style="margin-top:8px"><label class="f">Для новых отметок<input class="inp" id="weekNote" value="'+esc(d.note)+'" placeholder="Например, Татьяна Матвеева"></label>'+'<div class="muted tiny" id="weekNotes">'+notes.map(esc).join("<br>")+'</div>'+'</div></details>'+
  (t.legacy.length?'<div class="rule small">Есть записи со свободным форматом дней или времени. Они сохранены без изменений: '+t.legacy.map(r=>esc(r.join(" · "))).join("; ")+'</div>':''):'')+
  '<details class="card"><summary style="cursor:pointer;font-weight:600">Режим Open Gym</summary><label class="f" style="margin-top:8px">Описание<textarea class="inp" id="weekGym" rows="2" style="height:auto;min-height:60px">'+esc(d.gym)+'</textarea></label></details>'+
  '<div class="week-save"><button type="button" class="btn block" data-weeksave '+(d.busy?'disabled':'')+'>'+(d.busy?'Сохраняю…':'Сохранить расписание')+'</button><div class="muted tiny" id="weekStatus">'+(d.dirty?'Есть несохранённые изменения':'Все изменения сохранены')+'</div></div></div>'};
@@ -3491,8 +3492,8 @@ function weekEditor(){
 function weekEditorClick(t,ds){
  if(S.route!=="adminClubEdit"||S.p.section!=="schedule"||!canEdit())return false;
  const d=S.p.weekEdit;if(!d)return false;const selected=d.types[d.selected];
- if(ds.weekday!==undefined){if(d.busy)return true;const on=weekToggle(d,+ds.weekday,ds.weektime);t.setAttribute("aria-pressed",String(on));t.textContent=on?"✓":"";if(!on)t.removeAttribute("title");else if(d.note)t.title=d.note;document.getElementById("weekCount").textContent="Отмечено: "+selected.slots.size;document.getElementById("weekStatus").textContent="Есть несохранённые изменения";return true;}
- if(ds.weekadd!==undefined){if(d.busy)return true;const name=document.getElementById("weekNewName").value.trim(),kind=document.getElementById("weekNewKind").value;if(!name){toast("Введите название тренировки");return true;}const i=d.types.findIndex(x=>x.name.toLowerCase()===name.toLowerCase()&&x.kind===kind);if(i>=0)d.selected=i;else{d.types.push({name,kind,slots:new Map(),original:[],legacy:[],extra:[],dirty:false,custom:true});d.selected=d.types.length-1;d.dirty=true;}d.note="";render();return true;}
+ if(ds.weekday!==undefined){if(d.busy)return true;const on=weekToggle(d,+ds.weekday,ds.weektime);t.setAttribute("aria-pressed",String(on));t.textContent=on?"✓":"";if(!on)t.removeAttribute("title");else if(d.note)t.title=d.note;document.getElementById("weekCount").textContent="Отмечено: "+selected.slots.size;document.getElementById("weekStatus").textContent="Есть несохранённые изменения";const noteBox=document.getElementById("weekNotes");if(noteBox)noteBox.innerHTML=weekNotes(selected).map(esc).join("<br>");return true;}
+ if(ds.weekadd!==undefined){if(d.busy)return true;const name=document.getElementById("weekNewName").value.trim(),kind=document.getElementById("weekNewKind").value;if(!name){toast("Введите название тренировки");return true;}const i=d.types.findIndex(x=>(x.name.toLowerCase()===name.toLowerCase()||x.name==="Группа"&&name.toLowerCase()==="функциональные тренировки")&&x.kind===kind);if(i>=0)d.selected=i;else{d.types.push({name,kind,slots:new Map(),original:[],legacy:[],extra:[],dirty:false,custom:true});d.selected=d.types.length-1;d.dirty=true;}d.note="";render();return true;}
  if(ds.weekextra!==undefined){if(d.busy||!selected)return true;const time=weekTime(document.getElementById("weekExtra").value);if(!time){toast("Укажите время, например 18:30");return true;}if(!selected.extra.includes(time))selected.extra.push(time);render();return true;}
  if(ds.weekclear!==undefined){if(d.busy||!selected||!selected.slots.size)return true;if(!confirm("Снять все отметки выбранной тренировки? Остальные виды не изменятся."))return true;selected.slots.clear();selected.dirty=true;d.dirty=true;render();return true;}
  if(ds.weeksave!==undefined){if(!d.busy)saveWeekEditor(d);return true;}
