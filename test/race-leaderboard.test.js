@@ -25,18 +25,28 @@ test('ages use competition day, and fractional average stays in correct five-yea
  assert.equal(ageBand(49.5),5);
  assert.equal(ageBand(24.5),0);
 });
-test('absolute standings are independent from age groups, and underfilled bands move younger',()=>{
+test('single-entry age groups keep their own standings',()=>{
  const d='race26-ind-f';
  const rr=[reg('a',d,'1980-01-01'),reg('b',d,'1987-01-01'),reg('c',d,'1988-01-01'),reg('d',d,'1995-01-01')];
  const s=[sc('a',d,300),sc('b',d,400),sc('c',d,500),sc('d',d,350)];
  const board=raceBoard(event,rr,s).divisions.find(x=>x.id===d);
  assert.equal(board.entries.find(r=>r.name.endsWith(' a')).absolutePlace,1);
  assert.equal(board.entries.find(r=>r.name.endsWith(' d')).absolutePlace,2);
- assert.equal(board.entries.find(r=>r.name.endsWith(' a')).ageGroup,'35–49');
- assert.equal(board.entries.find(r=>r.name.endsWith(' b')).ageGroup,'35–49');
- assert.equal(board.entries.find(r=>r.name.endsWith(' c')).ageGroup,'35–49');
+ assert.equal(board.entries.find(r=>r.name.endsWith(' a')).ageGroup,'45–49');
+ assert.equal(board.entries.find(r=>r.name.endsWith(' b')).ageGroup,'35–39');
+ assert.equal(board.entries.find(r=>r.name.endsWith(' c')).ageGroup,'35–39');
  assert.equal(board.entries.find(r=>r.name.endsWith(' a')).agePlace,1);
- assert.equal(board.entries.find(r=>r.name.endsWith(' d')).ageEstablished,false);
+ assert.equal(board.entries.find(r=>r.name.endsWith(' d')).ageEstablished,true);
+ assert.equal(board.entries.find(r=>r.name.endsWith(' d')).agePlace,1);
+ assert.deepEqual(board.merges,[]);
+ const single=raceBoard(event,[rr[0]],[s[0]]);
+ const singleDivision=single.divisions.find(x=>x.id===d);
+ assert.equal(single.minimumAgeGroupSize,1);
+ assert.equal(singleDivision.categoryEstablished,true);
+ assert.equal(singleDivision.entries[0].absolutePlace,1);
+ assert.equal(singleDivision.entries[0].agePlace,1);
+ assert.deepEqual(singleDivision.ageGroups,[{key:'5',label:'45–49',established:true,count:1}]);
+ assert.equal(single.divisions.find(x=>x.id==='race26-ind-fpro').categoryEstablished,false);
 });
 test('PRO and standard divisions cannot mix; result requires accepted state',()=>{
  const rr=[reg('a','race26-ind-f','1980-01-01'),reg('b','race26-ind-fpro','1980-01-01')];
@@ -55,12 +65,20 @@ test('pair age is average; incomplete pair is not ranked or counted in quorum',(
  assert.equal(a.seconds,1000);
  assert.equal(b.complete,false);
  assert.equal(b.absolutePlace,null);
+ assert.equal(board.categoryEstablished,true);
+ assert.equal(a.agePlace,1);
+ assert.equal(raceBoard(event,[rr[2]],[]).divisions.find(x=>x.id===d).categoryEstablished,false);
 });
 test('relay has only under 40 and 40+ categories',()=>{
  const d='race26-relay-m';
  const rr=[21,40,38,58].map((age,i)=>reg('r'+i,d,String(2026-age)+'-01-01',{team:'R'}));
  const r=raceBoard(event,rr,[]).divisions.find(x=>x.id===d);
  assert.equal(r.entries[0].ageGroup,'до 40');
+ assert.equal(r.categoryEstablished,true);
+ assert.equal(r.ageGroups[0].established,true);
+ assert.equal(r.entries[0].agePlace,null);
+ const scored=raceBoard(event,rr,[sc('r0',d,1000)]).divisions.find(x=>x.id===d);
+ assert.equal(scored.entries[0].agePlace,1);
 });
 test('mixed PRO pairs have separate professional standings and age groups',()=>{
  const pro='race26-pair-mixpro', standard='race26-pair-mix';
