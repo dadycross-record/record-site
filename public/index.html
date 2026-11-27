@@ -201,16 +201,17 @@ a.btn{text-decoration:none}
 .ev.comp-card .comp-state{display:inline-flex;align-items:center;border:1px solid rgba(255,255,255,.72);font-size:11px;line-height:1.1;text-transform:uppercase;font-weight:800;letter-spacing:.12em;padding:7px 11px;margin-top:4px;color:#fff;background:rgba(0,0,0,.46)}
 .ev.comp-card.comp-featured .comp-content{min-height:340px;padding:30px}
 .ev.comp-card.comp-featured .comp-name{font-size:clamp(28px,6vw,52px);max-width:650px}
-.ev.comp-card.comp-featured .comp-date{background:#c82732;padding:11px 20px 11px 17px;clip-path:polygon(3% 0,100% 0,97% 100%,0 100%);text-align:left;max-width:none;box-sizing:border-box}
+.ev.comp-card .comp-date{background:#c82732;padding:11px 20px 11px 17px;clip-path:polygon(3% 0,100% 0,97% 100%,0 100%);box-sizing:border-box}
+.ev.comp-card.comp-featured .comp-date{text-align:left;max-width:none}
 .ev.comp-card.comp-featured .comp-info{max-width:80%}
 .ev.comp-card.comp-archive{min-height:148px;border-color:#777570;background-clip:padding-box}
 .ev.comp-card.comp-archive .comp-content{min-height:148px;padding:18px 22px;gap:15px}
 .ev.comp-card.comp-archive .comp-body{align-items:center}
 .ev.comp-card.comp-archive .comp-name{font-size:clamp(18px,3vw,27px);line-height:1.15}
 .ev.comp-card.comp-archive .comp-info{max-width:65%}
-.ev.comp-card.comp-archive .comp-date{font-size:clamp(13px,1.65vw,19px);max-width:42%}
-.ev.comp-card.comp-archive .comp-state{border-color:#eb444b;border-left:3px solid #eb444b;background:rgba(0,0,0,.60);padding:5px 9px}
-.ev.comp-card.comp-archive .comp-stripes{opacity:.66}
+.ev.comp-card.comp-archive .comp-date{font-size:clamp(13px,1.65vw,19px);max-width:42%;padding:7px 12px;overflow-wrap:anywhere}
+.ev.comp-card.comp-archive .comp-state{border-color:#eb444b;border-left:3px solid #eb444b;background:rgba(0,0,0,.46);padding:5px 9px}
+.ev.comp-card .comp-stripes{opacity:1}
 @media(max-width:600px){
  .ev.comp-card.comp-featured,.ev.comp-card.comp-featured .comp-content{min-height:300px}
  .ev.comp-card.comp-featured .comp-content{padding:20px;gap:34px}
@@ -224,7 +225,7 @@ a.btn{text-decoration:none}
  .ev.comp-card.comp-archive .comp-body{flex-direction:row;align-items:flex-end;gap:10px}
  .ev.comp-card.comp-archive .comp-info{max-width:61%}
  .ev.comp-card.comp-archive .comp-name{font-size:16px}
- .ev.comp-card.comp-archive .comp-date{font-size:12px;text-align:right;max-width:40%}
+ .ev.comp-card.comp-archive .comp-date{font-size:12px;text-align:right;max-width:40%;padding:6px 9px}
  .ev.comp-card.comp-archive .comp-label{font-size:9px}
  .ev.comp-card.comp-archive .comp-city{font-size:10px}
  .ev.comp-card.comp-archive .comp-state{font-size:9px;padding:5px}
