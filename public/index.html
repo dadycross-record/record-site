@@ -3436,26 +3436,30 @@ function weekDayLabel(days,short=false){
  if(ds.length===7)return "Ежедневно";
  return ds.map(d=>short?WEEK_SHORT[d].toLowerCase():ds.length===1?WEEK_DAYS[d]:WEEK_SHORT[d]).join(", ");
 }
-function weekDraft(rows,sections,gym,defaults=[]){
+function weekDraft(rows,sections,gym,defaults=[],catalog=[]){
  const types=[],byKey=new Map();
  function ensure(name,kind){const key=kind+"\u0000"+name;if(!byKey.has(key)){const t={name,kind,slots:new Map(),original:[],legacy:[],extra:[],dirty:false};byKey.set(key,t);types.push(t);}return byKey.get(key);}
  function add(t,row,days,time,note){t.original.push(row.slice());if(!days.length||!time){t.legacy.push(row.slice());return;}for(const d of days){const key=d+"|"+time,ns=t.slots.get(key)||[];if(!ns.includes(note))ns.push(note);t.slots.set(key,ns);}}
  for(const row of rows){const [day,time,title,note=""]=row;const nd=weekDayList(note),days=nd.length?nd:weekDayList(day);add(ensure(title,"group"),row,days,weekTime(time),nd.length?"":note);}
  for(const row of sections){const [title,when,note=""]=row;const m=String(when).match(/^(.*?)\s*(?:·\s*)?(\d{1,2}:[0-5]\d(?:\s*[–—-]\s*\d{1,2}:[0-5]\d)?)\s*$/);add(ensure(title,"section"),row,m?weekDayList(m[1].replace(/·\s*$/,"")):[],m?weekTime(m[2]):"",note);}
+ for(const entry of catalog){if(Array.isArray(entry)&&entry[0]&&["group","section"].includes(entry[1]))ensure(entry[0],entry[1]).custom=true;}
  for(const name of defaults){if(name&&!types.some(t=>t.name===name||(name==="Функциональные тренировки"&&t.name==="Группа")))ensure(name,"group");}
  let selected=types.findIndex(t=>t.name==="Группа"||t.name==="Функциональные тренировки");
- return {types,selected:selected<0?0:selected,gym:String(gym||""),note:"",busy:false,dirty:false};
+ return {types,selected:selected<0?0:selected,gym:String(gym||""),note:"",busy:false,dirty:false,sourceRows:rows.map(r=>r.slice()),sourceSections:sections.map(r=>r.slice())};
 }
 function weekSerialize(draft){
- const value={gym:draft.gym.trim(),rows:[],sections:[]};
- for(const t of draft.types){
-  const out=t.kind==="section"?value.sections:value.rows;
-  if(!t.dirty){out.push(...t.original.map(r=>r.slice()));continue;}
-  out.push(...t.legacy.map(r=>r.slice()));
-  const groups=new Map();
+ const value={gym:draft.gym.trim(),rows:[],sections:[],types:draft.types.filter(t=>t.original.length||t.dirty||t.slots.size||t.custom).map(t=>[t.name,t.kind])};
+ const replacement=t=>{
+  const out=t.legacy.map(r=>r.slice()),groups=new Map();
   for(const [key,notes] of t.slots){const [day,time]=key.split("|");for(const note of notes){const k=JSON.stringify([time,note]);if(!groups.has(k))groups.set(k,new Set());groups.get(k).add(+day);}}
   const sorted=[...groups].sort(([a],[b])=>JSON.parse(a)[0].localeCompare(JSON.parse(b)[0]));
   for(const [key,days] of sorted){const [time,note]=JSON.parse(key),ds=[...days];out.push(t.kind==="section"?[t.name,weekDayLabel(ds,true)+" · "+time,note]:[weekDayLabel(ds),time,t.name,note]);}
+  return out;
+ };
+ for(const [kind,source,out] of [["group",draft.sourceRows,value.rows],["section",draft.sourceSections,value.sections]]){
+  const types=draft.types.filter(t=>t.kind===kind),written=new Set();
+  for(const row of source){const t=types.find(x=>x.name===row[kind==="group"?2:0]);if(t?.dirty){if(!written.has(t)){out.push(...replacement(t));written.add(t);}}else out.push(row.slice());}
+  for(const t of types)if(t.dirty&&!written.has(t))out.push(...replacement(t));
  }
  return value;
 }
@@ -3466,7 +3470,7 @@ function weekToggle(draft,day,time){
 }
 function weekLabel(t){return t.name==="Группа"?"Функциональные тренировки (Группа)":t.name;}
 function weekEditor(){
- const d=S.p.weekEdit||(S.p.weekEdit=weekDraft(clubRows("schedule","rows"),clubRows("schedule","sections"),clubValue("schedule","gym"),[...new Set([...clubRows("dirs","adult"),...clubRows("dirs","kids")].map(r=>r[0])),"Функциональные тренировки","Гонка Рекорда","Кикбоксинг","Тяжёлая атлетика"]));
+ const d=S.p.weekEdit||(S.p.weekEdit=weekDraft(clubRows("schedule","rows"),clubRows("schedule","sections"),clubValue("schedule","gym"),[...new Set([...clubRows("dirs","adult"),...clubRows("dirs","kids")].map(r=>r[0])),"Функциональные тренировки","Гонка Рекорда","Кикбоксинг","Тяжёлая атлетика"],clubRows("schedule","types")));
  const t=d.types[d.selected];
  const hours=Array.from({length:24},(_,i)=>String(i).padStart(2,"0")+":00");
  const times=[...new Set([...hours,...(t?[...t.slots.keys()].map(k=>k.split("|")[1]).concat(t.extra):[])])].sort();
@@ -3488,7 +3492,7 @@ function weekEditorClick(t,ds){
  if(S.route!=="adminClubEdit"||S.p.section!=="schedule"||!canEdit())return false;
  const d=S.p.weekEdit;if(!d)return false;const selected=d.types[d.selected];
  if(ds.weekday!==undefined){if(d.busy)return true;const on=weekToggle(d,+ds.weekday,ds.weektime);t.setAttribute("aria-pressed",String(on));t.textContent=on?"✓":"";if(!on)t.removeAttribute("title");else if(d.note)t.title=d.note;document.getElementById("weekCount").textContent="Отмечено: "+selected.slots.size;document.getElementById("weekStatus").textContent="Есть несохранённые изменения";return true;}
- if(ds.weekadd!==undefined){if(d.busy)return true;const name=document.getElementById("weekNewName").value.trim(),kind=document.getElementById("weekNewKind").value;if(!name){toast("Введите название тренировки");return true;}const i=d.types.findIndex(x=>x.name.toLowerCase()===name.toLowerCase()&&x.kind===kind);if(i>=0)d.selected=i;else{d.types.push({name,kind,slots:new Map(),original:[],legacy:[],extra:[],dirty:false});d.selected=d.types.length-1;}d.note="";render();return true;}
+ if(ds.weekadd!==undefined){if(d.busy)return true;const name=document.getElementById("weekNewName").value.trim(),kind=document.getElementById("weekNewKind").value;if(!name){toast("Введите название тренировки");return true;}const i=d.types.findIndex(x=>x.name.toLowerCase()===name.toLowerCase()&&x.kind===kind);if(i>=0)d.selected=i;else{d.types.push({name,kind,slots:new Map(),original:[],legacy:[],extra:[],dirty:false,custom:true});d.selected=d.types.length-1;d.dirty=true;}d.note="";render();return true;}
  if(ds.weekextra!==undefined){if(d.busy||!selected)return true;const time=weekTime(document.getElementById("weekExtra").value);if(!time){toast("Укажите время, например 18:30");return true;}if(!selected.extra.includes(time))selected.extra.push(time);render();return true;}
  if(ds.weekclear!==undefined){if(d.busy||!selected||!selected.slots.size)return true;if(!confirm("Снять все отметки выбранной тренировки? Остальные виды не изменятся."))return true;selected.slots.clear();selected.dirty=true;d.dirty=true;render();return true;}
  if(ds.weeksave!==undefined){if(!d.busy)saveWeekEditor(d);return true;}
@@ -3498,7 +3502,7 @@ document.addEventListener("change",e=>{if(S.route!=="adminClubEdit"||S.p.section
 document.addEventListener("input",e=>{if(S.route!=="adminClubEdit"||S.p.section!=="schedule")return;const d=S.p.weekEdit;if(!d||d.busy)return;if(e.target.id==="weekNote")d.note=e.target.value;if(e.target.id==="weekGym"){d.gym=e.target.value;d.dirty=true;const el=document.getElementById("weekStatus");if(el)el.textContent="Есть несохранённые изменения";}});
 async function saveWeekEditor(d){
  const value=weekSerialize(d);d.busy=true;render();
- try{await api("PATCH","/api/admin/club-section",{section:"schedule",value});SITE.clubSections={...(SITE.clubSections||{}),schedule:value};try{const saved=JSON.parse(persist.last);saved.SITE.clubSections=SITE.clubSections;persist.last=JSON.stringify(saved);}catch(_){}const chosen=d.types[d.selected],names=d.types.filter(t=>t.kind==="group").map(t=>t.name),fresh=weekDraft(value.rows,value.sections,value.gym,names);if(chosen){const i=fresh.types.findIndex(t=>t.name===chosen.name&&t.kind===chosen.kind);if(i>=0)fresh.selected=i;}if(S.p.weekEdit===d)S.p.weekEdit=fresh;toast("Расписание сохранено на сайте");}catch(e){toast(e.message);}finally{d.busy=false;if(S.route==="adminClubEdit"&&S.p.section==="schedule")render();}
+ try{await api("PATCH","/api/admin/club-section",{section:"schedule",value});SITE.clubSections={...(SITE.clubSections||{}),schedule:value};try{const saved=JSON.parse(persist.last);saved.SITE.clubSections=SITE.clubSections;persist.last=JSON.stringify(saved);}catch(_){}const chosen=d.types[d.selected],names=d.types.filter(t=>t.kind==="group").map(t=>t.name),fresh=weekDraft(value.rows,value.sections,value.gym,names,value.types);if(chosen){const i=fresh.types.findIndex(t=>t.name===chosen.name&&t.kind===chosen.kind);if(i>=0)fresh.selected=i;}if(S.p.weekEdit===d)S.p.weekEdit=fresh;toast("Расписание сохранено на сайте");}catch(e){toast(e.message);}finally{d.busy=false;if(S.route==="adminClubEdit"&&S.p.section==="schedule")render();}
 }
 
 SCREENS.adminClubEdit=function(){
