@@ -179,13 +179,16 @@ a.btn{text-decoration:none}
 
 
 /* Competition calendar · RECORD visual direction 3. No color filter on photos. */
-.ev.comp-card{display:block;isolation:isolate;position:relative;width:100%;min-height:290px;overflow:hidden;border:1px solid #777570;border-radius:10px;text-align:left;color:#fff;background:#101112;transition:border-color .2s ease,transform .2s ease}
+.ev.comp-card{display:block;isolation:isolate;position:relative;width:100%;min-height:290px;overflow:hidden;border:1px solid #777570;border-radius:10px;text-align:left;color:#fff;background:#101112;background-clip:padding-box;transition:border-color .2s ease}
 .ev.comp-card::after{display:none}
+.ev.comp-card .comp-photo,.ev.comp-card .comp-shade,.ev.comp-card .comp-stripes{border-radius:9px;overflow:hidden;clip-path:inset(0 round 9px)}
+/* Clip decorative layers inside the frame; never let a square corner cover the border. */
+.ev.comp-card.comp-archive .comp-stripes::before{left:10px;width:130px}
 .ev.comp-card:focus-visible{outline:3px solid #fff;outline-offset:3px}
 .ev.comp-card:hover{border-color:#9b9994}
 .ev.comp-card .comp-photo{position:absolute;inset:0;z-index:0;background-size:cover;background-position:center center;background-repeat:no-repeat;filter:none}
 .ev.comp-card .comp-shade{position:absolute;inset:0;z-index:1;pointer-events:none;background:linear-gradient(90deg,rgba(0,0,0,.87) 0%,rgba(0,0,0,.54) 44%,rgba(0,0,0,.09) 100%),linear-gradient(0deg,rgba(0,0,0,.48),transparent 60%)}
-.ev.comp-card.comp-without-photo{background:radial-gradient(ellipse at 80% 30%,#44474a 0%,#1c1d1f 31%,#101010 75%),repeating-linear-gradient(115deg,#1a1a1a 0 16px,#252525 16px 18px,#171717 18px 34px)}
+.ev.comp-card.comp-without-photo{background:radial-gradient(ellipse at 80% 30%,#44474a 0%,#1c1d1f 31%,#101010 75%),repeating-linear-gradient(115deg,#1a1a1a 0 16px,#252525 16px 18px,#171717 18px 34px);background-clip:padding-box}
 .ev.comp-card .comp-stripes{position:absolute;inset:0;z-index:2;pointer-events:none;background:linear-gradient(116deg,transparent 0 76%,rgba(255,255,255,.28) 76.1% 76.25%,transparent 76.35%),linear-gradient(116deg,transparent 0 82%,rgba(217,55,63,.90) 82.1% 82.8%,transparent 83%),linear-gradient(116deg,transparent 0 88%,rgba(255,255,255,.53) 88.04% 88.18%,transparent 88.2%)}
 .ev.comp-card .comp-stripes::before{content:"";position:absolute;top:0;left:0;width:140px;height:3px;background:#eb444b;transform:skewX(-34deg);transform-origin:top left}
 .ev.comp-card .comp-content{position:relative;z-index:3;display:flex;flex-direction:column;justify-content:space-between;gap:32px;padding:24px;min-height:290px;box-sizing:border-box;width:100%}
@@ -200,7 +203,7 @@ a.btn{text-decoration:none}
 .ev.comp-card.comp-featured .comp-name{font-size:clamp(28px,6vw,52px);max-width:650px}
 .ev.comp-card.comp-featured .comp-date{background:#c82732;padding:11px 20px 11px 17px;clip-path:polygon(3% 0,100% 0,97% 100%,0 100%);text-align:left;max-width:none;box-sizing:border-box}
 .ev.comp-card.comp-featured .comp-info{max-width:80%}
-.ev.comp-card.comp-archive{min-height:148px;border-color:#777570}
+.ev.comp-card.comp-archive{min-height:148px;border-color:#777570;background-clip:padding-box}
 .ev.comp-card.comp-archive .comp-content{min-height:148px;padding:18px 22px;gap:15px}
 .ev.comp-card.comp-archive .comp-body{align-items:center}
 .ev.comp-card.comp-archive .comp-name{font-size:clamp(18px,3vw,27px);line-height:1.15}
