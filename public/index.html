@@ -179,7 +179,7 @@ a.btn{text-decoration:none}
 
 
 /* Competition calendar · RECORD visual direction 3. No color filter on photos. */
-.ev.comp-card{display:block;isolation:isolate;position:relative;width:100%;min-height:290px;overflow:hidden;border:1px solid #f2f1ee;border-radius:3px;text-align:left;color:#fff;background:#101112;transition:border-color .2s ease,transform .2s ease}
+.ev.comp-card{display:block;isolation:isolate;position:relative;width:100%;min-height:290px;overflow:hidden;border:1px solid #f2f1ee;border-radius:10px;text-align:left;color:#fff;background:#101112;transition:border-color .2s ease,transform .2s ease}
 .ev.comp-card::after{display:none}
 .ev.comp-card:focus-visible{outline:3px solid #fff;outline-offset:3px}
 .ev.comp-card:hover{border-color:#fff}
@@ -677,9 +677,6 @@ h2.ch{font-family:var(--f-display);font-weight:800;font-size:clamp(24px,7vw,40px
 
 
 /* Public club timetable: one card per weekday, parallel classes grouped under a time. */
-.club-week-legend{display:flex;flex-wrap:wrap;gap:8px 18px;list-style:none;padding:0;margin:16px 0;color:var(--fg);font-size:12px}
-.club-week-legend li{display:inline-flex;align-items:center;gap:7px;line-height:1.35}
-.club-week-dot{width:9px;height:9px;flex:none;border-radius:50%;background:var(--slot-color)}
 .club-week-functional{--slot-color:#F3F1EA;--slot-bg:rgba(243,241,234,.09)}
 .club-week-race{--slot-color:#F7B100;--slot-bg:rgba(247,177,0,.14)}
 .club-week-strength{--slot-color:#7FC9F4;--slot-bg:rgba(127,201,244,.10)}
@@ -3520,9 +3517,7 @@ function publicWeekTone(name,kind){
 }
 function publicWeekSchedule(){
  const {days,legacy}=publicWeekData(clubRows("schedule","rows"),clubRows("schedule","sections"));
- const names=new Map();for(const day of days)for(const slot of day.slots)if(!names.has(slot.name))names.set(slot.name,publicWeekTone(slot.name,slot.kind));
- const legend=names.size?'<ul class="club-week-legend" aria-label="Виды тренировок">'+[...names].map(([name,tone])=>'<li class="club-week-'+tone+'"><span class="club-week-dot"></span>'+esc(name)+'</li>').join("")+'</ul>':"";
- return legend+'<div class="club-week-days">'+days.map(day=>{
+ return '<div class="club-week-days">'+days.map(day=>{
    const groups=new Map();for(const slot of day.slots){if(!groups.has(slot.time))groups.set(slot.time,[]);groups.get(slot.time).push(slot);}
    return '<article class="club-week-day"><h3>'+esc(day.name)+'</h3>'+(groups.size?'<div class="club-week-times">'+[...groups].map(([time,slots])=>'<div class="club-week-timegroup"><div class="club-week-time">'+esc(time)+'</div><ul class="club-week-slots">'+slots.map(slot=>'<li class="club-week-slot club-week-'+publicWeekTone(slot.name,slot.kind)+'"><b>'+esc(slot.name)+'</b>'+(slot.note?'<span>'+esc(slot.note)+'</span>':'')+'</li>').join("")+'</ul></div>').join("")+'</div>':'<p class="club-week-empty">Нет занятий в расписании</p>')+'</article>';
  }).join("")+'</div>'+(legacy.length?'<div class="rule small" style="margin-top:12px"><b>Дополнительное расписание</b>'+legacy.map(r=>'<div>'+esc(r.join(" · "))+'</div>').join("")+'</div>':'');
