@@ -1401,13 +1401,51 @@ route('POST', '/api/admin/score', async (req, res, u, body) => {
   return { score: scoreOut(r.rows[0]) };
 });
 
+/* Individual club section writes do not replace competitions, registrations or other site sections. */
+const CLUB_SECTION_FIELDS={
+ hero:{kicker:0,slogan:0},about:{heading:0,intro:0,intro2:0,intro3:0,audience:2,facts:2},
+ mission:{heading:0,intro:0,cards:2},values:{heading:0,cards:2},
+ dirs:{talentTitle:0,talentText:0,adult:3,kids:3},coaches:{cards:6},
+ schedule:{gym:0,rows:4,sections:3},prices:{intro:0,rows:4},
+ space:{heading:0,intro:0,comfort:0,floor0:1,floor1:1},photos:{heading:0},
+ why:{heading:0,cards:2},tournaments:{heading:0,intro:0,extra:0,cards:2},
+ forall:{heading:0,intro:0,cards:2},trial:{heading:0,intro:0,call:0,dirs:1,who:1,time:1},
+ contacts:{hours:0}
+};
+function cleanClubSection(section,value){
+ const fields=Object.hasOwn(CLUB_SECTION_FIELDS,section)?CLUB_SECTION_FIELDS[section]:null;
+ if(!fields||!value||typeof value!=='object'||Array.isArray(value))throw bad('Неизвестный раздел');
+ const clean={};
+ const cell=v=>{if(typeof v!=='string'||v.length>3000)throw bad('Слишком длинное или неверное поле');return v.trim();};
+ for(const [key,n] of Object.entries(fields)){
+  const v=value[key];
+  if(!n)clean[key]=cell(v);
+  else{
+   if(!Array.isArray(v)||v.length>80||v.some(r=>!Array.isArray(r)||r.length!==n))throw bad('Неверные строки раздела');
+   clean[key]=v.map(r=>r.map(cell)).filter(r=>r.some(Boolean));
+  }
+ }
+ if(section==='schedule'&&(clean.rows.some(r=>!r[0]||!r[1]||!r[2])||clean.sections.some(r=>!r[0]||!r[1])))throw bad('Заполните название, дни и время тренировки');
+ if(section==='prices'&&clean.rows.some(r=>!r[0]||!/^\d{1,8}$/.test(r[1])))throw bad('Укажите название и цену целым числом');
+ if(section==='coaches'&&clean.cards.some(r=>!r[0]||(r[2]&&!/^(?:\/img\/[A-Za-z0-9._-]+|https:\/\/[A-Za-z0-9._~:/?#@!route('PUT', '/api/admin/content', async (req, res, u, body) => {%+=-]+)$/.test(r[2]))))throw bad('Некорректное имя или адрес фото');
+ if(section==='trial'&&['dirs','who','time'].some(k=>!clean[k].length||clean[k].some(r=>!r[0])))throw bad('Оставьте хотя бы один вариант в каждом списке');
+ return clean;
+}
+route('PATCH','/api/admin/club-section',async(req,res,u,body)=>{
+ need(u,'owner','admin');
+ const section=String(body.section||''),value=cleanClubSection(section,body.value);
+ await db.query("update content set data=jsonb_set(data,'{SITE}',coalesce(data->'SITE','{}'::jsonb)||jsonb_build_object('clubSections',coalesce(data#>'{SITE,clubSections}','{}'::jsonb)||jsonb_build_object($1::text,$2::jsonb)),true),updated_at=now(),updated_by=$3 where id=1",[section,JSON.stringify(value),u.email]);
+ dirty();
+ return {ok:true};
+});
+
 route('PUT', '/api/admin/content', async (req, res, u, body) => {
   need(u, 'owner', 'admin');
   if (!Array.isArray(body.EVENTS) || typeof body.SITE !== 'object' || !Array.isArray(body.PROMOS)) throw bad('Неверные данные');
   const PROMOS = body.PROMOS.map(p => ({ code: str(p.code, 40).toUpperCase(), kind: p.kind === 'rub' ? 'rub' : 'pct', value: Math.max(0, +p.value || 0), event: str(p.event, 40) || 'all',
     limit: Math.max(0, parseInt(p.limit, 10) || 0), until: /^\d{4}-\d{2}-\d{2}$/.test(p.until || '') ? p.until : '', note: str(p.note, 120) })).filter(p => p.code);
   const EVENTS = body.EVENTS.map(e => ({ ...e, divisions: (e.divisions || []).map(d => ({ ...d, taken: 0 })) }));
-  await db.query('update content set data=$1, updated_at=now(), updated_by=$2 where id=1', [{ EVENTS, SITE: body.SITE, PROMOS }, u.email]);
+  await db.query("update content set data=jsonb_set($1::jsonb,'{SITE,clubSections}',coalesce(data#>'{SITE,clubSections}','{}'::jsonb),true), updated_at=now(), updated_by=$2 where id=1", [{ EVENTS, SITE: body.SITE, PROMOS }, u.email]);
   dirty();
   return { ok: true };
 });
@@ -2010,7 +2048,7 @@ route('GET', '/api/private/backup', async (req,res) => {
 
 route('GET', '/api/admin/backups', async (req, res, u) => {
   need(u, 'owner');
-  return { backups: (await db.query('select id, created_at, kind, size, rows from backups order by created_at desc')).rows.map(backupOut),
+  return { backups: (await db.query('select id, created_at, kind, size, rows from backups order by created_at desc, id desc limit 3')).rows.map(backupOut),
     offsite: { ready: offsiteReady(), user: ofs().user ? ofs().user.replace(/^(.).*?(.)(@.*)?$/, '$1***$2$3') : '', dir: ofs().dir, last: offsite.last, error: offsite.error, keyShort: !!ofs().key && ofs().key.length < 12 } };
 });
 route('POST', '/api/admin/backups/offsite', async (req, res, u) => {
