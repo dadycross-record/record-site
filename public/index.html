@@ -1114,7 +1114,7 @@ function cookieBar(force){
   b.innerHTML=`<p>Мы используем cookies: необходимые — чтобы работали формы и вход, и аналитические Яндекс Метрики — чтобы понимать, что на сайте удобно, а что нет. Аналитические включим только с вашего согласия. <a href="/docs/privacy" target="_blank">Подробнее</a></p><div class="row"><button class="btn sm" data-ck="all">Принять</button><button class="btn sm ghost" data-ck="need">Только необходимые</button></div>`;
   document.body.appendChild(b);
 }
-const ROOT_TAB = {kidInvite:"me",crewManage:"me",invite:"events",crewApply:"events",login:"me",home:"home",events:"events",event:"events",divisions:"events",team:"events",teamCreate:"events",teamJoin:"events",form:"events",pay:"events",done:"events",fail:"events",leaderboard:"leaderboard",me:"me",orders:"me",messages:"me",score:"me",qr:"me",profile:"me",admin:"me",adminEvent:"me",adminDiv:"me",adminWod:"me",adminPeople:"me",adminSch:"me",adminPromo:"me",adminClub:"me"};
+const ROOT_TAB = {kidInvite:"me",crewManage:"me",invite:"events",crewApply:"events",login:"me",home:"home",events:"events",event:"events",divisions:"events",team:"events",teamCreate:"events",teamJoin:"events",form:"events",pay:"events",done:"events",fail:"events",leaderboard:"leaderboard",me:"me",orders:"me",messages:"me",score:"me",qr:"me",profile:"me",admin:"me",adminEvent:"me",adminDiv:"me",adminWod:"me",adminPeople:"me",adminSch:"me",adminPromo:"me",adminClub:"me",adminClubEdit:"me"};
 
 function header(title){
   if (isClub()) return clubHeader();
@@ -1123,7 +1123,7 @@ function header(title){
 }
 const NAV = [["home","Главная"],["events","Старты"],["leaderboard","Лидерборд"],["me","Профиль"]];
 function topnav(){ const cur = ROOT_TAB[S.route]; return `<nav class="topnav" aria-label="Разделы">${NAV.map(([k,l])=>`<button data-tab="${k}" ${cur===k?'aria-current="page"':""}>${l}</button>`).join("")}</nav>`; }
-const WIDTH = {adminAthlete:"mid",adminResults:"wide",club:"wide",adminClub:"mid",home:"wide",events:"wide",leaderboard:"wide",admin:"wide",adminPeople:"wide",orders:"wide",messages:"mid",divisions:"wide",event:"mid",teamJoin:"mid"};
+const WIDTH = {adminAthlete:"mid",adminResults:"wide",club:"wide",adminClub:"mid",adminClubEdit:"mid",home:"wide",events:"wide",leaderboard:"wide",admin:"wide",adminPeople:"wide",orders:"wide",messages:"mid",divisions:"wide",event:"mid",teamJoin:"mid"};
 const statusChip = s => ({open:'<span class="chip open">Регистрация открыта</span>',live:'<span class="chip live">Идёт</span>',ended:'<span class="chip ended">Завершён</span>',draft:'<span class="chip neutral">Черновик</span>'}[s]);
 const eventStatusChip = ev => isRaceEvent(ev) && ev.status==="open" && !registrationIsOpen(ev)
   ? '<span class="chip neutral">Регистрация закрыта</span>'
@@ -2427,7 +2427,7 @@ function admEvRow(e){
    <div class="row wrap"><button class="btn sm" data-adm-ev="${e.id}">Изменить</button><button class="btn sm ghost" data-adm-people="${e.id}">Участники</button><button class="btn sm ghost" data-adm-res="${e.id}">Результаты</button></div></div>`;
 }
 const ROLE_L = {owner:"Владелец",admin:"Организатор",judge:"Судья",athlete:"Участник"};
-const ADMIN_ROUTES = ["adminClub","admin","adminEvent","adminDiv","adminWod","adminSch","adminPeople","adminPromo","adminResults","adminAthlete","adminAudit","adminCrewStats"];
+const ADMIN_ROUTES = ["adminClubEdit","adminClub","admin","adminEvent","adminDiv","adminWod","adminSch","adminPeople","adminPromo","adminResults","adminAthlete","adminAudit","adminCrewStats"];
 const LOGIN_ROUTES = ["me","orders","messages","crewApply","crewManage","score","profile","form","team","teamCreate","teamJoin","done",...ADMIN_ROUTES];
 function allowed(route){
   if (!ADMIN_ROUTES.includes(route)) return true;
@@ -2916,6 +2916,7 @@ admin(){
   if (area==="site") return {title:"Панель организатора", html: tabs + `
    <button class="card next" data-go="adminClub" style="text-align:left;width:100%;margin-top:0;grid-template-columns:1fr auto"><div><b style="font-size:15px">Заявки на пробную тренировку</b><div class="muted small">${CLUB_LEADS.length} всего${CLUB_LEADS.some(l=>l.status==="new")?` · новых ${CLUB_LEADS.filter(l=>l.status==="new").length}`:""}</div></div>${CLUB_LEADS.some(l=>l.status==="new")?'<span class="chip warn">новые</span>':'<span class="chip neutral">открыть</span>'}</button>
 
+   ${clubEditorMenu()}
    <h2 class="sec">Оформление сайта</h2>
    <div class="card stack">
      <div class="imgprev" style="background-image:url(${SITE.hero||HERO})"><span class="chip neutral">${SITE.hero?"ваше фото":"стандартное фото"}</span></div>
@@ -3253,12 +3254,12 @@ function trialForm(){
       <label class="f">Телефон<input class="inp ${e.phone?"err":""}" id="tPhone" type="tel" autocomplete="tel" placeholder="+7" value="${esc(f.phone||"")}"></label>
     </div>
     ${fErr(e.name)}${fErr(e.phone)}
-    <label class="f">Направление<select class="inp" id="tDir">${opt(TRIAL_DIRS,f.dir)}</select></label>
+    <label class="f">Направление<select class="inp" id="tDir">${opt(clubRows("trial","dirs").map(r=>r[0]),f.dir)}</select></label>
     <div class="grid2">
-      <label class="f">Кто будет заниматься<select class="inp" id="tWho">${opt(TRIAL_WHO,f.who)}</select></label>
+      <label class="f">Кто будет заниматься<select class="inp" id="tWho">${opt(clubRows("trial","who").map(r=>r[0]),f.who)}</select></label>
       <label class="f">Возраст ребёнка<input class="inp" id="tAge" inputmode="numeric" placeholder="если для ребёнка" value="${esc(f.age||"")}"></label>
     </div>
-    <label class="f">Удобное время<select class="inp" id="tTime">${opt(TRIAL_TIME,f.time)}</select></label>
+    <label class="f">Удобное время<select class="inp" id="tTime">${opt(clubRows("trial","time").map(r=>r[0]),f.time)}</select></label>
     <label class="check"><input type="checkbox" id="tOk" ${f.ok?"checked":""}><span>Даю <a href="/docs/consent" target="_blank">согласие на обработку персональных данных</a> и ознакомлен с <a href="/docs/privacy" target="_blank">политикой</a></span></label>
     ${fErr(e.ok)}
     ${fErr(e.send)}
@@ -3268,105 +3269,105 @@ function trialForm(){
 function syncTrial(){ const g=id=>document.getElementById(id); if (!g("tName2")) return; Object.assign(S.trial.f,{name:g("tName2").value,phone:g("tPhone").value,dir:g("tDir").value,who:g("tWho").value,age:g("tAge").value,time:g("tTime").value,ok:g("tOk").checked}); }
 SCREENS.club = function(){
   const c = contacts(), dk = S.clubDir||"adult";
-  const cards = (arr) => arr.map(([h,p],i)=>`<div class="ccard"><span class="n">${String(i+1).padStart(2,"0")}</span><h3>${h}</h3><p>${p}</p></div>`).join("");
+  const cards = (arr) => arr.map(([h,p],i)=>`<div class="ccard"><span class="n">${String(i+1).padStart(2,"0")}</span><h3>${esc(h)}</h3><p>${esc(p)}</p></div>`).join("");
   return {title:null, html:`
   <section class="hero" style="background-image:url(${SITE.hero||HERO})">
-    <span class="kicker">Центр спорта · Иркутск</span>
+    <span class="kicker">${clubText("hero","kicker")}</span>
     <h1 class="word" style="margin:0" aria-label="Центр спорта Рекорд — Иркутский район">${LOGO_RU}</h1>
-    <div class="under"><div class="slogan">Ставьте свои рекорды</div></div>
+    <div class="under"><div class="slogan">${clubText("hero","slogan")}</div></div>
     <div class="row"><button class="btn" data-anchor="trial">Записаться на пробную</button><button class="btn ghost" data-anchor="schedule">Расписание</button></div>
   </section>
   <div class="pills cnav-m">${CLUB_NAV.map(([k,l])=>`<button data-anchor="${k}">${l}</button>`).join("")}</div>
 
   <section class="csec split2" id="about">
-    <div><div class="ck">Кто мы</div><h2 class="ch">Больше, чем зал</h2>
-      <p class="lead">«Рекорд» — центр спорта в Иркутске для детей и взрослых. Под одной крышей — функциональные тренировки, тяжёлая атлетика, пауэрлифтинг, кикбоксинг, баскетбол и теннис.</p>
-      <p class="lead">На каждой тренировке с вами тренер: он ставит технику, страхует на силовых и подбирает нагрузку под ваш уровень — с нуля или для подготовки к турнирам.</p>
-      <p class="lead">Здесь каждый ставит свой личный рекорд, а талантливые дети получают поддержку на пути к большому спорту.</p>
-      <div class="facts"><div><b>6–60+</b><span>лет — возраст наших спортсменов</span></div><div><b>2</b><span>этажа спорта и отдыха</span></div><div><b>4</b><span>турнира в год, раз в квартал</span></div></div>
+    <div><div class="ck">Кто мы</div><h2 class="ch">${clubText("about","heading")}</h2>
+      <p class="lead">${clubText("about","intro")}</p>
+      <p class="lead">${clubText("about","intro2")}</p>
+      <p class="lead">${clubText("about","intro3")}</p>
+      <div class="facts">${clubRows("about","facts").map(([v,t])=>`<div><b>${esc(v)}</b><span>${esc(t)}</span></div>`).join("")}</div>
     </div>
     <div><div class="ck">Для кого «Рекорд»</div>
-      <div class="stack">${[["Детям от 6 до 17 лет","Группы по возрасту, уровню и направлению — от первых игровых тренировок до подготовки к соревнованиям."],["Юным талантам","Индивидуальный трек развития для тех, кто хочет большего."],["Взрослым от 18 до 60+","Неважно, вы только начинаете или выступаете на турнирах — для вас найдётся группа своего уровня."]].map(([h,p])=>`<div class="dir"><i>→</i><div><b>${h}</b><span>${p}</span></div></div>`).join("")}</div>
+      <div class="stack">${clubRows("about","audience").map(([h,p])=>`<div class="dir"><i>→</i><div><b>${esc(h)}</b><span>${esc(p)}</span></div></div>`).join("")}</div>
     </div>
   </section>
 
   <section class="csec" id="mission">
-    <div class="ck">Куда идём</div><h2 class="ch">Наша миссия</h2>
-    <p class="lead">Мы создаём безопасную и профессиональную среду, где спортом может заниматься каждый — в любом возрасте и с любым уровнем подготовки.</p>
-    <div class="cgrid c4">${cards([["Сделать спорт доступным","Чтобы у ребёнка и у взрослого, у новичка и у мастера было место, где их ждут."],["Растить чемпионов","Находить талантливых детей и вести их от первой тренировки до профессионального уровня."],["Стать спортивной площадкой региона","Проводить турниры по функциональному многоборью, тяжёлой атлетике, пауэрлифтингу, баскетболу и теннису."],["Быть полезными региону","Открытые тренировки, спортивные праздники и работа со школами."]])}</div>
+    <div class="ck">Куда идём</div><h2 class="ch">${clubText("mission","heading")}</h2>
+    <p class="lead">${clubText("mission","intro")}</p>
+    <div class="cgrid c4">${cards(clubRows("mission","cards"))}</div>
   </section>
 
   <section class="csec" id="values">
-    <div class="ck">Во что верим</div><h2 class="ch">Наши ценности</h2>
-    <div class="cgrid c4">${cards([["Профессионализм и безопасность","На каждой тренировке — сертифицированный тренер, правильная техника и страховка."],["Дисциплина, труд и сообщество","Результат приходит к тем, кто работает. А работать вместе проще и интереснее."],["Спорт для каждого","Новичок или мастер, ребёнок или взрослый — у нас найдётся группа под ваш уровень."],["Поддержка своих","Мы растим местных спортсменов и помогаем им стать звёздами будущего."]])}</div>
+    <div class="ck">Во что верим</div><h2 class="ch">${clubText("values","heading")}</h2>
+    <div class="cgrid c4">${cards(clubRows("values","cards"))}</div>
   </section>
 
   <section class="csec" id="dirs">
     <div class="ck">Чем заняться</div><h2 class="ch">Направления</h2>
     <div class="tabs" role="tablist" style="max-width:420px">${[["adult","Для взрослых"],["kids","Для детей"]].map(([k,l])=>`<button role="tab" aria-selected="${dk===k}" data-cdir="${k}">${l}</button>`).join("")}</div>
-    <div class="cgrid c3" style="margin-top:12px">${DIRS[dk].map(([h,p,soon])=>`<div class="ccard">${soon?'<span class="chip warn" style="margin-bottom:8px">Открытие в 2027 году</span>':""}<h3 style="margin-top:0">${h}</h3><p>${p}</p></div>`).join("")}
-      <div class="ccard acc"><span class="n">Программа</span><h3>«Рекорд Талант»</h3><p>Индивидуальный путь для перспективных юных спортсменов: персональный тренер, план развития, участие в соревнованиях и наставничество от мастеров спорта.</p></div></div>
+    <div class="cgrid c3" style="margin-top:12px">${clubRows("dirs",dk).map(([h,p,soon])=>`<div class="ccard">${soon==="да"?'<span class="chip warn" style="margin-bottom:8px">Открытие в 2027 году</span>':""}<h3 style="margin-top:0">${esc(h)}</h3><p>${esc(p)}</p></div>`).join("")}
+      <div class="ccard acc"><span class="n">Программа</span><h3>${clubText("dirs","talentTitle")}</h3><p>${clubText("dirs","talentText")}</p></div></div>
   </section>
 
   <section class="csec" id="coaches">
     <div class="ck">Команда</div><h2 class="ch">Тренеры</h2>
-    <div class="cgrid c4">${COACHES.map(t=>`<article class="coach"><div class="ph" ${t.photo?`style="background-image:url(${t.photo});background-position:${t.pos||"center"}" role="img" aria-label="${esc(t.n)}"`:""}>${t.photo?"":initials(t.n)}</div><div class="bd"><h3>${t.n}</h3><div class="role">${t.role}</div>${t.tags.length?`<div class="tags">${t.tags.map(x=>`<span class="chip warn">${x}</span>`).join("")}</div>`:""}<ul>${t.facts.map(x=>`<li>${x}</li>`).join("")}</ul></div></article>`).join("")}</div>
+    <div class="cgrid c4">${clubRows("coaches","cards").map(([n,role,photo,pos,tags,facts])=>({n,role,photo:clubPhoto(photo),pos:/^\d{1,3}% \d{1,3}%$/.test(pos)?pos:"center",tags:tags.split("\n").filter(Boolean),facts:facts.split("\n").filter(Boolean)})).map(t=>`<article class="coach"><div class="ph" ${t.photo?`style="background-image:url(${t.photo});background-position:${t.pos||"center"}" role="img" aria-label="${esc(t.n)}"`:""}>${t.photo?"":esc(initials(t.n))}</div><div class="bd"><h3>${esc(t.n)}</h3><div class="role">${esc(t.role)}</div>${t.tags.length?`<div class="tags">${t.tags.map(x=>`<span class="chip warn">${esc(x)}</span>`).join("")}</div>`:""}<ul>${t.facts.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div></article>`).join("")}</div>
   </section>
 
   <section class="csec" id="schedule">
     <div class="ck">Когда приходить</div><h2 class="ch">Расписание</h2>
-    <div class="rule" style="margin-bottom:12px"><b style="color:var(--fg)">Open Gym</b> — свободный зал: пн–пт 06:00–08:00 и 15:00–20:00.</div>
-    <div class="cgrid c3">${SCHED.map(b=>`<div class="ccard sched"><h3>${b.t}</h3>${b.rows.map(([t,h,n])=>`<div class="it"><b>${t}</b><div>${h}${n?`<br><span>${n}</span>`:""}</div></div>`).join("")}</div>`).join("")}</div>
+    <div class="rule" style="margin-bottom:12px"><b style="color:var(--fg)">Open Gym</b> — ${clubText("schedule","gym")}</div>
+    <div class="cgrid c3">${clubSchedule().map(b=>`<div class="ccard sched"><h3>${esc(b.t)}</h3>${b.rows.map(([t,h,n])=>`<div class="it"><b>${esc(t)}</b><div>${esc(h)}${n?`<br><span>${esc(n)}</span>`:""}</div></div>`).join("")}</div>`).join("")}</div>
     <h3 style="font-family:var(--f-display);font-weight:600;font-size:14px;text-transform:uppercase;letter-spacing:.04em;margin:20px 0 8px">Секции</h3>
-    <div class="cgrid c4">${SECTIONS_TT.map(([h,t,w])=>`<div class="ccard"><span class="n">${t}</span><h3>${h}</h3><p>${w}</p></div>`).join("")}</div>
+    <div class="cgrid c4">${clubRows("schedule","sections").map(([h,t,w])=>`<div class="ccard"><span class="n">${esc(t)}</span><h3>${esc(h)}</h3><p>${esc(w)}</p></div>`).join("")}</div>
   </section>
 
   <section class="csec" id="prices">
     <div class="ck">Абонементы</div><h2 class="ch">Цены на группы</h2>
-    <p class="lead">Абонементы на групповые тренировки действуют месяц. Начните с пробной тренировки — познакомим с тренером и поможем выбрать формат.</p>
-    <div class="cgrid c4">${PRICES.map(([h,p,n],i)=>`<div class="ccard price ${i===0?"acc":""}"><span class="n">${["Без ограничений","На месяц","На месяц","Разово"][i]}</span><h3>${h}</h3><b class="pr">${fmtRub(p)}</b><p>${n}</p></div>`).join("")}</div>
+    <p class="lead">${clubText("prices","intro")}</p>
+    <div class="cgrid c4">${clubRows("prices","rows").map(([h,p,n,term],i)=>`<div class="ccard price ${i===0?"acc":""}"><span class="n">${esc(term)}</span><h3>${esc(h)}</h3><b class="pr">${fmtRub(p)}</b><p>${esc(n)}</p></div>`).join("")}</div>
     <button class="btn" data-anchor="trial" style="margin-top:14px">Записаться на пробную</button>
   </section>
 
   <section class="csec split2" id="space">
-    <div><div class="ck">Пространство</div><h2 class="ch">Два этажа спорта</h2>
-      <p class="lead">Внизу — динамика и игра, наверху — спокойные и тренажёрные зоны.</p>
-      <div class="ccard" style="margin-top:12px"><span class="n">Для вашего комфорта</span><p style="margin-top:6px">Ресепшн с кофе-баром и зоной ожидания, раздевалки с индивидуальными шкафчиками, душевые и сауна, кабинет врача и охрана.</p></div></div>
+    <div><div class="ck">Пространство</div><h2 class="ch">${clubText("space","heading")}</h2>
+      <p class="lead">${clubText("space","intro")}</p>
+      <div class="ccard" style="margin-top:12px"><span class="n">Для вашего комфорта</span><p style="margin-top:6px">${clubText("space","comfort")}</p></div></div>
     <div class="stack">
-      <div class="ccard"><span class="n">Первый этаж</span><ul style="margin:8px 0 0;padding-left:18px;color:#D9D5CB;font-size:14px"><li>Зона функциональных тренировок — штанги, гири, турники, гребные тренажёры, плиобоксы, канаты</li><li>Зона свободных весов и отдельная зона пауэрлифтинга с силовыми рамами и платформами</li><li>Зона тяжёлой атлетики с профессиональными помостами</li><li>Полноразмерный баскетбольный зал</li><li>Теннисный корт</li><li>Спорт-бар: вода и спортивное питание</li></ul></div>
-      <div class="ccard"><span class="n">Второй этаж</span><ul style="margin:8px 0 0;padding-left:18px;color:#D9D5CB;font-size:14px"><li>Тренажёрный зал: кардиозона и тренажёры на все группы мышц</li><li>Зал групповых программ: йога, пилатес, стретчинг, реабилитация, детские группы</li></ul></div>
+      <div class="ccard"><span class="n">Первый этаж</span><ul style="margin:8px 0 0;padding-left:18px;color:#D9D5CB;font-size:14px">${clubRows("space","floor0").map(([t])=>`<li>${esc(t)}</li>`).join("")}</ul></div>
+      <div class="ccard"><span class="n">Второй этаж</span><ul style="margin:8px 0 0;padding-left:18px;color:#D9D5CB;font-size:14px">${clubRows("space","floor1").map(([t])=>`<li>${esc(t)}</li>`).join("")}</ul></div>
     </div>
   </section>
 
   <section class="csec" id="photos">
-    <div class="ck">Фото</div><h2 class="ch">Как у нас</h2>
+    <div class="ck">Фото</div><h2 class="ch">${clubText("photos","heading")}</h2>
     <div class="gal">${clubGallery().slice(0,7).map(u=>`<div style="background-image:url(${u})"></div>`).join("")}</div>
   </section>
 
   <section class="csec" id="why">
-    <div class="ck">Почему мы</div><h2 class="ch">Почему «Рекорд»</h2>
-    <div class="cgrid c4">${cards([["Путь спортсмена","От детской секции до профессионального уровня — и всё это время центр рядом."],["Безопасность","Сертифицированные тренеры, продуманное зонирование, страховка на всех силовых упражнениях."],["Профессиональное оборудование","Помосты для тяжёлой атлетики, силовые рамы, полноразмерные игровые площадки."],["Восстановление","Сауна после тренировки и зона растяжки."],["Сообщество","Внутренние лиги, открытые тренировки, челленджи и стена славы с фото и достижениями наших спортсменов."],["Турниры","Регулярные соревнования, где можно проверить себя и поболеть за своих."]])}</div>
+    <div class="ck">Почему мы</div><h2 class="ch">${clubText("why","heading")}</h2>
+    <div class="cgrid c4">${cards(clubRows("why","cards"))}</div>
   </section>
 
   <section class="csec split2" id="tournaments">
-    <div><div class="ck">Соревнования</div><h2 class="ch">Турниры «Рекорда»</h2>
-      <p class="lead">Каждый квартал мы проводим соревнования для спортсменов любого уровня — участвуйте сами или приходите болеть.</p>
-      <p class="muted small">Кроме того: сезонные любительские лиги с таблицами и награждением, юниорские лиги по баскетболу и теннису, открытые чемпионаты со спортсменами из других городов и сертифицированными судьями.</p>
+    <div><div class="ck">Соревнования</div><h2 class="ch">${clubText("tournaments","heading")}</h2>
+      <p class="lead">${clubText("tournaments","intro")}</p>
+      <p class="muted small">${clubText("tournaments","extra")}</p>
       <button class="btn" data-mode="comp" style="margin-top:8px">Регистрация и результаты</button></div>
-    <div class="card" style="padding:4px 16px">${[["«Юный Рекорд»","RECORD KIDS · функциональное многоборье для детей"],["Кубок «Рекорда»","RECORD CUP · функциональное многоборье"],["«Рекорд Лифт»","RECORD LIFT · тяжёлая атлетика и пауэрлифтинг"],["Баскетбольная лига «Рекорд»","RECORD Basketball League"],["Волейбольная лига «Рекорд»","RECORD Volleyball League"],["Гонка Рекорда","RECORD RACE · 8 км бега и 8 силовых станций"],["Открытый турнир «Рекорд» по теннису","RECORD Tennis Open"]].map(([h,s])=>`<div class="tour"><div><b>${h}</b><br><span>${s}</span></div></div>`).join("")}</div>
+    <div class="card" style="padding:4px 16px">${clubRows("tournaments","cards").map(([h,s])=>`<div class="tour"><div><b>${esc(h)}</b><br><span>${esc(s)}</span></div></div>`).join("")}</div>
   </section>
 
   <section class="csec" id="forall">
-    <div class="ck">Открыты всем</div><h2 class="ch">Спорт для всех</h2>
-    <p class="lead">Мы уверены: заниматься спортом должен иметь возможность каждый.</p>
-    <div class="cgrid c3">${[["Дни открытых дверей","Бесплатные тренировки и мастер-классы для жителей региона каждый месяц."],["Партнёрство со школами","Секции, выездные тренировки, олимпийские уроки."],["Фонд юных спортсменов","Часть выручки от мерча и билетов на турниры идёт на поддержку наших юных атлетов."],["Волонтёрство","Для старшеклассников и студентов: помощь на турнирах и работа с детьми."]].map(([h,p])=>`<div class="ccard"><h3 style="margin-top:0">${h}</h3><p>${p}</p></div>`).join("")}</div>
+    <div class="ck">Открыты всем</div><h2 class="ch">${clubText("forall","heading")}</h2>
+    <p class="lead">${clubText("forall","intro")}</p>
+    <div class="cgrid c3">${clubRows("forall","cards").map(([h,p])=>`<div class="ccard"><h3 style="margin-top:0">${esc(h)}</h3><p>${esc(p)}</p></div>`).join("")}</div>
   </section>
 
   <section class="csec final" id="trial">
     <div class="split2">
-      <div><h2 class="ch">Ваш рекорд начинается здесь</h2>
-        <p>Приходите на пробную тренировку — познакомим с тренерами, покажем центр и подберём направление под ваши цели.</p>
-        <p style="font-weight:600;margin:0">Оставьте телефон — администратор перезвонит и запишет.</p></div>
+      <div><h2 class="ch">${clubText("trial","heading")}</h2>
+        <p>${clubText("trial","intro")}</p>
+        <p style="font-weight:600;margin:0">${clubText("trial","call")}</p></div>
       <div>${trialForm()}</div>
     </div>
   </section>
@@ -3381,13 +3382,36 @@ SCREENS.club = function(){
         ${contactRow("Telegram", c.tg, c.tg?linkOf(c.tg):"")}
         ${contactRow("WhatsApp", c.wa, c.wa?"https://wa.me/"+c.wa.replace(/\D/g,""):"")}
       </dl></div>
-    <div class="ccard"><span class="n">Режим работы</span><p style="margin-top:6px">Тренировки — по <button class="linkbtn" data-anchor="schedule" style="font-size:14px;color:var(--fg)">расписанию</button>. Open Gym: пн–пт 06:00–08:00 и 15:00–20:00. Сначала оставьте заявку — администратор подберёт группу и время.</p>
+    <div class="ccard"><span class="n">Режим работы</span><p style="margin-top:6px">Тренировки — по <button class="linkbtn" data-anchor="schedule" style="font-size:14px;color:var(--fg)">расписанию</button>. Open Gym — ${clubText("schedule","gym")} ${clubText("contacts","hours")}</p>
       <a class="btn ghost" style="margin-top:14px" href="https://yandex.ru/maps/?text=${encodeURIComponent(c.address)}" target="_blank" rel="noopener">Открыть на карте</a></div>
   </section>
 
   <footer class="cfoot">${LOGO}<div>© ООО «Центр спорта «Рекорд» · ИНН 3808303298 · ОГРН 1263800012607</div><nav class="docs" aria-label="Документы">${DOC_LINKS}${mkId()?`<button class="linkbtn" data-act="cookies">Cookies</button>`:""}</nav><button class="linkbtn" data-tab-go="me" data-sub="admin">Вход для организаторов</button></footer>
   <div class="clubcta"><button class="btn block" data-anchor="trial">Записаться на пробную</button></div>`};
 };
+const CLUB_DEFAULTS={"hero":{"kicker":"Центр спорта · Иркутск","slogan":"Ставьте свои рекорды"},"about":{"heading":"Больше, чем зал","intro":"«Рекорд» — центр спорта в Иркутске для детей и взрослых. Под одной крышей — функциональные тренировки, тяжёлая атлетика, пауэрлифтинг, кикбоксинг, баскетбол и теннис.","intro2":"На каждой тренировке с вами тренер: он ставит технику, страхует на силовых и подбирает нагрузку под ваш уровень — с нуля или для подготовки к турнирам.","intro3":"Здесь каждый ставит свой личный рекорд, а талантливые дети получают поддержку на пути к большому спорту.","audience":[["Детям от 6 до 17 лет","Группы по возрасту, уровню и направлению — от первых игровых тренировок до подготовки к соревнованиям."],["Юным талантам","Индивидуальный трек развития для тех, кто хочет большего."],["Взрослым от 18 до 60+","Неважно, вы только начинаете или выступаете на турнирах — для вас найдётся группа своего уровня."]],"facts":[["6–60+","лет — возраст наших спортсменов"],["2","этажа спорта и отдыха"],["4","турнира в год, раз в квартал"]]},"mission":{"heading":"Наша миссия","intro":"Мы создаём безопасную и профессиональную среду, где спортом может заниматься каждый — в любом возрасте и с любым уровнем подготовки.","cards":[["Сделать спорт доступным","Чтобы у ребёнка и у взрослого, у новичка и у мастера было место, где их ждут."],["Растить чемпионов","Находить талантливых детей и вести их от первой тренировки до профессионального уровня."],["Стать спортивной площадкой региона","Проводить турниры по функциональному многоборью, тяжёлой атлетике, пауэрлифтингу, баскетболу и теннису."],["Быть полезными региону","Открытые тренировки, спортивные праздники и работа со школами."]]},"values":{"heading":"Наши ценности","cards":[["Профессионализм и безопасность","На каждой тренировке — сертифицированный тренер, правильная техника и страховка."],["Дисциплина, труд и сообщество","Результат приходит к тем, кто работает. А работать вместе проще и интереснее."],["Спорт для каждого","Новичок или мастер, ребёнок или взрослый — у нас найдётся группа под ваш уровень."],["Поддержка своих","Мы растим местных спортсменов и помогаем им стать звёздами будущего."]]},"dirs":{"talentTitle":"«Рекорд Талант»","talentText":"Индивидуальный путь для перспективных юных спортсменов: персональный тренер, план развития, участие в соревнованиях и наставничество от мастеров спорта.","adult":[["Функциональные тренировки","Группы для начинающих и продвинутых, новая тренировка каждый день, подготовка к соревнованиям.",""],["Тяжёлая атлетика","Техника, силовые циклы, подготовка к турнирам среди мастеров.",""],["Пауэрлифтинг","Силовые программы и внутренние лиги «Рекорда».",""],["Кикбоксинг","Техника ударов руками и ногами, работа на лапах и мешке, развитие выносливости и реакции.",""],["Баскетбол","Тренировочные группы, любительские лиги, открытые игры, корпоративные турниры.",""],["Теннис","Индивидуальные, парные и групповые тренировки, спарринги, турниры.",""],["Тренажёрный зал","Свободный доступ и персональные тренировки.","да"],["Групповые программы","Йога, пилатес, стретчинг, функциональный тренинг, HIIT.","да"]],"kids":[["Функциональные тренировки","В игровой форме: координация, сила, выносливость.",""],["ОФП","Общая физподготовка — база для любого вида спорта.",""],["Тяжёлая атлетика","Техника рывка и толчка с лёгкими весами, подготовка к юношеским соревнованиям.",""],["Пауэрлифтинг","Присед, жим и тяга под контролем тренера.",""],["Кикбоксинг","Координация, дисциплина и уверенность в себе: техника ударов и игровые задания под присмотром тренера.",""],["Баскетбол","Мини-баскет (6–9 лет), юниоры (10–14 лет), подростки (15–17 лет), подготовка к городским и региональным турнирам.",""],["Теннис","Группы начального и продвинутого уровня, спарринги, турниры.",""],["Групповые программы","Танцы, детская йога, растяжка.",""]]},"coaches":{"cards":[["Татьяна Матвеева","Тяжёлая атлетика","/img/coach3.jpg","38% 20%","ЗМС России","Чемпионка Европы 2006\nСеребро чемпионата мира 2006, бронза 2011\nСеребро чемпионатов Европы 2004, 2007, 2008, 2011, бронза 2009\nЧемпионка России, член сборной\nРодом из г. Зима"],["Никита Васильев","Силовые виды и функциональная подготовка","/img/coach2.jpg","50% 42%","МС по пауэрлифтингу\nКМС по тяжёлой атлетике","ГУОР, Иркутск, 2012–2016"],["Аркадий Каверзин","Кикбоксинг","/img/coach1.jpg","45% 30%","КМС по кикбоксингу","ГУОР, Иркутск, 2012–2016\nРГУФКСМиТ (ГЦОЛИФК), 2017–2022"],["Евгений Федоров","Функциональная подготовка","/img/coach4.jpg","55% 32%","Стаж 10+ лет\nCF-L1, CF-L2","Высшее образование — тренер-преподаватель\nСертификаты CrossFit Level 1 и Level 2\nПризёр Кубка ГТО Дальнего Востока\n3 место — Кубок мастеров «Гераклион», Москва, 2025"]]},"schedule":{"gym":"свободный зал: пн–пт 06:00–08:00 и 15:00–20:00.","rows":[["Понедельник — пятница","06:00–08:00","Атлеты, дети","платно"],["Понедельник — пятница","07:00","Группа",""],["Понедельник — пятница","09:00","Группа","пн, ср, пт"],["Понедельник — пятница","16:00","Детская группа 8–16 лет",""],["Понедельник — пятница","16:00","Детская группа до 8 лет","пн, чт"],["Понедельник — пятница","18:00","Группа",""],["Понедельник — пятница","19:00","Группа",""],["Понедельник — пятница","20:00","Группа","пн, ср, пт"],["Суббота","09:00","Детская тренировка","от 8 лет"],["Суббота","10:00","Гонка Рекорда","1,5–2 часа"],["Воскресенье","10:00","Гонка Рекорда","1,5–2 часа"]],"sections":[["Пауэрлифтинг","пн, ср, пт · 16:00","Дети и взрослые"],["Тяжёлая атлетика","пн, пт · 18:30","Татьяна Матвеева"],["Тяжёлая атлетика","сб · 09:00","Никита Васильев"],["Кикбоксинг","сб · 14:00","Аркадий Каверзин"]]},"prices":{"intro":"Абонементы на групповые тренировки действуют месяц. Начните с пробной тренировки — познакомим с тренером и поможем выбрать формат.","rows":[["Безлимит","5200","Любые групповые тренировки по расписанию","Без ограничений"],["8 тренировок","3800","475 ₽ за занятие","На месяц"],["4 занятия","2200","550 ₽ за занятие","На месяц"],["Разовое занятие","600","Без абонемента","Разово"]]},"space":{"heading":"Два этажа спорта","intro":"Внизу — динамика и игра, наверху — спокойные и тренажёрные зоны.","comfort":"Ресепшн с кофе-баром и зоной ожидания, раздевалки с индивидуальными шкафчиками, душевые и сауна, кабинет врача и охрана.","floor0":[["Зона функциональных тренировок — штанги, гири, турники, гребные тренажёры, плиобоксы, канаты"],["Зона свободных весов и отдельная зона пауэрлифтинга с силовыми рамами и платформами"],["Зона тяжёлой атлетики с профессиональными помостами"],["Полноразмерный баскетбольный зал"],["Теннисный корт"],["Спорт-бар: вода и спортивное питание"]],"floor1":[["Тренажёрный зал: кардиозона и тренажёры на все группы мышц"],["Зал групповых программ: йога, пилатес, стретчинг, реабилитация, детские группы"]]},"photos":{"heading":"Как у нас"},"why":{"heading":"Почему «Рекорд»","cards":[["Путь спортсмена","От детской секции до профессионального уровня — и всё это время центр рядом."],["Безопасность","Сертифицированные тренеры, продуманное зонирование, страховка на всех силовых упражнениях."],["Профессиональное оборудование","Помосты для тяжёлой атлетики, силовые рамы, полноразмерные игровые площадки."],["Восстановление","Сауна после тренировки и зона растяжки."],["Сообщество","Внутренние лиги, открытые тренировки, челленджи и стена славы с фото и достижениями наших спортсменов."],["Турниры","Регулярные соревнования, где можно проверить себя и поболеть за своих."]]},"tournaments":{"heading":"Турниры «Рекорда»","intro":"Каждый квартал мы проводим соревнования для спортсменов любого уровня — участвуйте сами или приходите болеть.","extra":"Кроме того: сезонные любительские лиги с таблицами и награждением, юниорские лиги по баскетболу и теннису, открытые чемпионаты со спортсменами из других городов и сертифицированными судьями.","cards":[["«Юный Рекорд»","RECORD KIDS · функциональное многоборье для детей"],["Кубок «Рекорда»","RECORD CUP · функциональное многоборье"],["«Рекорд Лифт»","RECORD LIFT · тяжёлая атлетика и пауэрлифтинг"],["Баскетбольная лига «Рекорд»","RECORD Basketball League"],["Волейбольная лига «Рекорд»","RECORD Volleyball League"],["Гонка Рекорда","RECORD RACE · 8 км бега и 8 силовых станций"],["Открытый турнир «Рекорд» по теннису","RECORD Tennis Open"]]},"forall":{"heading":"Спорт для всех","intro":"Мы уверены: заниматься спортом должен иметь возможность каждый.","cards":[["Дни открытых дверей","Бесплатные тренировки и мастер-классы для жителей региона каждый месяц."],["Партнёрство со школами","Секции, выездные тренировки, олимпийские уроки."],["Фонд юных спортсменов","Часть выручки от мерча и билетов на турниры идёт на поддержку наших юных атлетов."],["Волонтёрство","Для старшеклассников и студентов: помощь на турнирах и работа с детьми."]]},"trial":{"heading":"Ваш рекорд начинается здесь","intro":"Приходите на пробную тренировку — познакомим с тренерами, покажем центр и подберём направление под ваши цели.","call":"Оставьте телефон — администратор перезвонит и запишет.","dirs":[["Пока не знаю — подберите"],["Функциональные тренировки"],["Тяжёлая атлетика"],["Пауэрлифтинг"],["Кикбоксинг"],["Гонка Рекорда"],["Детская группа"],["Баскетбол"],["Теннис"]],"who":[["Я сам(а)"],["Ребёнок"],["Мы с ребёнком"]],"time":[["Утро, до 10:00"],["День"],["Вечер, после 17:00"],["Выходные"]]},"contacts":{"hours":"Сначала оставьте заявку — администратор подберёт группу и время."}};
+const CLUB_EDIT={"hero":{"title":"Первый экран","fields":[{"id":"kicker","label":"Подпись"},{"id":"slogan","label":"Слоган"}]},"about":{"title":"О клубе","fields":[{"id":"heading","label":"Заголовок"},{"id":"intro","label":"Описание 1"},{"id":"intro2","label":"Описание 2"},{"id":"intro3","label":"Описание 3"},{"id":"audience","label":"Для кого клуб","cols":["Заголовок","Описание"]},{"id":"facts","label":"Цифры клуба","cols":["Число","Подпись"]}]},"mission":{"title":"Миссия","fields":[{"id":"heading","label":"Заголовок"},{"id":"intro","label":"Описание"},{"id":"cards","label":"Цели","cols":["Заголовок","Описание"]}]},"values":{"title":"Ценности","fields":[{"id":"heading","label":"Заголовок"},{"id":"cards","label":"Ценности","cols":["Заголовок","Описание"]}]},"dirs":{"title":"Направления","fields":[{"id":"talentTitle","label":"Название программы"},{"id":"talentText","label":"Описание программы"},{"id":"adult","label":"Для взрослых","cols":["Название","Описание","Скоро (да / пусто)"]},{"id":"kids","label":"Для детей","cols":["Название","Описание","Скоро (да / пусто)"]}]},"coaches":{"title":"Тренеры","fields":[{"id":"cards","label":"Карточки тренеров","cols":["Имя","Специализация","Фото (путь / URL)","Положение фото","Звания (по строке)","Достижения (по строке)"]}]},"schedule":{"title":"Расписание и секции","fields":[{"id":"gym","label":"Режим Open Gym"},{"id":"rows","label":"Групповые тренировки","cols":["Дни","Время","Тренировка","Примечание"]},{"id":"sections","label":"Расписание секций","cols":["Секция","Дни и время","Тренер / примечание"]}]},"prices":{"title":"Абонементы и цены","fields":[{"id":"intro","label":"Условия абонементов"},{"id":"rows","label":"Абонементы","cols":["Название","Цена, ₽","Описание","Срок"]}]},"space":{"title":"Пространство","fields":[{"id":"heading","label":"Заголовок"},{"id":"intro","label":"Описание"},{"id":"comfort","label":"Удобства"},{"id":"floor0","label":"Первый этаж","cols":["Описание зоны"]},{"id":"floor1","label":"Второй этаж","cols":["Описание зоны"]}]},"photos":{"title":"Фото клуба","fields":[{"id":"heading","label":"Заголовок"}]},"why":{"title":"Почему «Рекорд»","fields":[{"id":"heading","label":"Заголовок"},{"id":"cards","label":"Преимущества","cols":["Заголовок","Описание"]}]},"tournaments":{"title":"Турниры","fields":[{"id":"heading","label":"Заголовок"},{"id":"intro","label":"Описание"},{"id":"extra","label":"Дополнительная информация"},{"id":"cards","label":"Турниры","cols":["Название","Описание"]}]},"forall":{"title":"Спорт для всех","fields":[{"id":"heading","label":"Заголовок"},{"id":"intro","label":"Описание"},{"id":"cards","label":"Программы","cols":["Название","Описание"]}]},"trial":{"title":"Пробная тренировка","fields":[{"id":"heading","label":"Заголовок"},{"id":"intro","label":"Описание"},{"id":"call","label":"Призыв"},{"id":"dirs","label":"Направления в форме","cols":["Вариант"]},{"id":"who","label":"Кто занимается","cols":["Вариант"]},{"id":"time","label":"Удобное время","cols":["Вариант"]}]},"contacts":{"title":"Контакты и режим работы","fields":[{"id":"hours","label":"Описание режима работы"}]}};
+function clubValue(k,id){return SITE.clubSections?.[k]?.[id]??CLUB_DEFAULTS[k]?.[id];}
+function clubText(k,id){return esc(String(clubValue(k,id)??""));}
+function clubRows(k,id){const v=clubValue(k,id);return Array.isArray(v)?v:[];}
+function clubSchedule(){const m=new Map();for(const [day,time,title,note] of clubRows("schedule","rows")){if(!m.has(day))m.set(day,[]);m.get(day).push([time,title,note]);}return [...m].map(([t,rows])=>({t,rows}));}
+function clubPhoto(v){return /^(?:\/img\/[A-Za-z0-9._-]+|https:\/\/[A-Za-z0-9._~:/?#@!SCREENS.adminClub = function(){%+=-]+)$/.test(v||"")?esc(v):"";}
+function clubEditorMenu(){return '<h2 class="sec">Разделы сайта клуба</h2><div class="card menu">'+Object.entries(CLUB_EDIT).map(([k,v])=>'<button type="button" data-clubedit="'+k+'"><span class="sp">'+esc(v.title)+'</span><span class="muted">›</span></button>').join("")+'</div>';}
+function clubEditorRow(f,row){return '<div class="card stack club-edit-row" style="gap:8px">'+f.cols.map((label,i)=>'<label class="f">'+esc(label)+'<textarea class="inp" rows="'+(label.includes("Описание")||label.includes("строке")?3:1)+'" data-clubcell="'+i+'">'+esc(String(row[i]??""))+'</textarea></label>').join("")+'<button type="button" class="btn sm ghost" data-clubrowdel>Удалить строку</button></div>';}
+SCREENS.adminClubEdit=function(){
+ const k=S.p.section, spec=CLUB_EDIT[k];if(!spec)return {title:"Разделы сайта",html:clubEditorMenu()};
+ const extra=k==="hero"||k==="photos"||k==="contacts"?'<div class="rule small">Фото и контактные данные можно изменить в разделе «Управление сайтом», в соответствующих блоках.</div>':"";
+ return {title:spec.title,html:'<div class="stack"><div class="muted small">Измените нужные поля. На сайте они появятся после сохранения.</div>'+extra+'<form id="clubEditForm" class="stack">'+spec.fields.map(f=>f.cols?'<div class="stack" data-clubgroup="'+f.id+'"><h2 class="sec">'+esc(f.label)+'</h2><div class="stack club-edit-rows">'+clubRows(k,f.id).map(r=>clubEditorRow(f,r)).join("")+'</div><button type="button" class="btn sm ghost" data-clubrowadd="'+f.id+'">+ Добавить строку</button></div>':'<label class="f">'+esc(f.label)+'<textarea class="inp" rows="3" data-clubfield="'+f.id+'">'+esc(String(clubValue(k,f.id)??""))+'</textarea></label>').join("")+'<button type="submit" class="btn block">Сохранить раздел</button><button type="button" class="btn block ghost" data-act="clubpreview">Посмотреть сайт</button></form></div>'};
+};
+async function saveClubEdit(form){const k=S.p.section,spec=CLUB_EDIT[k];if(!canEdit()||!spec)return;const value={};
+ for(const f of spec.fields){if(f.cols){value[f.id]=[...form.querySelector('[data-clubgroup="'+f.id+'"]').querySelectorAll(".club-edit-row")].map(r=>[...r.querySelectorAll("[data-clubcell]")].map(x=>x.value.trim())).filter(r=>r.some(Boolean));}else value[f.id]=form.querySelector('[data-clubfield="'+f.id+'"]').value.trim();}
+ if(k==="prices"&&value.rows.some(r=>!/^\d+$/.test(r[1]))){toast("Введите цену целым числом в рублях");return;}
+ if(k==="schedule"&&[...value.rows,...value.sections].some(r=>!r[0]||!r[1]||!r[2])){toast("Заполните дни, время и название тренировки или секции");return;}
+ if(k==="coaches"&&value.cards.some(r=>!r[0]||(r[2]&&!clubPhoto(r[2])))){toast("Укажите имя и корректный адрес фото (/img/... или HTTPS)");return;}
+ const btn=form.querySelector('button[type="submit"]');btn.disabled=true;try{await api("PATCH","/api/admin/club-section",{section:k,value});SITE.clubSections={...(SITE.clubSections||{}),[k]:value};try{const saved=JSON.parse(persist.last);saved.SITE.clubSections=SITE.clubSections;persist.last=JSON.stringify(saved);}catch(_){}toast("Раздел сохранён на сайте");}catch(e){toast(e.message);}finally{btn.disabled=false;}
+}
+document.addEventListener("submit",e=>{if(e.target.id!=="clubEditForm")return;e.preventDefault();saveClubEdit(e.target);});
+
 SCREENS.adminClub = function(){
   const c = contacts(), leads = [...CLUB_LEADS].reverse(), nNew = CLUB_LEADS.filter(l=>l.status==="new").length;
   const inp = (id,label,val,ph) => `<label class="f">${label}<input class="inp" id="${id}" value="${esc(val||"")}" placeholder="${ph}"></label>`;
@@ -3403,6 +3427,10 @@ SCREENS.adminClub = function(){
 `};
 };
 function clubClick(t, ds){
+  if(ds.clubedit){if(canEdit()&&CLUB_EDIT[ds.clubedit])go("adminClubEdit",{section:ds.clubedit});return true;}
+  if(ds.clubrowadd!==undefined){const f=CLUB_EDIT[S.p.section]?.fields.find(x=>x.id===ds.clubrowadd);if(f)t.closest("[data-clubgroup]").querySelector(".club-edit-rows").insertAdjacentHTML("beforeend",clubEditorRow(f,[]));return true;}
+  if(ds.clubrowdel!==undefined){t.closest(".club-edit-row")?.remove();return true;}
+  if(ds.act==="clubpreview"){go("club",{});return true;}
   if (ds.mode){ S.stack=[]; if (ds.mode==="club") go("club",{},false); else go("home",{},false); return true; }
   if (ds.anchor){
     const jump = () => { if (ds.anchor==="top") return window.scrollTo({top:0,behavior:"smooth"}); const el=document.getElementById(ds.anchor); if (el) el.scrollIntoView({behavior:"smooth",block:"start"}); };
@@ -3434,7 +3462,7 @@ document.addEventListener("submit", e=>{
   if (Object.keys(er).length){ const y=window.scrollY; render(); window.scrollTo(0,y); return; }
   S.trial.busy=true; { const y=window.scrollY; render(); window.scrollTo(0,y); }
   const hpT=(document.getElementById("hpTrial")||{}).value||"";
-  humanProof().then(pow=>api("POST","/api/lead",{name:f.name.trim(),phone:f.phone.trim(),dir:f.dir||TRIAL_DIRS[0],who:f.who||TRIAL_WHO[0],age:(f.age||"").trim(),time:f.time||TRIAL_TIME[0],consent:true,pow,hp_field:hpT}))
+  humanProof().then(pow=>api("POST","/api/lead",{name:f.name.trim(),phone:f.phone.trim(),dir:f.dir||clubRows("trial","dirs")[0]?.[0]||TRIAL_DIRS[0],who:f.who||clubRows("trial","who")[0]?.[0]||TRIAL_WHO[0],age:(f.age||"").trim(),time:f.time||clubRows("trial","time")[0]?.[0]||TRIAL_TIME[0],consent:true,pow,hp_field:hpT}))
     .then(()=>{ goal("trial_lead"); S.trial={f:{},err:{},sent:f.name.trim()}; render(); document.getElementById("trial").scrollIntoView({block:"start"}); })
     .catch(err=>{ S.trial.busy=false; S.trial.err={send:err.message}; const y=window.scrollY; render(); window.scrollTo(0,y); });
 });
@@ -3642,13 +3670,13 @@ let BACKUPS = null, OFFSITE = null;
 const fmtStamp = iso => { const d = new Date(Date.parse(iso)+8*3600e3).toISOString(); return `${d.slice(8,10)}.${d.slice(5,7)}.${d.slice(0,4)}, ${d.slice(11,16)}`; };
 function backupCard(){
   if (BACKUPS===null){ BACKUPS=[]; api("GET","/api/admin/backups").then(r=>{ BACKUPS=r.backups; OFFSITE=r.offsite||null; if (S.route==="admin") render(); }).catch(()=>{}); }
-  const list = BACKUPS.slice(0,160);
+  const list = [...BACKUPS].sort((a,b)=>Date.parse(b.created)-Date.parse(a.created)).slice(0,3);
   return `<div class="card stack">
     <div class="small">Автоматически: ежедневные копии — 30 дней, еженедельные — 12 недель, ежемесячные — 12 месяцев. Хранятся на сервере. Для защиты при потере сервера регулярно скачивайте ZIP на компьютер.</div>
     <div class="row wrap"><button class="btn sm" data-act="bkpfull" ${adm.bkpFullBusy?"disabled":""}>${adm.bkpFullBusy?"Подготавливаю полный архив…":"Скачать полный архив"}</button><button class="btn sm ghost" data-act="bkpnow" ${adm.bkpBusy?"disabled":""}>${adm.bkpBusy?"Готовлю копию…":"Скачать только базу"}</button></div>
     <div class="muted tiny">Полный архив ZIP: текущая база данных + работающий код сайта, включая лидерборд. При скачивании выберите папку на компьютере. Автоматические копии продолжают создаваться по прежнему расписанию.</div>
     ${offsiteBox()}
-    ${list.length?`<div style="padding:0 2px">${list.map(b=>`<div class="arow"><div class="sp"><b>${fmtStamp(b.created)}</b><div class="muted tiny">${b.kind==="daily"?"ежедневная":b.kind==="weekly"?"еженедельная":b.kind==="monthly"?"ежемесячная":"вручную"} · ${b.rows} записей · ${fmtSize(b.size)}</div></div><button class="btn sm ghost" data-bkp="${b.id}">Скачать</button></div>`).join("")}</div>`:'<div class="muted tiny">Первая автоматическая копия появится в течение часа после запуска сайта.</div>'}
+    <details class="card" style="padding:10px 12px"><summary style="cursor:pointer;font-weight:700">Последние сохранения · ${list.length} из 3</summary>${list.length?`<div style="padding:0 2px">${list.map(b=>`<div class="arow"><div class="sp"><b>${fmtStamp(b.created)}</b><div class="muted tiny">${b.kind==="daily"?"ежедневная":b.kind==="weekly"?"еженедельная":b.kind==="monthly"?"ежемесячная":"вручную"} · ${b.rows} записей · ${fmtSize(b.size)}</div></div><button class="btn sm ghost" data-bkp="${b.id}">Скачать</button></div>`).join("")}</div>`:'<div class="muted tiny">Первая автоматическая копия появится в течение часа после запуска сайта.</div>'}</details>
     <div class="muted tiny">В копии есть персональные данные участников. Храните файл на своём компьютере и никому его не пересылайте.</div>
   </div>`;
 }
