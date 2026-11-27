@@ -20,7 +20,7 @@ def rx(pattern, new, flags=re.S):
 # ---------- head: own fonts, real title ----------
 rep('<title>Record</title>\n<link rel="preconnect" href="https://fonts.googleapis.com">\n<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">\n<style>\n',
     '<title>Центр спорта «Рекорд» — Иркутск</title>\n<meta name="description" content="Центр спорта «Рекорд»: функциональные тренировки, тяжёлая атлетика, кикбоксинг и детские группы. Соревнования, регистрация и лидерборд.">\n<link rel="icon" href="/img/favicon.svg" type="image/svg+xml">\n<style>\n'
-    '@font-face{font-family:"Unbounded";src:url(/fonts/unbounded.woff) format("woff");font-weight:200 900;font-display:swap}\n'
+    '@font-face{font-family:"Unbounded";src:url(/fonts/record-display.woff) format("woff");font-weight:200 900;font-display:swap}\n'
     '@font-face{font-family:"Golos Text";src:url(/fonts/golos.woff) format("woff");font-weight:400 900;font-display:swap}\n'
     '@font-face{font-family:"JetBrains Mono";src:url(/fonts/jbmono.woff) format("woff");font-weight:100 800;font-display:swap}\n'
     '.cfoot .docs{display:flex;flex-wrap:wrap;gap:6px 16px}.cfoot .docs a{color:var(--muted)}\n'
