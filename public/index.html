@@ -663,6 +663,18 @@ h2.ch{font-family:var(--f-display);font-weight:800;font-size:clamp(24px,7vw,40px
 @media(max-width:767px){.heat-tools{display:grid;grid-template-columns:1fr 1fr}.heat-tools .inp{width:100%;min-width:0;height:44px;font-size:16px}.heat-tools input{grid-column:1/-1}.heat-scroll{overflow:visible;max-height:none;border:0}.heat-table,.heat-table tbody{display:block}.heat-table thead{display:none}.heat-table tbody tr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px 8px;padding:10px 0;border-bottom:1px solid var(--line)}.heat-table td{display:block;padding:0;border:0;min-width:0}.heat-table .heat-name{grid-column:1/-1;grid-row:1;font-size:14px}.heat-table .heat-cat{grid-column:1/-1;color:var(--muted);font-size:12px}.heat-table .heat-id{grid-column:1/-1;color:var(--muted);font-size:11px}.heat-table .heat-time,.heat-table .heat-wave,.heat-table .heat-lane{align-self:end}.heat-table td[data-label]:not(.heat-id):before{content:attr(data-label);display:block;color:var(--muted);font-size:11px;margin-bottom:4px}.heat-table .heat-number{width:100%;height:44px;font-size:16px}.heat-table .heat-save{grid-column:1/-1;text-align:right}.heat-table .heat-save .btn{min-height:44px}.heat-table tbody tr:nth-child(even){background:none}}
 
 .finder-links{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.finder-telegram{color:#70c9ed!important;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.finder-home{display:flex;align-items:center;gap:12px}.finder-home>.next{flex:1;min-width:0}.finder-home>.finder-links{flex:0 0 auto;flex-direction:column}.finder-highlight{border-color:var(--accent)}.finder-list{display:grid;gap:8px}.finder-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--line);border-radius:10px;flex-wrap:wrap}.finder-item>*{min-width:0;overflow-wrap:anywhere}@media(max-width:767px){.finder-home{display:block}.finder-links>*{flex:1;white-space:normal}.finder-item{gap:8px}.finder-item .btn{min-height:44px}}
+
+.week-editor{max-width:680px;margin:0 auto}
+.week-grid-card{padding:8px;overflow:hidden}
+.week-grid{display:grid;grid-template-columns:minmax(47px,.95fr) repeat(7,minmax(0,1fr));gap:3px;align-items:center;font-variant-numeric:tabular-nums}
+.week-head{text-align:center;font-size:12px;font-weight:700;color:var(--muted);padding:4px 0}
+.week-time{font-size:11px;line-height:1.1;overflow-wrap:anywhere;text-align:center;color:var(--muted)}
+.week-cell{height:27px;min-width:0;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--accent-ink);font-weight:800;font-size:15px;cursor:pointer;padding:0;touch-action:manipulation}
+.week-cell[aria-pressed="true"]{background:var(--accent);border-color:var(--accent)}
+.week-cell:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.week-save{position:sticky;bottom:72px;background:var(--bg);padding:8px 0;z-index:2;text-align:center}
+@media(min-width:700px){.week-cell{height:29px}.week-grid{gap:4px}.week-save{bottom:8px}}
+
 </style>
 
 </head>
@@ -3398,7 +3410,99 @@ function clubPhoto(v){return typeof v==="string"&&(/^(?:\/img\/[A-Za-z0-9._-]+)$
 function clubEditorMenu(){return '<h2 class="sec">Разделы сайта клуба</h2><div class="card menu">'+Object.entries(CLUB_EDIT).sort(([a],[b])=>(a==="schedule"?-1:b==="schedule"?1:0)).map(([k,v])=>'<button type="button" data-clubedit="'+k+'"><span class="sp">'+esc(v.title)+'</span><span class="muted">›</span></button>').join("")+'</div>';}
 function clubEditorRow(f,row){return '<div class="card stack club-edit-row" style="gap:8px">'+f.cols.map((label,i)=>label==="Фото (путь / URL)"?'<div class="stack"><b>Фото тренера</b><img data-coach-preview src="'+clubPhoto(row[i]||"")+'" '+(clubPhoto(row[i]||"")?"":'hidden')+' alt="Фото тренера" style="width:100px;height:100px;object-fit:cover;border-radius:8px"><input type="hidden" data-clubcell="'+i+'" value="'+esc(String(row[i]??""))+'"><label class="f">Загрузить новое фото<input type="file" accept="image/*" data-coach-upload></label><button type="button" class="btn sm ghost" data-coach-clear>Убрать фото</button></div>':'<label class="f">'+esc(label)+'<textarea class="inp" style="height:auto;min-height:42px;resize:vertical" rows="'+(label.includes("Описание")||label.includes("строке")?3:1)+'" data-clubcell="'+i+'">'+esc(String(row[i]??""))+'</textarea></label>').join("")+'<button type="button" class="btn sm ghost" data-clubrowdel>Удалить строку</button></div>';}
 document.addEventListener("change",async e=>{const el=e.target;if(!el.matches("[data-coach-upload]")||!canEdit())return;const file=el.files?.[0];if(!file)return;const row=el.closest(".club-edit-row"),form=el.closest("form"),btn=form?.querySelector('button[type="submit"]');if(btn)btn.disabled=true;el.disabled=true;try{const data=(await readImage(file,480,.78)).data;if(!clubPhoto(data))throw Error("Фото слишком большое. Выберите другое изображение.");row.querySelector('input[data-clubcell="2"]').value=data;const img=row.querySelector("[data-coach-preview]");img.src=data;img.hidden=false;}catch(err){toast(err.message||"Не удалось прочитать фото");}finally{el.disabled=false;if(btn)btn.disabled=false;el.value="";}});
+/* Compact weekly schedule editor. Unchanged types retain their original rows verbatim. */
+const WEEK_DAYS=["Понедельник","Вторник","Среда","Четверг","Пятница","Суббота","Воскресенье"];
+const WEEK_SHORT=["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+function weekDayList(value){
+ const t=String(value||"").toLowerCase().trim().replace(/ё/g,"е");
+ if(/^(ежедневно|каждый день|все дни)$/.test(t))return [0,1,2,3,4,5,6];
+ const names=["понедельник","вторник","среда","четверг","пятница","суббота","воскресенье"],short=["пн","вт","ср","чт","пт","сб","вс"];
+ const idx=x=>{const i=names.indexOf(x);return i>=0?i:short.indexOf(x);};
+ const range=t.match(/^([а-я]+)\s*[-–—]\s*([а-я]+)$/);
+ if(range){const a=idx(range[1]),b=idx(range[2]);if(a>=0&&b>=a)return Array.from({length:b-a+1},(_,i)=>a+i);}
+ const words=t.split(/[\s,;\/–—-]+/).filter(Boolean);
+ if(!words.length||words.some(w=>idx(w)<0))return [];
+ return [...new Set(words.map(idx))].sort((a,b)=>a-b);
+}
+function weekTime(value){
+ const t=String(value||"").trim().replace(/\s*[–—-]\s*/g,"–");
+ const m=t.match(/^(\d{1,2}):([0-5]\d)(?:–(\d{1,2}):([0-5]\d))?$/);
+ if(!m||+m[1]>23||(m[3]!==undefined&&(+m[3]>24||(+m[3]===24&&m[4]!=="00"))))return "";
+ return m[1].padStart(2,"0")+":"+m[2]+(m[3]!==undefined?"–"+m[3].padStart(2,"0")+":"+m[4]:"");
+}
+function weekDayLabel(days,short=false){
+ const ds=[...days].sort((a,b)=>a-b);
+ if(ds.length===5&&ds.every((d,i)=>d===i))return short?"пн–пт":"Понедельник — пятница";
+ if(ds.length===7)return "Ежедневно";
+ return ds.map(d=>short?WEEK_SHORT[d].toLowerCase():ds.length===1?WEEK_DAYS[d]:WEEK_SHORT[d]).join(", ");
+}
+function weekDraft(rows,sections,gym,defaults=[]){
+ const types=[],byKey=new Map();
+ function ensure(name,kind){const key=kind+"\u0000"+name;if(!byKey.has(key)){const t={name,kind,slots:new Map(),original:[],legacy:[],extra:[],dirty:false};byKey.set(key,t);types.push(t);}return byKey.get(key);}
+ function add(t,row,days,time,note){t.original.push(row.slice());if(!days.length||!time){t.legacy.push(row.slice());return;}for(const d of days){const key=d+"|"+time,ns=t.slots.get(key)||[];if(!ns.includes(note))ns.push(note);t.slots.set(key,ns);}}
+ for(const row of rows){const [day,time,title,note=""]=row;const nd=weekDayList(note),days=nd.length?nd:weekDayList(day);add(ensure(title,"group"),row,days,weekTime(time),nd.length?"":note);}
+ for(const row of sections){const [title,when,note=""]=row;const m=String(when).match(/^(.*?)\s*(?:·\s*)?(\d{1,2}:[0-5]\d(?:\s*[–—-]\s*\d{1,2}:[0-5]\d)?)\s*$/);add(ensure(title,"section"),row,m?weekDayList(m[1].replace(/·\s*$/,"")):[],m?weekTime(m[2]):"",note);}
+ for(const name of defaults){if(name&&!types.some(t=>t.name===name||(name==="Функциональные тренировки"&&t.name==="Группа")))ensure(name,"group");}
+ let selected=types.findIndex(t=>t.name==="Группа"||t.name==="Функциональные тренировки");
+ return {types,selected:selected<0?0:selected,gym:String(gym||""),note:"",busy:false,dirty:false};
+}
+function weekSerialize(draft){
+ const value={gym:draft.gym.trim(),rows:[],sections:[]};
+ for(const t of draft.types){
+  const out=t.kind==="section"?value.sections:value.rows;
+  if(!t.dirty){out.push(...t.original.map(r=>r.slice()));continue;}
+  out.push(...t.legacy.map(r=>r.slice()));
+  const groups=new Map();
+  for(const [key,notes] of t.slots){const [day,time]=key.split("|");for(const note of notes){const k=JSON.stringify([time,note]);if(!groups.has(k))groups.set(k,new Set());groups.get(k).add(+day);}}
+  const sorted=[...groups].sort(([a],[b])=>JSON.parse(a)[0].localeCompare(JSON.parse(b)[0]));
+  for(const [key,days] of sorted){const [time,note]=JSON.parse(key),ds=[...days];out.push(t.kind==="section"?[t.name,weekDayLabel(ds,true)+" · "+time,note]:[weekDayLabel(ds),time,t.name,note]);}
+ }
+ return value;
+}
+function weekToggle(draft,day,time){
+ const t=draft.types[draft.selected];if(!t||!Number.isInteger(day)||day<0||day>6||!weekTime(time))return false;
+ const k=day+"|"+time;if(t.slots.has(k))t.slots.delete(k);else t.slots.set(k,[draft.note.trim()]);
+ t.dirty=true;draft.dirty=true;return t.slots.has(k);
+}
+function weekLabel(t){return t.name==="Группа"?"Функциональные тренировки (Группа)":t.name;}
+function weekEditor(){
+ const d=S.p.weekEdit||(S.p.weekEdit=weekDraft(clubRows("schedule","rows"),clubRows("schedule","sections"),clubValue("schedule","gym"),[...new Set([...clubRows("dirs","adult"),...clubRows("dirs","kids")].map(r=>r[0])),"Функциональные тренировки","Гонка Рекорда","Кикбоксинг","Тяжёлая атлетика"]));
+ const t=d.types[d.selected];
+ const hours=Array.from({length:24},(_,i)=>String(i).padStart(2,"0")+":00");
+ const times=[...new Set([...hours,...(t?[...t.slots.keys()].map(k=>k.split("|")[1]).concat(t.extra):[])])].sort();
+ const notes=t?[...t.slots].filter(([,n])=>n.some(Boolean)).map(([k,n])=>{const [day,time]=k.split("|");return WEEK_SHORT[+day]+" "+time+" — "+n.filter(Boolean).join("; ");}):[];
+ return {title:"Расписание и секции",html:
+ '<div class="stack week-editor"><div class="muted small">Выберите тренировку, отметьте нужные часы и нажмите «Сохранить расписание».</div>'+
+ '<div class="card stack" style="gap:8px"><label class="f">Вид тренировки<select class="inp" id="weekType" '+(d.busy?'disabled':'')+'>'+d.types.map((x,i)=>'<option value="'+i+'" '+(i===d.selected?'selected':'')+'>'+esc(weekLabel(x))+(x.kind==="section"?" · секция":"")+'</option>').join("")+'</select></label>'+
+ '<details><summary style="cursor:pointer;font-weight:600">+ Новый вид тренировки</summary><div class="stack" style="margin-top:8px"><label class="f">Название<input class="inp" id="weekNewName" maxlength="100" placeholder="Например, Гонка Рекорда"></label><label class="f">Раздел<select class="inp" id="weekNewKind"><option value="group">Групповые тренировки</option><option value="section">Секции</option></select></label><button type="button" class="btn sm" data-weekadd>Добавить вид</button></div></details>'+
+ (t?'<div class="row wrap" style="justify-content:space-between"><span class="muted small" id="weekCount">Отмечено: '+t.slots.size+'</span><button type="button" class="btn sm ghost" data-weekclear>Снять все отметки</button></div>':'')+'</div>'+
+ (t?'<div class="card week-grid-card"><div class="week-grid" role="group" aria-label="Недельное расписание '+esc(weekLabel(t))+'"><span class="week-head week-time">Время</span>'+WEEK_SHORT.map((x,i)=>'<span class="week-head" title="'+WEEK_DAYS[i]+'">'+x+'</span>').join("")+
+ times.map(time=>'<span class="week-time">'+esc(time)+'</span>'+WEEK_SHORT.map((x,i)=>{const ns=t.slots.get(i+"|"+time),on=!!ns;return '<button type="button" class="week-cell" data-weekday="'+i+'" data-weektime="'+esc(time)+'" aria-label="'+WEEK_DAYS[i]+' '+esc(time)+'" aria-pressed="'+on+'" '+(d.busy?'disabled':'')+(ns?.some(Boolean)?' title="'+esc(ns.join("; "))+'"':'')+'>'+ (on?'✓':'')+'</button>';}).join("")).join("")+'</div></div>'+
+ '<div class="row wrap" style="gap:8px"><label class="f sp">Другое время<input class="inp" id="weekExtra" placeholder="18:30 или 06:00–08:00" maxlength="20"></label><button type="button" class="btn sm ghost" data-weekextra style="align-self:flex-end">+ Время</button></div>'+
+ '<details class="card"><summary style="cursor:pointer;font-weight:600">Тренер / примечания (необязательно)</summary><div class="stack" style="margin-top:8px"><label class="f">Для новых отметок<input class="inp" id="weekNote" value="'+esc(d.note)+'" placeholder="Например, Татьяна Матвеева"></label>'+(notes.length?'<div class="muted tiny">Существующие примечания сохранены:</div><div class="muted tiny">'+notes.map(esc).join("<br>")+'</div>':'')+'</div></details>'+
+ (t.legacy.length?'<div class="rule small">Есть записи со свободным форматом дней или времени. Они сохранены без изменений: '+t.legacy.map(r=>esc(r.join(" · "))).join("; ")+'</div>':''):'')+
+ '<details class="card"><summary style="cursor:pointer;font-weight:600">Режим Open Gym</summary><label class="f" style="margin-top:8px">Описание<textarea class="inp" id="weekGym" rows="2" style="height:auto;min-height:60px">'+esc(d.gym)+'</textarea></label></details>'+
+ '<div class="week-save"><button type="button" class="btn block" data-weeksave '+(d.busy?'disabled':'')+'>'+(d.busy?'Сохраняю…':'Сохранить расписание')+'</button><div class="muted tiny" id="weekStatus">'+(d.dirty?'Есть несохранённые изменения':'Все изменения сохранены')+'</div></div></div>'};
+}
+function weekEditorClick(t,ds){
+ if(S.route!=="adminClubEdit"||S.p.section!=="schedule"||!canEdit())return false;
+ const d=S.p.weekEdit;if(!d)return false;const selected=d.types[d.selected];
+ if(ds.weekday!==undefined){if(d.busy)return true;const on=weekToggle(d,+ds.weekday,ds.weektime);t.setAttribute("aria-pressed",String(on));t.textContent=on?"✓":"";if(!on)t.removeAttribute("title");else if(d.note)t.title=d.note;document.getElementById("weekCount").textContent="Отмечено: "+selected.slots.size;document.getElementById("weekStatus").textContent="Есть несохранённые изменения";return true;}
+ if(ds.weekadd!==undefined){if(d.busy)return true;const name=document.getElementById("weekNewName").value.trim(),kind=document.getElementById("weekNewKind").value;if(!name){toast("Введите название тренировки");return true;}const i=d.types.findIndex(x=>x.name.toLowerCase()===name.toLowerCase()&&x.kind===kind);if(i>=0)d.selected=i;else{d.types.push({name,kind,slots:new Map(),original:[],legacy:[],extra:[],dirty:false});d.selected=d.types.length-1;}d.note="";render();return true;}
+ if(ds.weekextra!==undefined){if(d.busy||!selected)return true;const time=weekTime(document.getElementById("weekExtra").value);if(!time){toast("Укажите время, например 18:30");return true;}if(!selected.extra.includes(time))selected.extra.push(time);render();return true;}
+ if(ds.weekclear!==undefined){if(d.busy||!selected||!selected.slots.size)return true;if(!confirm("Снять все отметки выбранной тренировки? Остальные виды не изменятся."))return true;selected.slots.clear();selected.dirty=true;d.dirty=true;render();return true;}
+ if(ds.weeksave!==undefined){if(!d.busy)saveWeekEditor(d);return true;}
+ return false;
+}
+document.addEventListener("change",e=>{if(S.route!=="adminClubEdit"||S.p.section!=="schedule")return;const d=S.p.weekEdit;if(!d||d.busy)return;if(e.target.id==="weekType"){d.selected=+e.target.value;d.note="";render();}});
+document.addEventListener("input",e=>{if(S.route!=="adminClubEdit"||S.p.section!=="schedule")return;const d=S.p.weekEdit;if(!d||d.busy)return;if(e.target.id==="weekNote")d.note=e.target.value;if(e.target.id==="weekGym"){d.gym=e.target.value;d.dirty=true;const el=document.getElementById("weekStatus");if(el)el.textContent="Есть несохранённые изменения";}});
+async function saveWeekEditor(d){
+ const value=weekSerialize(d);d.busy=true;render();
+ try{await api("PATCH","/api/admin/club-section",{section:"schedule",value});SITE.clubSections={...(SITE.clubSections||{}),schedule:value};try{const saved=JSON.parse(persist.last);saved.SITE.clubSections=SITE.clubSections;persist.last=JSON.stringify(saved);}catch(_){}const chosen=d.types[d.selected],names=d.types.filter(t=>t.kind==="group").map(t=>t.name),fresh=weekDraft(value.rows,value.sections,value.gym,names);if(chosen){const i=fresh.types.findIndex(t=>t.name===chosen.name&&t.kind===chosen.kind);if(i>=0)fresh.selected=i;}if(S.p.weekEdit===d)S.p.weekEdit=fresh;toast("Расписание сохранено на сайте");}catch(e){toast(e.message);}finally{d.busy=false;if(S.route==="adminClubEdit"&&S.p.section==="schedule")render();}
+}
+
 SCREENS.adminClubEdit=function(){
+ if(S.p.section==="schedule")return weekEditor();
  const k=S.p.section, spec=CLUB_EDIT[k];if(!spec)return {title:"Разделы сайта",html:clubEditorMenu()};
  const extra=k==="hero"||k==="photos"||k==="contacts"?'<div class="rule small">Фото и контактные данные можно изменить в разделе «Управление сайтом», в соответствующих блоках.</div>':"";
  return {title:spec.title,html:'<div class="stack"><div class="muted small">Измените нужные поля. На сайте они появятся после сохранения.</div>'+extra+'<form id="clubEditForm" class="stack">'+spec.fields.map(f=>f.cols?'<div class="stack" data-clubgroup="'+f.id+'"><h2 class="sec">'+esc(f.label)+'</h2><div class="stack club-edit-rows">'+clubRows(k,f.id).map(r=>clubEditorRow(f,r)).join("")+'</div><button type="button" class="btn sm ghost" data-clubrowadd="'+f.id+'">+ Добавить строку</button></div>':'<label class="f">'+esc(f.label)+'<textarea class="inp" style="height:auto;min-height:82px;resize:vertical" rows="3" data-clubfield="'+f.id+'">'+esc(String(clubValue(k,f.id)??""))+'</textarea></label>').join("")+'<button type="submit" class="btn block">Сохранить раздел</button><button type="button" class="btn block ghost" data-act="clubpreview">Посмотреть сайт</button></form></div>'};
@@ -3427,6 +3531,7 @@ SCREENS.adminClub = function(){
 `};
 };
 function clubClick(t, ds){
+  if(weekEditorClick(t,ds))return true;
   if(ds.clubedit){if(canEdit()&&CLUB_EDIT[ds.clubedit])go("adminClubEdit",{section:ds.clubedit});return true;}
   if(ds.clubrowadd!==undefined){const f=CLUB_EDIT[S.p.section]?.fields.find(x=>x.id===ds.clubrowadd);if(f)t.closest("[data-clubgroup]").querySelector(".club-edit-rows").insertAdjacentHTML("beforeend",clubEditorRow(f,[]));return true;}
   if(ds.coachClear!==undefined){const row=t.closest(".club-edit-row"),img=row?.querySelector("[data-coach-preview]");if(img){img.hidden=true;img.removeAttribute("src");row.querySelector('input[data-clubcell="2"]').value="";}return true;}
