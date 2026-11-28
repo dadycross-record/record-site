@@ -11,11 +11,13 @@ for (const path of ['public/index.html', 'src/index.src.html']) {
     const render = source.match(/function accessPanel\(\)\{[\s\S]+?\n\}(?=\nfunction syncAccess)/)[0];
     const EVENTS = [
       { id: 'current', status: 'open', name: 'Текущий старт' },
-      { id: 'finished', status: 'ended', name: 'Прошедший старт' }
+      { id: 'finished', status: 'ended', name: 'Прошедший старт', date: '2026-10-01' },
+      { id: 'older', status: 'ended', name: 'Более ранний старт', date: '2026-03-01' }
     ];
     const html = vm.runInNewContext(render + '\naccessPanel()', {
       adm: { access: { role: 'head_judge', assignments: [
         { name: 'Действующий судья', role: 'judge', id: '1', event: 'current' },
+        { name: 'Судья раннего старта', role: 'judge', id: '5', event: 'older' },
         { name: 'Архивный судья', role: 'judge', id: '2', event: 'finished' },
         { name: 'Архивный главный', role: 'head_judge', id: '3', event: 'finished' },
         { name: 'Действующий главный', role: 'head_judge', id: '4', event: 'current' },
@@ -25,11 +27,14 @@ for (const path of ['public/index.html', 'src/index.src.html']) {
       esc: value => String(value ?? ''), fErr: () => '',
       pastStart: id => EVENTS.find(e => e.id === id)?.status !== 'open'
     });
-    const [active, archive] = html.split('<details');
+    const archiveStart = html.indexOf('<details');
+    const active = html.slice(0, archiveStart);
+    const archive = archiveStart < 0 ? '' : html.slice(archiveStart);
     assert.ok(archive);
     assert.match(active, /Действующий организатор[\s\S]*Действующий главный[\s\S]*Действующий судья/);
     assert.doesNotMatch(active, /Архивный|<option value="finished"/);
     assert.match(archive, /Архивный главный[\s\S]*Архивный судья/);
+    assert.match(html, /<summary><b>Прошедший старт<\/b>[\s\S]*Архивный судья[\s\S]*<summary><b>Более ранний старт<\/b>[\s\S]*Судья раннего старта/);
     assert.doesNotMatch(archive, /data-access-revoke/);
   });
 }

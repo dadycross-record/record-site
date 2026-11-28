@@ -2031,7 +2031,16 @@ function accessPanel(){
  for(const a of [...(A.assignments||[])].sort((a,b)=>priority[a.role]-priority[b.role])){
   (a.event&&pastStart(a.event)?archived:active).push(a);
  }
- const row=(a,editable)=>`<div class="card row wrap"><div class="sp" style="overflow-wrap:anywhere"><b>${esc(a.name)}</b><div class="muted tiny">${esc(a.email)}${a.event?" · "+esc(EVENTS.find(e=>e.id===a.event)?.name||a.event):""}</div></div><span class="chip ${a.role==="admin"?"warn":a.role==="head_judge"?"ok":"neutral"}">${esc(ROLE_L[a.role])}</span>${editable?`<button class="btn sm ghost" data-access-revoke="${esc(a.id||a.email)}" data-access-crew="${!!a.id}" ${A.busy?"disabled":""}>Отозвать</button>`:""}</div>`;
+ const archiveByEvent=new Map();
+ for(const a of archived){
+  if(!archiveByEvent.has(a.event)) archiveByEvent.set(a.event,[]);
+  archiveByEvent.get(a.event).push(a);
+ }
+ const archiveEvents=[...archiveByEvent].map(([id,judges])=>{
+  const event=EVENTS.find(e=>e.id===id);
+  return {name:event?.name||id,date:event?.dateEnd||event?.date||"",judges};
+ }).sort((a,b)=>b.date.localeCompare(a.date)||a.name.localeCompare(b.name,"ru"));
+ const row=(a,editable)=>`<div class="card row wrap"><div class="sp" style="overflow-wrap:anywhere"><b>${esc(a.name)}</b><div class="muted tiny">${esc(a.email)}${editable&&a.event?" · "+esc(EVENTS.find(e=>e.id===a.event)?.name||a.event):""}</div></div><span class="chip ${a.role==="admin"?"warn":a.role==="head_judge"?"ok":"neutral"}">${esc(ROLE_L[a.role])}</span>${editable?`<button class="btn sm ghost" data-access-revoke="${esc(a.id||a.email)}" data-access-crew="${!!a.id}" ${A.busy?"disabled":""}>Отозвать</button>`:""}</div>`;
  return `<h2 class="sec">Судьи и доступы</h2>
  <div class="card stack">
  <label class="f">ФИО или электронная почта<input class="inp" id="accessQuery" value="${esc(A.query||"")}" autocomplete="off"></label>
@@ -2046,7 +2055,7 @@ function accessPanel(){
  <h2 class="sec">Действующие назначения</h2>
  ${A.listError?`<div class="card stack" role="alert"><div>Не удалось загрузить назначения. ${esc(A.listError)}</div><button class="btn sm ghost" data-act="accessReload" ${A.busy?"disabled":""}>Повторить загрузку</button></div>`:""}
  <div class="stack">${active.map(a=>row(a,true)).join("")||(A.listError?"":`<div class="empty">${A.assignments?"Назначений пока нет":"Загружаю назначения…"}</div>`)}</div>
- ${archived.length?`<details class="card" style="margin-top:14px"><summary>Архив судейских назначений · ${archived.length}</summary><div class="stack" style="margin-top:10px">${archived.map(a=>row(a,false)).join("")}</div></details>`:""}`;
+ ${archived.length?`<details class="card" style="margin-top:14px"><summary>Архив судейских назначений · ${archiveEvents.length}</summary><div class="stack" style="margin-top:10px">${archiveEvents.map(event=>`<details class="card"><summary><b>${esc(event.name)}</b> <span class="muted small">· ${event.judges.length}</span></summary><div class="stack" style="margin-top:10px">${event.judges.map(a=>row(a,false)).join("")}</div></details>`).join("")}</div></details>`:""}`;
 }
 function syncAccess(){
  const A=adm.access||={};
