@@ -3686,7 +3686,7 @@ function markMe(){
 let fullContentReady=false, fullContentTask=null, fullContentError="";
 async function loadContent(forceFull=false){
   const full=forceFull||(canEdit()&&fullContentReady);
-  const c = await api("GET",full?"/api/content":"/api/content?compact=1");
+  const c = await api("GET",full?"/api/content":"/api/content?compact=2");
   // A public refresh started before opening the editor must never overwrite full document data.
   if(!full&&fullContentReady)return;
   fullContentReady=full;

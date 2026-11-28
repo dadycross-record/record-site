@@ -286,6 +286,13 @@ function mixRoom(div, mainRows, sex, minus) {
 const SEXW = { m: 'мужчин', f: 'женщин' };
 function divDaySet(ev, d) { const days = evDaysSrv(ev); const own = ((d && d.days) || []).filter(x => days.includes(x)); return own.length ? own : days; }
 let lastDraftResults = {};
+const eventCoverPattern = /^data:(image\/(?:jpeg|png|webp|gif|avif));base64,([A-Za-z0-9+/=]+)$/i;
+
+function contentVariant(payload) {
+  const json = JSON.stringify(payload);
+  return { json, gz: zlib.gzipSync(json), etag: '"' + sha(json).slice(0,20) + '"' };
+}
+
 async function publicContent() {
   if (cache&&Date.now()-cache.at<60000) return cache;
   const c = await rawContent();
@@ -322,8 +329,16 @@ async function publicContent() {
     if (Array.isArray(event.docs)) event.docs = event.docs.map(({data, ...doc}) => doc);
     return event;
   }) };
-  const json = JSON.stringify(compact);
-  cache = { at:Date.now(), payload, compact: {json, gz:zlib.gzipSync(json), etag:'"' + sha(json).slice(0,20) + '"'}, full:null };
+  const covers = new Map();
+  const linked = { ...compact, EVENTS: compact.EVENTS.map(event => {
+    const cover = typeof event.cover === 'string' && eventCoverPattern.exec(event.cover);
+    if (!cover || event.status === 'draft') return event;
+    const version = sha(event.cover);
+    const url = '/event-covers/' + encodeURIComponent(event.id) + '/' + version;
+    covers.set(url, { type: cover[1], encoded: cover[2], etag: '"' + version + '"' });
+    return { ...event, cover: url };
+  }) };
+  cache = { at:Date.now(), payload, compact, covers, linked:contentVariant(linked), legacy:null, full:null };
   return cache;
 }
 
@@ -552,12 +567,11 @@ route('POST','/api/admin/race/heats/:id',async(req,res,u,body,params)=>{
 
 route('GET', '/api/content', async (req, res) => {
   const c = await publicContent();
-  const compact = new URL(req.url,'http://localhost').searchParams.get('compact') === '1';
-  if (!compact && !c.full) {
-    const json=JSON.stringify(c.payload);
-    c.full={json, gz:zlib.gzipSync(json), etag:'"' + sha(json).slice(0,20) + '"'};
-  }
-  const out=compact?c.compact:c.full;
+  const variant = new URL(req.url,'http://localhost').searchParams.get('compact');
+  let out;
+  if (variant === '2') out = c.linked;
+  else if (variant === '1') out = c.legacy ??= contentVariant(c.compact);
+  else out = c.full ??= contentVariant(c.payload);
   if (req.headers['if-none-match'] === out.etag) { res.writeHead(304, { ETag: out.etag, Vary:'Accept-Encoding' }); res.end(); return undefined; }
   const gz = wantsGzip(req);
   res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache', ETag: out.etag, Vary: 'Accept-Encoding', ...(gz ? { 'Content-Encoding': 'gzip' } : {}) });
@@ -2141,6 +2155,21 @@ function serveStatic(req, res, pathname) {
   return true;
 }
 
+async function serveEventCover(req, res, pathname) {
+  const { covers } = await publicContent();
+  const cover = covers.get(pathname);
+  if (!cover) throw new HttpError(404, 'Обложка не найдена');
+  const headers = { 'Content-Type': cover.type, 'Cache-Control': 'public, max-age=3600', ETag: cover.etag };
+  if (req.headers['if-none-match'] === cover.etag) {
+    res.writeHead(304, headers);
+    res.end();
+    return;
+  }
+  const bytes = Buffer.from(cover.encoded, 'base64');
+  res.writeHead(200, { ...headers, 'Content-Length': bytes.length });
+  res.end(req.method === 'HEAD' ? undefined : bytes);
+}
+
 /* Event documents: real HTTP URLs for Safari/iOS and other browsers. */
 async function serveEventFile(req,res,url,match){
   const eventId=decodeURIComponent(match[1]),docId=decodeURIComponent(match[2]);
@@ -2182,12 +2211,14 @@ const MIRRORS = new Set(['www.recordirk.ru', 'record-site-5b6fbf.pipecore.io', '
 /* the main page with search-engine verification tags that the organizer pastes in the panel */
 let indexCache = { key: null };
 async function serveIndex(req, res, status = 200) {
-  const v = ((await db.query(`select data->'SITE'->'verify' v from content where id=1`)).rows[0] || {}).v || {};
+  const site = (await db.query(`select data->'SITE'->'verify' v, nullif(data->'SITE'->>'hero','') is not null as custom_hero from content where id=1`)).rows[0] || {};
+  const v = site.v || {};
+  const preload = status === 200 && !site.custom_hero ? '<link rel="preload" as="image" href="/img/hero.jpg" fetchpriority="high">\n' : '';
   const ok = x => typeof x === 'string' && /^[A-Za-z0-9_-]{6,120}$/.test(x) ? x : '';
   const tags = (ok(v.yandex) ? `<meta name="yandex-verification" content="${ok(v.yandex)}">\n` : '') + (ok(v.google) ? `<meta name="google-site-verification" content="${ok(v.google)}">\n` : '');
-  const file = path.join(PUBLIC, 'index.html'), st = fs.statSync(file), key = tags + st.mtimeMs;
+  const file = path.join(PUBLIC, 'index.html'), st = fs.statSync(file), key = preload + tags + st.mtimeMs;
   if (indexCache.key !== key) {
-    const data = Buffer.from(fs.readFileSync(file, 'utf8').replace('</head>', tags + '</head>'));
+    const data = Buffer.from(fs.readFileSync(file, 'utf8').replace('</head>', preload + tags + '</head>'));
     indexCache = { key, data, gz: zlib.gzipSync(data, { level: 9 }), etag: '"i' + crypto.createHash('sha1').update(data).digest('hex').slice(0, 16) + '"' };
   }
   const headers = { 'Content-Type': 'text/html; charset=utf-8', ETag: indexCache.etag, 'Cache-Control': 'no-cache', Vary: 'Accept-Encoding' };
@@ -2285,6 +2316,10 @@ const server = http.createServer(async (req, res) => {
     const host = String(req.headers.host || '').toLowerCase().replace(/:\d+$/, '');
     if (MIRRORS.has(host) && !pathname.startsWith('/.well-known/')) { res.writeHead(301, { Location: PRIMARY + req.url }); res.end(); return; }
     if (pathname === '/' || pathname === '/index.html') { await serveIndex(req, res); return; }
+    if (/^\/event-covers\/[^/]+\/[a-f0-9]{64}$/.test(pathname)) {
+      await serveEventCover(req, res, pathname);
+      return;
+    }
     const eventFile=/^\/event-files\/([^/]+)\/([^/]+)$/.exec(pathname);
     if(eventFile){await serveEventFile(req,res,url,eventFile);return;}
     if (serveStatic(req, res, pathname)) return;
