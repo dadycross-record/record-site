@@ -8,6 +8,7 @@ const https = require('https');
 const zlib = require('zlib');
 const { Pool } = require('./lib/pg');
 const { raceBoard } = require('./lib/race-leaderboard');
+const { isRace, raceHistory } = require('./lib/race-history');
 const raceHeats = require('./lib/race-heats');
 const recordCup = require('./data/record-cup-teams-2026.json');
 const archiveHistory = require('./lib/archive-history');
@@ -470,21 +471,51 @@ const routes = [];
 const route = (method, pattern, fn, opts = {}) => routes.push({ method, re: new RegExp('^' + pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)') + '$'), fn, opts });
 
 route('GET', '/api/health', async () => ({ ok: true }));
-/* Dedicated RECORD RACE standings. Existing CrossFit rankings remain untouched. */
-route('GET', '/api/race/leaderboard/:id', async (req, res, u, body, params) => {
-  const ev = ((await rawContent()).EVENTS || []).find(e => e.id === params.id);
-  const isRace = ev && (ev.raceMode === 'race' || ev.id === 'evmvwkp907');
-  if (!isRace) throw new HttpError(404, 'Лидерборд гонки не найден');
-  if (ev.status === 'draft' && !['owner','admin'].includes(u?.role)) throw new HttpError(404, 'Лидерборд гонки не найден');
+/* Dedicated RECORD RACE standings. Each edition keeps its own accepted results. */
+async function raceData(events) {
+  const ids = JSON.stringify(events.map(event => event.id));
   const registrations = (await db.query(
-    "select id, pub, event_id, div_id, who, user_id, athlete_user, person, team, status, team_role from registrations where event_id=$1 and status in ('new','paid','refund_requested') order by created_at",
-    [ev.id])).rows;
+    `select id, pub, event_id, div_id, who, user_id, athlete_user, person, team, status, team_role
+    from registrations where event_id in (select jsonb_array_elements_text($1::jsonb))
+    and status in ('new','paid','refund_requested') order by created_at`, [ids])).rows;
   const scores = (await db.query(
-    "select s.reg_id, s.workout_id, s.value, s.state from scores s join registrations r on r.id=s.reg_id where r.event_id=$1 and s.state='accepted' order by s.created_at",
-    [ev.id])).rows;
-  return raceBoard(ev, registrations, scores);
+    `select s.reg_id, s.workout_id, s.value, s.state from scores s join registrations r on r.id=s.reg_id
+    where r.event_id in (select jsonb_array_elements_text($1::jsonb)) and s.state='accepted' order by s.created_at`, [ids])).rows;
+  return { registrations, scores };
+}
+const publishedRaces = events => events.filter(event => isRace(event) && event.status !== 'draft');
+route('GET', '/api/race/leaderboard/:id', async (req, res, u, body, params) => {
+  const events = (await rawContent()).EVENTS || [];
+  const event = events.find(e => e.id === params.id);
+  if (!isRace(event) || (event.status === 'draft' && !['owner','admin'].includes(u?.role))) {
+    throw new HttpError(404, 'Лидерборд гонки не найден');
+  }
+  if (event.status === 'draft') {
+    const { registrations, scores } = await raceData([event]);
+    return raceBoard(event, registrations, scores);
+  }
+  const published = publishedRaces(events);
+  const { registrations, scores } = await raceData(published);
+  return raceHistory(published, registrations, scores).boards.get(event.id);
 });
 
+route('GET', '/api/race/history/:registration', async (req, res, u, body, params) => {
+  need(u);
+  const order = (await myOrders(u.id)).find(r => r.id === params.registration);
+  if (!order) throw new HttpError(404, 'Результат не найден');
+  const events = publishedRaces((await rawContent()).EVENTS || []);
+  const event = events.find(e => e.id === order.event);
+  if (!event) throw new HttpError(404, 'Результат не найден');
+  const { registrations, scores } = await raceData(events);
+  const index = raceHistory(events, registrations, scores);
+  const division = index.boards.get(event.id).divisions.find(d => d.id === order.div);
+  const row = division?.entries.find(r => r.publicId.includes(order.pub));
+  if (!row || row.seconds === null) throw new HttpError(404, 'Результат пока не опубликован');
+  return {
+    event: event.name, category: division.name, level: division.level, row,
+    history: index.forRegistration(order.id)
+  };
+});
 
 /* RECORD RACE heat planner — separate from CrossFit results. */
 const raceHeatEvent = async id => {

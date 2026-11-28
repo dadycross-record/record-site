@@ -647,10 +647,15 @@ h2.ch{font-family:var(--f-display);font-weight:800;font-size:clamp(24px,7vw,40px
 .race-result{border-top:1px solid var(--line);font-size:13px}
 .race-result b{display:block;font-size:14px;overflow-wrap:anywhere}
 .race-result strong{text-align:right}
+.race-thead,.race-result{grid-template-columns:48px minmax(0,1fr) max-content}
+.race-result button{font:inherit;color:inherit;background:none;border:0;padding:0;text-align:left;cursor:pointer}
+.race-result .chip{margin:3px 4px 0 0;height:auto;min-height:18px;white-space:normal}
+.race-finish-time{font-size:clamp(38px,10vw,64px);line-height:1.12}
+.race-history-row{display:grid;grid-template-columns:minmax(0,1fr) max-content;gap:8px;padding:10px 0;border-top:1px solid var(--line)}
 .race-place{font-weight:800;font-size:17px;text-align:center}
 @media(max-width:560px){
   .race-pills{flex-wrap:nowrap}
-  .race-thead,.race-result{grid-template-columns:34px minmax(0,1fr) 70px 70px;gap:5px;padding:10px 7px}
+  .race-thead,.race-result{grid-template-columns:34px minmax(0,1fr) max-content;gap:5px;padding:10px 7px}
   .race-result b{font-size:12px}
   .race-result{font-size:11px}
   .race-result .tiny{font-size:10px}
@@ -1186,7 +1191,7 @@ function cookieBar(force){
   b.innerHTML=`<p>Мы используем cookies: необходимые — чтобы работали формы и вход, и аналитические Яндекс Метрики — чтобы понимать, что на сайте удобно, а что нет. Аналитические включим только с вашего согласия. <a href="/docs/privacy" target="_blank">Подробнее</a></p><div class="row"><button class="btn sm" data-ck="all">Принять</button><button class="btn sm ghost" data-ck="need">Только необходимые</button></div>`;
   document.body.appendChild(b);
 }
-const ROOT_TAB = {kidInvite:"me",crewManage:"me",invite:"events",crewApply:"events",login:"me",home:"home",events:"events",event:"events",divisions:"events",team:"events",teamCreate:"events",teamJoin:"events",form:"events",pay:"events",done:"events",fail:"events",leaderboard:"leaderboard",me:"me",orders:"me",messages:"me",score:"me",qr:"me",profile:"me",admin:"me",adminEvent:"me",adminDiv:"me",adminWod:"me",adminPeople:"me",adminSch:"me",adminPromo:"me",adminClub:"me",adminClubEdit:"me"};
+const ROOT_TAB = {raceFinish:"leaderboard",kidInvite:"me",crewManage:"me",invite:"events",crewApply:"events",login:"me",home:"home",events:"events",event:"events",divisions:"events",team:"events",teamCreate:"events",teamJoin:"events",form:"events",pay:"events",done:"events",fail:"events",leaderboard:"leaderboard",me:"me",orders:"me",messages:"me",score:"me",qr:"me",profile:"me",admin:"me",adminEvent:"me",adminDiv:"me",adminWod:"me",adminPeople:"me",adminSch:"me",adminPromo:"me",adminClub:"me",adminClubEdit:"me"};
 
 function header(title){
   if (isClub()) return clubHeader();
@@ -1271,6 +1276,7 @@ function evCount(ev){
    All other competitions continue using the original CrossFit leaderboard. */
 const RACE_EVENT_ID = "evmvwkp907";
 const isRaceEvent = ev => !!ev && ev.id===RACE_EVENT_ID;
+const hasRaceResults = ev => isRaceEvent(ev) || ev?.raceMode==="race";
 const RACE_CASH_INFO = "Оплата участия — только наличными в Центре спорта «Рекорд». После подачи заявки необходимо внести взнос. Регистрация подтверждается организатором после оплаты.";
 const RACE_FORMATS=[["individual","Личный"],["pair","Пары"],["relay","Эстафета"],["kids","Дети"],["first","Первый старт"],["forces","Силовые ведомства"]];
 const RACE_AGES=[[16,24],[25,29],[30,34],[35,39],[40,44],[45,49],[50,54],[55,59],[60,64],[65,69],[70,74],[75,79],[80,84],[85,89]];
@@ -1436,7 +1442,8 @@ function raceBoardScreen(ev){
  const R=raceView(), data=R.data&&R.data.eventId===ev.id?R.data:null;
  const staff=["owner","admin","judge"].includes(S.viewAs);
  const raceExportAllowed=!!USER && (["owner","admin"].includes(USER.role)||(USER.headEvents||[]).includes(ev.id));
- const top='<div class="card" style="padding:12px 14px"><button class="selbtn" data-act="evsheet"><div><b>'+esc(ev.name)+'</b><div class="muted tiny">ГОНКА · одно итоговое время · абсолютный и возрастной зачёт</div></div><span aria-hidden="true">⌄</span></button></div>'+finderTabs(ev);
+ const top='<div class="card" style="padding:12px 14px"><button class="selbtn" data-act="evsheet"><div><b>'+esc(ev.name)+'</b><div class="muted tiny">'+esc(dateRange(ev))+'</div></div><span aria-hidden="true">⌄</span></button></div>'+(isRaceEvent(ev)?finderTabs(ev):"");
+ if(!isRaceEvent(ev))R.mode="results";
  if(R.mode==="all"||(R.mode==="search"&&finderEnabled(ev)))return finderScreen(ev,top);
  if(!data){
    return {title:null,html:top+'<div class="card stack" style="margin-top:12px"><b>Гонка Рекорда</b><div class="muted">'+esc(R.error||"Загружаем результаты и возрастные категории…")+'</div><button class="btn sm" data-racerefresh="'+esc(ev.id)+'">Обновить</button></div>',after:()=>{if(!R.loading&&!R.error)raceLoad(ev.id)}};
@@ -1465,9 +1472,9 @@ function raceBoardScreen(ev){
    R.kind==="relay"?[["all","Все возрасты"],["до 40","До 40 лет"],["40+","40 лет и старше"]]:[];
  const kidOpts=kinds.map(d=>[d.id,(d.name.match(/\d+[–-]\d+/)||[])[0]||d.name]);
  const head=top+'<div class="race-filters">'+
-   select("mode","Просмотр",[["results","Результаты"],["heats","Заходы по времени"]],R.mode||"results")+
+   (isRaceEvent(ev)?select("mode","Просмотр",[["results","Результаты"],["heats","Заходы по времени"]],R.mode||"results"):"")+
    (R.mode==="heats"?'':select("kind","Формат",kindOpts,R.kind)+
-   (levelOpts.length>1?select("level","Уровень",levelOpts,R.level):"")+
+   (levelOpts.length>1?select("level","Категория",levelOpts,R.level):"")+
    (genderOpts.length>1?select("gender","Участники",genderOpts,R.gender):"")+
    (R.kind==="kids"?select("kid","Возраст",kidOpts,R.kid):ageOpts.length?select("age","Возраст",ageOpts,R.age,true):""))+
    '</div>';
@@ -1499,7 +1506,7 @@ function raceBoardScreen(ev){
    '<div class="rule small">В дивизионе пока меньше двух участников. Итоговый зачёт не считается состоявшимся, но результаты остаются в абсолютной таблице.</div>':"";
  const groupMsg=R.age!=="all"&&actualMerged&&actualMerged!==R.age?
   '<div class="rule small">Возрастная группа объединена по правилу минимум двух участников. Официальный зачёт: <b>'+esc(actualMerged)+'</b>. Абсолютные места не меняются.</div>':"";
- const columns='<div class="race-thead"><span>Абс.</span><span>Участник / команда</span><span>Время</span><span>Возраст</span></div>';
+ const columns='<div class="race-thead"><span>Место</span><span>Участник / команда</span><span>Время</span></div>';
  const list=rows.length?rows.map((row,i)=>{
    const primary=R.age==="all"?row.absolutePlace:row.agePlace;
    const secondary=R.age==="all"?row.agePlace:row.absolutePlace;
@@ -1507,22 +1514,78 @@ function raceBoardScreen(ev){
    const secondaryLabel=secondary!=null?(R.age==="all"?"Возраст: "+secondary:"Абсолют: "+secondary):"";
    const ageText=row.ageGroup?row.ageGroup+(row.ageEstablished===false?" · не состоялась":""):
      row.age!=null?(String(row.age).replace(".",",")+" лет"):"—";
-   return '<div class="race-result"><span class="race-place">'+main+'</span><div><b>'+esc(row.name)+'</b>'+
-      (row.members.length?'<div class="muted tiny">'+esc(row.members.join(" · "))+'</div>':"")+
+   const memberLines=row.members.map((name,index)=>esc(name)+(row.races?.[index]? " · "+raceCountText(row.races[index]):""));
+   const badges=(ageText!=="—"?'<span class="chip warn">'+esc(ageText)+'</span>':"")+
+      (primary===1?'<span class="chip warn" title="Первое место в выбранном зачёте">Рекорд</span>':"")+
+      (row.raceCount?'<span class="muted tiny">'+raceCountText(row.raceCount)+'</span>':"");
+   const name='<b>'+esc(row.name)+'</b>';
+   const personal=ORDERS.find(o=>o.event===ev.id&&row.publicId.includes(o.pub));
+   const target=personal?' data-race-history="'+esc(personal.id)+'"':' data-race-finish="'+esc(row.id)+'" data-race-division="'+esc(div.id)+'"';
+   return '<div class="race-result"><span class="race-place">'+main+'</span><div>'+
+      (row.seconds==null?name:'<button type="button"'+target+' aria-label="Результат: '+esc(row.name)+'">'+name+'</button>')+
+      (memberLines.length?'<div class="muted tiny">'+memberLines.join(" · ")+'</div>':"")+badges+
       (secondaryLabel?'<div class="muted tiny">'+secondaryLabel+' место</div>':"")+
       (row.status!=="Финишировал"?'<div class="muted tiny">'+esc(row.status)+'</div>':"")+
-      '</div><strong class="mono">'+raceSeconds(row.seconds)+'</strong><span class="muted tiny">'+esc(ageText)+'</span></div>';
+      '</div><strong class="mono">'+raceFinishTime(row.seconds)+'</strong></div>';
  }).join(""):'<div class="empty">В этой возрастной группе участников или результатов пока нет.</div>';
- const footer='<div class="rule small" style="margin-top:14px">Одно итоговое время на дистанции с учётом внесённых штрафов. Меньше — лучше. Абсолютное место и место по возрасту рассчитываются отдельно. Если возрастная группа не набрала 2 участников, она объединяется с более молодой; первый возрастной диапазон с одним участником не разыгрывается.</div>';
+
  const toolbar='<div class="row wrap" style="margin-top:14px;gap:8px"><b class="sp">'+esc(raceDivTitle(div))+'</b>'+
   '<button class="btn sm ghost" data-racerefresh="'+esc(ev.id)+'">Обновить</button>'+
   (staff?'<button class="btn sm ghost" data-race-edit="'+esc(ev.id)+'">Ввод результатов</button>':"")+
   (raceExportAllowed?'<button class="btn sm ghost" data-race-export="'+esc(ev.id)+'">Excel · оба зачёта</button>':"")+
   '</div><input class="inp" id="raceQ" placeholder="Найти атлета или команду" value="'+esc(R.q)+'" style="margin:10px 0" autocomplete="off">';
- return {title:null,html:head+toolbar+summary+quorumMsg+groupMsg+'<div class="race-results">'+columns+list+'</div>'+footer};
+ return {title:null,html:head+toolbar+summary+quorumMsg+groupMsg+'<div class="race-results">'+columns+list+'</div>'};
+}
+
+function raceFinishTime(seconds){
+ if(seconds==null||seconds<3600)return raceSeconds(seconds);
+ const hours=Math.floor(seconds/3600), rest=raceSeconds(seconds%3600);
+ return hours+":"+rest.padStart(rest.includes(",")?8:5,"0");
+}
+function raceCountText(n){
+ const last=n%10, teen=n%100>=11&&n%100<=14;
+ return n+" "+(!teen&&last===1?"гонка":!teen&&last>=2&&last<=4?"гонки":"гонок");
+}
+const raceFinishRequests=new Map();
+function raceFinishScreen(){
+ const {reg,event,division,id}=S.p;
+ let payload=reg?raceFinishRequests.get(reg):null;
+ if(!reg){
+  const data=raceView().data;
+  const category=data?.eventId===event?data.divisions.find(d=>d.id===division):null;
+  const row=category?.entries.find(r=>r.id===id);
+  if(row)payload={row,category:category.name,level:category.level,event:data.eventName};
+ }
+ if(!payload?.row) return {title:"Результат гонки",html:'<div class="card stack">'+
+   esc(payload?.error||(reg?"Загружаем результат…":"Результат недоступен"))+
+   (reg&&payload?.error?'<button class="btn sm" data-race-history-retry>Повторить</button>':"")+'</div>',
+   after:()=>{if(reg&&!payload)loadRaceFinish(reg);}};
+ const {row,history}=payload;
+ const category=payload.category+(payload.level==="pro"&&!/проф|pro/i.test(payload.category)?" · PRO":"");
+ const comparison=history?.map((entry,index)=>{
+  const previous=history.slice(index+1).find(other=>other.eventId!==entry.eventId&&other.division===entry.division);
+  const delta=previous?Math.round((entry.seconds-previous.seconds)*100)/100:null;
+  const change=delta===null?"":delta===0?" · то же время":" · "+(delta<0?"−":"+")+raceSeconds(Math.abs(delta))+" к предыдущему старту";
+  return '<div class="race-history-row"><div><b>'+esc(entry.event)+'</b><div class="muted tiny">'+
+   esc(entry.date+' · '+entry.category+(entry.place?' · '+entry.place+'-е место':'')+change)+'</div></div>'+
+   '<strong class="mono">'+raceFinishTime(entry.seconds)+'</strong></div>';
+ }).join("");
+ return {title:"Результат гонки",html:'<div class="stack"><div class="card stack"><h2>'+esc(row.name)+'</h2>'+
+  '<div class="muted small">'+esc(payload.event)+(row.raceCount?' · '+raceCountText(row.raceCount):'')+'</div>'+
+  '<span class="muted small">Итоговое время</span><strong class="mono race-finish-time">'+raceFinishTime(row.seconds)+'</strong>'+
+  '<div class="row wrap"><span class="chip neutral">'+esc((row.absolutePlace?row.absolutePlace+'-е место · ':'')+category)+'</span>'+
+  (row.ageGroup?'<span class="chip warn">'+esc(row.ageGroup+(row.agePlace?' · '+row.agePlace+'-е место':''))+'</span>':"")+
+  '</div></div>'+(comparison?'<div class="card"><h2>История гонок</h2>'+comparison+'</div>':"")+'</div>'};
+}
+async function loadRaceFinish(reg){
+ raceFinishRequests.set(reg,{loading:true});
+ try{raceFinishRequests.set(reg,await api("GET","/api/race/history/"+encodeURIComponent(reg)));}
+ catch(err){raceFinishRequests.set(reg,{error:err.message});}
+ if(S.route==="raceFinish"&&S.p.reg===reg)render();
 }
 
 const SCREENS = {
+raceFinish:raceFinishScreen,
 home(){
   const ev = EVENTS.find(e=>isPub(e)&&e.status==="open") || EVENTS.find(e=>isPub(e)&&e.status!=="ended");
   if (!ev) return {title:null, html:`<section class="hero" style="background-image:url(${SITE.hero||HERO})"><div class="word">${LOGO}</div><p>Регистрация, результаты и история стартов.</p></section><h2 class="sec">Все старты</h2>${eventFeed(EVENTS.filter(isPub))}`};
@@ -1823,7 +1886,7 @@ leaderboard(){
   if (!L.ev || !LE.some(e=>e.id===L.ev))
     return {title:null,html:'<div class="card stack" style="margin-top:12px"><h2>Выберите соревнование</h2><p class="muted small">Выберите старт, чтобы посмотреть зарегистрированных атлетов, команды и результаты.</p><button class="btn block" data-act="evsheet">Выбрать старт</button></div>',after:()=>setTimeout(()=>{if(S.route==="leaderboard"&&!S.lb.ev)evSheet();},0)};
   const ev0 = EVENTS.find(e=>e.id===L.ev);
-  if (isRaceEvent(ev0)) return raceBoardScreen(ev0);
+  if (hasRaceResults(ev0)) return raceBoardScreen(ev0);
   if (ev0.publishedArchive) L.tab = "team";
   let month = null;
   if (ev0.permanent){ if (L.month!=="year" && !(ev0.months||[]).some(m=>m.id===L.month)) L.month = curMonth(ev0).id; month = L.month; }
@@ -2242,7 +2305,7 @@ function orderCard(o){
   const scoring = scoreTargets().some(t=>t.o.id===o.id);
   return `<div class="order"><div class="hd"><span class="small">${ev.date?dateRange(ev):""} · ${ev.format==="online"?"Онлайн":"Очный"}</span>${ev.status==="ended"?statusChip("ended"):ev.status==="live"?statusChip("live"):""}${ev.status==="ended"&&o.status==="paid"?"":stMap[o.status]||""}</div>
    <div class="bd"><div style="font-family:var(--f-display);font-weight:600;font-size:16px;text-transform:uppercase">${esc(ev.name)}</div>
-   <dl class="kv small" style="margin:10px 0 0"><dt>Участник</dt><dd>${esc(p.last||"")} ${esc(p.first||"")}</dd><dt>Категория</dt><dd>${esc(isRaceEvent(ev)?raceDivTitle(d):d.name)}${o.team?` · ${esc(o.team)}`:""}</dd>${ev.status==="ended"?"":`<dt>${o.status==="new"?"К оплате":"Взнос"}</dt><dd class="mono">${o.waiver?`бесплатно · ${esc(o.waiver)}`:fmtRub(o.status==="new"?o.due:o.paid)}</dd>`}<dt>Лидерборд</dt><dd>${orderLeaderboard(o)}</dd>${!o.publish && o.mine!==false?`<dt>Публикация</dt><dd><button class="linkbtn" data-pubtoggle="${o.id}">Дать согласие на публикацию</button></dd>`:""}</dl>${ev.status==="ended"?historyTeamLine(o):""}${orderPerformanceDetails(o)}${ev.status==="ended"?`<div class="stack" style="margin-top:10px">${finishedLeaderboardButton(o)}</div>`:""}</div>
+   <dl class="kv small" style="margin:10px 0 0"><dt>Участник</dt><dd>${esc(p.last||"")} ${esc(p.first||"")}</dd><dt>Категория</dt><dd>${esc(isRaceEvent(ev)?raceDivTitle(d):d.name)}${o.team?` · ${esc(o.team)}`:""}</dd>${ev.status==="ended"?"":`<dt>${o.status==="new"?"К оплате":"Взнос"}</dt><dd class="mono">${o.waiver?`бесплатно · ${esc(o.waiver)}`:fmtRub(o.status==="new"?o.due:o.paid)}</dd>`}<dt>Лидерборд</dt><dd>${orderLeaderboard(o)}</dd>${!o.publish && o.mine!==false?`<dt>Публикация</dt><dd><button class="linkbtn" data-pubtoggle="${o.id}">Дать согласие на публикацию</button></dd>`:""}</dl>${ev.status==="ended"?historyTeamLine(o):""}${orderPerformanceDetails(o)}${hasRaceResults(ev)&&MYSCORES.some(score=>score.reg_id===o.id&&score.state==="accepted")?`<div style="margin-top:10px"><button class="btn sm ghost" data-race-history="${esc(o.id)}">Результат и история гонок</button></div>`:""}${ev.status==="ended"?`<div class="stack" style="margin-top:10px">${finishedLeaderboardButton(o)}</div>`:""}</div>
    ${heatInfo}
    ${o.mine===false?`<div class="rule" style="margin-top:10px">Заявку оформил другой взрослый из профиля ребёнка — оплата, отмена и возврат у него.</div>`:""}
    ${ev.status!=="ended"&&["new","paid","pending","reserve"].includes(o.status)&&o.mine!==false?`<div class="acts">${scoring?`<button class="btn sm" data-go="score">Сдать результат</button>`:""}${ev.status!=="ended"?`<button class="btn sm ghost" data-refund="${o.id}">${o.paid>0?"Запросить возврат":"Отменить заявку"}</button>`:""}</div>`:""}
@@ -4542,6 +4605,9 @@ document.addEventListener("click", e=>{
     downloadCsv("record-race-absolute-age-"+ds.raceExport+".csv",rows);
     return;
   }
+  if(ds.raceHistoryRetry!==undefined)return loadRaceFinish(S.p.reg);
+  if(ds.raceHistory){raceFinishRequests.delete(ds.raceHistory);return go("raceFinish",{reg:ds.raceHistory});}
+  if(ds.raceFinish)return go("raceFinish",{id:ds.raceFinish,division:ds.raceDivision,event:S.lb.ev});
   if(ds.racerefresh){raceLoad(ds.racerefresh,true);return;}
   if(ds.raceEdit){adm.evId=ds.raceEdit;return go("adminResults",{});}
   if (clubClick(t, ds)) return;
