@@ -494,7 +494,7 @@ const raceHeatEvent = async id => {
 };
 const raceHeatRegistrations = async (ev,q=db.query.bind(db)) =>
  (await q("select id, pub, event_id, div_id, person, team, status, user_id, athlete_user, created_at from registrations where event_id=$1 and status in ('new','paid','refund_requested') order by created_at,id",[ev.id])).rows;
-const raceHeatAllowed = u=>!!u&&u.role==='owner';
+const raceHeatAllowed = async (u,event)=>!!u&&(['owner','admin'].includes(u.role)||(await headJudgeEvents(u)).includes(event));
 // The published snapshot is incrementally extended for new registrants only. Existing
 // wave/time/number allocations remain locked, even if a participant cancels.
 async function raceHeatView(ev,u){
@@ -515,9 +515,10 @@ async function raceHeatView(ev,u){
    await q("insert into race_heat_plans(event_id,plan,updated_by) values($1,$2,$3) on conflict(event_id) do update set plan=excluded.plan,updated_at=now(),updated_by=excluded.updated_by",
      [ev.id,JSON.stringify(cfg),'auto-assignment']);
   }
-  const result=raceHeats.build(ev,regs,cfg,raceHeatAllowed(u));
-  result.hasUnpublishedChanges=raceHeatAllowed(u)&&Object.keys(cfg.pendingMoves||{}).length>0;
-  if(!raceHeatAllowed(u)){
+  const canManage=await raceHeatAllowed(u,ev.id);
+  const result=raceHeats.build(ev,regs,cfg,canManage);
+  result.hasUnpublishedChanges=canManage&&Object.keys(cfg.pendingMoves||{}).length>0;
+  if(!canManage){
    result.days=Object.fromEntries(Object.entries(result.days).filter(([day])=>cfg.published[day]));
    delete result.order;delete result.start;delete result.pending;
    result.days=Object.fromEntries(Object.entries(result.days).map(([day,rows])=>[day,rows.map(x=>({name:x.name,divId:x.divId,day:x.day,size:x.size,wave:x.wave,lane:x.lane,start:x.start,number:x.number,team:x.team,myIds:u?x.ids.filter(id=>regs.some(r=>r.id===id&&(String(r.user_id)===String(u.id)||String(r.athlete_user)===String(u.id)))):[]}))]));
@@ -530,8 +531,9 @@ route('GET','/api/race/heats/:id',async(req,res,u,body,params)=>{
  return raceHeatView(ev,u);
 });
 route('POST','/api/admin/race/heats/:id',async(req,res,u,body,params)=>{
- need(u,'owner');
+ need(u);
  const ev=await raceHeatEvent(params.id);
+ if(!await raceHeatAllowed(u,ev.id))throw new HttpError(403,'Нет доступа к заходам этого старта');
  return db.tx(async q=>{
   await q('select pg_advisory_xact_lock(hashtext($1))',['race-heats:'+ev.id]);
   const old=(await q('select plan from race_heat_plans where event_id=$1',[ev.id])).rows[0]?.plan||{};
@@ -608,7 +610,7 @@ route('GET', '/api/session', async (req, res, u) => {
   ];
   const scores = (await db.query('select reg_id, workout_id, value, video, state from scores where reg_id in (select jsonb_array_elements_text($1::jsonb))', [JSON.stringify(orders.map(o => o.id))])).rows;
   return {
-    user: { email: u.email, role: u.role, headEvents:await headJudgeEvents(u), profile: u.profile, kids: u.kids, avatar: u.avatar || '' },
+    user: { email: u.email, role: u.role, headEvents:await headJudgeEvents(u), judgeEvents:await judgeEvents(u), profile: u.profile, kids: u.kids, avatar: u.avatar || '' },
     orders: orders.map(o => ['blocked', 'cancelled'].includes(o.status) ? o : { ...o, note: '' }), scores, archivedHistory,
     teams: await myTeams(u.id),
     crew: (await db.query('select id, event_id, role, status, avail, info from crew where user_id=$1 order by created_at', [u.id])).rows
@@ -1477,6 +1479,68 @@ route('PUT', '/api/admin/content', async (req, res, u, body) => {
   return { ok: true };
 });
 
+/* Account access uses staff for organizers and the existing crew roster for event roles. */
+route('GET', '/api/admin/access/accounts', async (req, res, u) => {
+  need(u, 'owner', 'admin');
+  const term = str(new URL(req.url, 'http://local').searchParams.get('q'), 120);
+  if (term.length < 2) return { accounts: [] };
+  const { rows } = await db.query(`select id::text, email,
+    concat_ws(' ', profile->>'last', profile->>'first', profile->>'patronymic') as name
+    from users
+    where position(lower($1) in lower(email)) > 0
+       or position(lower($1) in lower(concat_ws(' ',profile->>'last',profile->>'first',profile->>'patronymic'))) > 0
+       or position(lower($1) in lower(concat_ws(' ',profile->>'first',profile->>'last',profile->>'patronymic'))) > 0
+    order by email limit 20`, [term]);
+  return { accounts: rows.filter(a => !isOwner(a.email)) };
+});
+route('GET', '/api/admin/access', async (req, res, u) => {
+  need(u, 'owner', 'admin');
+  const { rows } = await db.query(`select c.id::text, c.name, u.email, c.role, c.event_id as event
+    from crew c join users u on u.id=c.user_id
+    where c.status='confirmed' and c.role in ('head_judge','judge')
+    order by c.event_id,c.name,c.id`);
+  const organizers = u.role === 'owner'
+    ? (await db.query("select email, name, role from staff where role in ('admin','judge') order by name")).rows
+    : [];
+  return { assignments: [...organizers, ...rows] };
+});
+route('POST', '/api/admin/access', async (req, res, u, body) => {
+  need(u, 'owner', 'admin');
+  const role = body.role;
+  if (!['admin', 'head_judge', 'judge'].includes(role)) throw bad('Выберите роль');
+  if (role === 'admin') need(u, 'owner');
+  const accountId = str(body.account, 20);
+  const event = str(body.event, 60);
+  if (role !== 'admin' && !((await rawContent()).EVENTS || []).some(e => e.id === event)) throw bad('Выберите соревнование');
+  await db.tx(async q => {
+    const account = (await q(`select id, email, concat_ws(' ',profile->>'last',profile->>'first') name
+      from users where id::text=$1 for update`, [accountId])).rows[0];
+    if (!account || isOwner(account.email)) throw bad('Выберите зарегистрированного пользователя');
+    const name = account.name.trim() || account.email;
+    if (role === 'admin') {
+      await q("insert into staff(email,name,role) values($1,$2,'admin') on conflict(email) do update set name=excluded.name,role=excluded.role", [account.email, name]);
+      return;
+    }
+    const previous = (await q('select id,role from crew where user_id=$1 and event_id=$2 for update', [account.id, event])).rows[0];
+    if (previous && !['head_judge','judge'].includes(previous.role)) throw bad('У пользователя уже другая должность в команде старта');
+    const existing = await q(`update crew set role=$3, status='confirmed', updated_by=$4
+      where user_id=$1 and event_id=$2 returning id`, [account.id, event, role, u.email]);
+    if (!existing.rows.length) {
+      await q(`insert into crew(user_id,event_id,role,name,status,source,updated_by)
+        values($1,$2,$3,$4,'confirmed','manual',$5)`, [account.id, event, role, name, u.email]);
+    }
+  });
+  return { ok: true };
+});
+route('DELETE', '/api/admin/access/:id', async (req, res, u, body, p) => {
+  need(u, 'owner', 'admin');
+  const { rows } = await db.query(`update crew set status='declined', updated_by=$2
+    where id::text=$1 and user_id is not null and status='confirmed' and role in ('head_judge','judge')
+    returning id`, [p.id, u.email]);
+  if (!rows.length) throw new HttpError(404, 'Назначение не найдено');
+  return { ok: true };
+});
+
 route('POST', '/api/admin/staff', async (req, res, u, body) => {
   need(u, 'owner');
   const email = str(body.email, 254).toLowerCase(), name = str(body.name, 80), role = body.role === 'judge' ? 'judge' : 'admin';
@@ -1843,6 +1907,9 @@ route('DELETE', '/api/admin/crew/:id', async (req, res, u, body, p) => {
 async function headJudgeEvents(u) {
   return (await db.query(`select distinct event_id from crew where user_id=$1 and role='head_judge' and status='confirmed'`, [u.id])).rows.map(r => r.event_id);
 }
+async function judgeEvents(u) {
+  return (await db.query("select distinct event_id from crew where user_id=$1 and role='judge' and status='confirmed'", [u.id])).rows.map(r => r.event_id);
+}
 const crewOutNoMoney = c => { const o = crewOut(c); delete o.rate; o.info={...o.info};delete o.info.paidAmount;return o; };
 route('GET', '/api/crew/manage', async (req, res, u) => {
   need(u);
@@ -1906,9 +1973,17 @@ route('DELETE', '/api/admin/regs/:id', async (req, res, u, body, p) => {
 });
 
 route('PATCH', '/api/admin/scores/:id', async (req, res, u, body, p) => {
-  need(u, 'owner', 'admin', 'judge');
+  need(u);
   const st = body.state === 'accepted' ? 'accepted' : 'rejected';
-  await db.query('update scores set state=$1, reviewed_by=$2 where id=$3', [st, u.email, +p.id || 0]);
+  if (['owner','admin','judge'].includes(u.role)) {
+    await db.query('update scores set state=$1, reviewed_by=$2 where id=$3', [st, u.email, +p.id || 0]);
+  } else {
+    const { rows } = await db.query(`update scores s set state=$1, reviewed_by=$2
+      from registrations r where s.id=$3 and s.reg_id=r.id and s.state='pending'
+      and exists (select 1 from crew c where c.user_id=$4 and c.event_id=r.event_id
+        and c.role='head_judge' and c.status='confirmed') returning s.id`, [st, u.email, +p.id || 0, u.id]);
+    if (!rows.length) throw new HttpError(403, 'Нет доступа к проверке результата');
+  }
   dirty();
   return { ok: true };
 });
