@@ -2516,20 +2516,26 @@ function accessPanel(){
  const role=A.role||(S.viewAs==="owner"?"admin":"head_judge");
  const roles=[...(S.viewAs==="owner"?[["admin","Организатор"]]:[]),["head_judge","Главный судья"],["judge","Судья"]];
  const rights=[["Настройки соревнований, регистрации и оплаты",["admin"]],["Ввод результатов",["admin","head_judge"]],["Подтверждение результатов онлайн-стартов",["admin","head_judge"]],["Назначения в личном кабинете",["head_judge","judge"]]];
- const assignments=(A.assignments||[]).map(a=>`<div class="card row wrap"><div class="sp" style="overflow-wrap:anywhere"><b>${esc(a.name)}</b><div class="muted tiny">${esc(a.email)} · ${esc(ROLE_L[a.role])}${a.event?" · "+esc(EVENTS.find(e=>e.id===a.event)?.name||a.event):""}</div></div><button class="btn sm ghost" data-access-revoke="${esc(a.id||a.email)}" data-access-crew="${!!a.id}" ${A.busy?"disabled":""}>Отозвать</button></div>`).join("");
+ const priority={admin:0,head_judge:1,judge:2};
+ const active=[], archived=[];
+ for(const a of [...(A.assignments||[])].sort((a,b)=>priority[a.role]-priority[b.role])){
+  (a.event&&pastStart(a.event)?archived:active).push(a);
+ }
+ const row=(a,editable)=>`<div class="card row wrap"><div class="sp" style="overflow-wrap:anywhere"><b>${esc(a.name)}</b><div class="muted tiny">${esc(a.email)}${a.event?" · "+esc(EVENTS.find(e=>e.id===a.event)?.name||a.event):""}</div></div><span class="chip ${a.role==="admin"?"warn":a.role==="head_judge"?"ok":"neutral"}">${esc(ROLE_L[a.role])}</span>${editable?`<button class="btn sm ghost" data-access-revoke="${esc(a.id||a.email)}" data-access-crew="${!!a.id}" ${A.busy?"disabled":""}>Отозвать</button>`:""}</div>`;
  return `<h2 class="sec">Судьи и доступы</h2>
  <div class="card stack">
  <label class="f">ФИО или электронная почта<input class="inp" id="accessQuery" value="${esc(A.query||"")}" autocomplete="off"></label>
  <button class="btn sm ghost" data-act="accessSearch" ${A.busy?"disabled":""}>Найти пользователя</button>
  ${A.accounts?`<label class="f">Пользователь<select class="inp" id="accessAccount"><option value="">Выберите пользователя</option>${A.accounts.map(a=>`<option value="${esc(a.id)}" ${A.account===a.id?"selected":""}>${esc(a.name?a.name+" · "+a.email:a.email)}</option>`).join("")}</select></label>`:""}
  <label class="f">Роль<select class="inp" id="accessRole">${roles.map(([id,name])=>`<option value="${id}" ${role===id?"selected":""}>${name}</option>`).join("")}</select></label>
- ${role==="admin"?"":`<label class="f">Соревнование<select class="inp" id="accessEvent"><option value="">Выберите соревнование</option>${EVENTS.map(e=>`<option value="${esc(e.id)}" ${e.id===A.event?"selected":""}>${esc(e.name)}</option>`).join("")}</select></label>`}
+ ${role==="admin"?"":`<label class="f">Соревнование<select class="inp" id="accessEvent"><option value="">Выберите соревнование</option>${EVENTS.filter(e=>e.status!=="ended").map(e=>`<option value="${esc(e.id)}" ${e.id===A.event?"selected":""}>${esc(e.name)}</option>`).join("")}</select></label>`}
  <div class="stack" aria-label="Права выбранной роли">${rights.map(([label,enabled])=>`<label class="row small"><input type="checkbox" disabled ${enabled.includes(role)?"checked":""}> ${label}</label>`).join("")}</div>
  ${fErr(A.error)}
  <button class="btn sm" data-act="accessAssign" ${A.busy||!A.accounts?.length?"disabled":""}>Назначить</button>
  </div>
  <h2 class="sec">Действующие назначения</h2>
- <div class="stack">${assignments||`<div class="empty">${A.assignments?"Назначений пока нет":"Загружаю назначения…"}</div>`}</div>`;
+ <div class="stack">${active.map(a=>row(a,true)).join("")||`<div class="empty">${A.assignments?"Назначений пока нет":"Загружаю назначения…"}</div>`}</div>
+ ${archived.length?`<details class="card" style="margin-top:14px"><summary>Архив судейских назначений · ${archived.length}</summary><div class="stack" style="margin-top:10px">${archived.map(a=>row(a,false)).join("")}</div></details>`:""}`;
 }
 function syncAccess(){
  const A=adm.access||={};
