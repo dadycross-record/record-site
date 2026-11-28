@@ -2534,7 +2534,8 @@ function accessPanel(){
  <button class="btn sm" data-act="accessAssign" ${A.busy||!A.accounts?.length?"disabled":""}>Назначить</button>
  </div>
  <h2 class="sec">Действующие назначения</h2>
- <div class="stack">${active.map(a=>row(a,true)).join("")||`<div class="empty">${A.assignments?"Назначений пока нет":"Загружаю назначения…"}</div>`}</div>
+ ${A.listError?`<div class="card stack" role="alert"><div>Не удалось загрузить назначения. ${esc(A.listError)}</div><button class="btn sm ghost" data-act="accessReload" ${A.busy?"disabled":""}>Повторить загрузку</button></div>`:""}
+ <div class="stack">${active.map(a=>row(a,true)).join("")||(A.listError?"":`<div class="empty">${A.assignments?"Назначений пока нет":"Загружаю назначения…"}</div>`)}</div>
  ${archived.length?`<details class="card" style="margin-top:14px"><summary>Архив судейских назначений · ${archived.length}</summary><div class="stack" style="margin-top:10px">${archived.map(a=>row(a,false)).join("")}</div></details>`:""}`;
 }
 function syncAccess(){
@@ -2566,7 +2567,13 @@ async function updateAccess(action,button){
     await api("DELETE",base+encodeURIComponent(button.accessRevoke));
     toast("Доступ отозван");
    }
-   A.assignments=(await api("GET","/api/admin/access")).assignments;
+   A.listError="";
+   try{
+    const signal=typeof AbortSignal!=="undefined"&&AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined;
+    const result=await api("GET","/api/admin/access",undefined,signal);
+    if(!Array.isArray(result.assignments))throw Error("Сервер не вернул список");
+    A.assignments=result.assignments;
+   }catch(err){A.listError=err.message;}
   }
  }catch(err){A.error=err.message;}
  finally{A.busy=false;render();}
@@ -2759,6 +2766,7 @@ document.getElementById("imgIn").addEventListener("change", async e=>{
   } catch(_){ toast("Не получилось открыть картинку. Попробуйте JPG"); }
 });
 function adminClick(t, ds){
+  if (ds.act==="accessReload"){updateAccess("list");return true;}
   if (ds.act==="accessSearch"){updateAccess("search");return true;}
   if (ds.act==="accessAssign"){updateAccess("assign");return true;}
   if (ds.accessRevoke!==undefined){
@@ -3723,10 +3731,10 @@ document.addEventListener("submit", e=>{
 
 /* ---------- server API ---------- */
 const DOC_LINKS = [["privacy","Политика обработки данных"],["consent","Согласие на обработку данных"],["offer","Оферта"],["rules","Условия соревнований"]].map(([k,t])=>`<a href="/docs/${k}" target="_blank">${t}</a>`).join("");
-async function api(method, url, body){
-  const opt = {method, headers:{}, credentials:"same-origin"};
+async function api(method, url, body, signal){
+  const opt = {method, headers:{}, credentials:"same-origin", signal};
   if (body!==undefined && method!=="GET"){ opt.headers["Content-Type"]="application/json"; opt.body=JSON.stringify(body); }
-  let r; try { r = await fetch(url, opt); } catch(_){ throw new Error("Нет связи с сервером. Проверьте интернет"); }
+  let r; try { r = await fetch(url, opt); } catch(_){ throw new Error(signal?.aborted?"Сервер не ответил вовремя":"Нет связи с сервером. Проверьте интернет"); }
   let data = {}; try { data = await r.json(); } catch(_){}
   if (!r.ok) throw Object.assign(new Error(data.error || "Ошибка сервера. Попробуйте ещё раз"), {status:r.status});
   return data;

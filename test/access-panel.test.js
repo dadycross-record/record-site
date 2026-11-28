@@ -33,3 +33,20 @@ for (const path of ['public/index.html', 'src/index.src.html']) {
     assert.doesNotMatch(archive, /data-access-revoke/);
   });
 }
+
+test('an unsuccessful list request displays its own retry action', async () => {
+  const source = readFileSync('public/index.html', 'utf8');
+  const panel = source.match(/function accessPanel\(\)\{[\s\S]+?\n\}(?=\nfunction syncAccess)/)[0];
+  const update = source.match(/async function updateAccess[\s\S]+?\n\}(?=\n\n)/)[0];
+  const state = {};
+  const context = vm.createContext({
+    adm: { access: state }, syncAccess: () => state, render: () => {},
+    api: async () => { throw Error('Нет связи с сервером'); },
+    EVENTS: [], S: { viewAs: 'owner' }, ROLE_L: {}, esc: String, fErr: () => ''
+  });
+  await vm.runInContext(panel + '\n' + update + '\nupdateAccess("list")', context);
+  const html = vm.runInContext('accessPanel()', context);
+  assert.match(html, /Нет связи с сервером/);
+  assert.match(html, /data-act="accessReload"/);
+  assert.doesNotMatch(html, /Загружаю назначения/);
+});
