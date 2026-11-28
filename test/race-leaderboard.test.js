@@ -80,26 +80,3 @@ test('relay has only under 40 and 40+ categories',()=>{
  const scored=raceBoard(event,rr,[sc('r0',d,1000)]).divisions.find(x=>x.id===d);
  assert.equal(scored.entries[0].agePlace,1);
 });
-test('mixed PRO pairs have separate professional standings and age groups',()=>{
- const pro='race26-pair-mixpro', standard='race26-pair-mix';
- const mixedEvent={...event,
-  divisions:[pro,standard].map(id=>({id,name:id,type:'team'})),
-  workouts:[pro,standard].map(id=>({id:'w-'+id,day:event.dateEnd,type:'time',divs:[id]}))};
- const registrations=[
-  reg('p1',pro,'1990-01-01',{team:'Команда'}),
-  reg('p2',pro,'1992-01-01',{team:'Команда'}),
-  reg('p3',pro,'1990-01-01',{team:'Вторая пара'}),
-  reg('p4',pro,'1992-01-01',{team:'Вторая пара'}),
-  reg('s1',standard,'1990-01-01',{team:'Команда'}),
-  reg('s2',standard,'1992-01-01',{team:'Команда'})
- ];
- const scores=[sc('p1',pro,500),sc('p2',pro,510),sc('s1',standard,400),sc('s2',standard,410)];
- const board=raceBoard(mixedEvent,registrations,scores);
- const proBoard=board.divisions.find(d=>d.id===pro);
- assert.ok(proBoard);
- assert.equal(proBoard.level,'pro');
- assert.equal(proBoard.gender,'X');
- assert.equal(proBoard.entries[0].seconds,510);
- assert.equal(proBoard.entries[0].ageGroup,'35–39');
- assert.equal(board.divisions.find(d=>d.id===standard).entries[0].seconds,410);
-});

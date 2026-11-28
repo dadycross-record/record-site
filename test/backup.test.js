@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const { Pool } = require('../lib/pg');
 const backup = require('../lib/backup');
+const { statements: operationsSchema } = require('../lib/operations-schema');
 
 test('incomplete backup is rejected before any database operation', async () => {
   let called = false;
@@ -20,6 +21,7 @@ test('PostgreSQL: children, guardian links, rollback and sequences survive recov
     const source = fs.readFileSync(require.resolve('../server'), 'utf8');
     const schema = source.match(/const SCHEMA = `([\s\S]*?)`;/)[1];
     for (const statement of schema.split(';').map(s => s.trim()).filter(Boolean)) await db.query(statement);
+    for (const statement of operationsSchema) await db.query(statement);
     await db.query("INSERT INTO users(id,email) VALUES (7,'parent@example.test')");
     await db.query("INSERT INTO kids(id,first,last,owner_user) VALUES ('kidtest','Test','Child',7)");
     await db.query("INSERT INTO kid_guardians(kid_id,user_id) VALUES ('kidtest',7)");
